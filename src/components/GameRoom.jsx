@@ -24,10 +24,10 @@ export default function GameRoom({ roomId, playerName }) {
   const currentTurnIndex = state.currentTurnIndex || 0
   const currentTurnId = (state.turnOrder || [])[currentTurnIndex]
 
-  if (room.phase === 'ended') {
+  if (state.phase === 'ended') {
         return (
             <div className="victory-screen">
-            <h1>🎉 {room.winnerName} Wins! 🎉</h1>
+            <h1>🎉 {state.winnerName} Wins! 🎉</h1>
             <p>All words guessed. Game over!</p>
             <button onClick={() => window.location.reload()}>Play again</button>
             </div>
