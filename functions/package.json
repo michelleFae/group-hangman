@@ -1,0 +1,15 @@
+{
+  "name": "group-hangman-functions",
+  "private": true,
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0",
+    "firebase-functions": "^4.4.0"
+  },
+  "scripts": {
+    "lint": "echo 'no lint configured'",
+    "deploy": "firebase deploy --only functions"
+  }
+}
