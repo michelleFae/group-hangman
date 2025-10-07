@@ -50,10 +50,15 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
             {Object.keys(guessedBy).length > 0 && (
               <div style={{ marginTop: 8, background: '#f6f6f6', padding: 8, borderRadius: 6 }}>
                 <strong>Guessed by:</strong>
-                <ul style={{ marginTop: 6, marginLeft: 18 }}>
-                  {Object.entries(guessedBy).map(([k, arr]) => (
-                    <li key={k}>{k === '__word' ? <span>Whole word — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span> : <span>Letter "{k}" — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>}</li>
-                  ))}
+                <ul className="guessed-by-list" style={{ marginTop: 6, marginLeft: 18 }}>
+                {Object.entries(guessedBy).map(([k, arr]) => (
+                    <li key={k}>
+                    {k === '__word'
+                        ? <span>Whole word — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>
+                        : <span>Letter "{k}" — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>
+                    }
+                    </li>
+                ))}
                 </ul>
               </div>
             )}
