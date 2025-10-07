@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null }) {
+export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {} }) {
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
 
@@ -52,7 +52,7 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                 <strong>Guessed by:</strong>
                 <ul style={{ marginTop: 6, marginLeft: 18 }}>
                   {Object.entries(guessedBy).map(([k, arr]) => (
-                    <li key={k}>{k === '__word' ? <span>Whole word — by: {arr.join(', ')}</span> : <span>Letter "{k}" — by: {arr.join(', ')}</span>}</li>
+                    <li key={k}>{k === '__word' ? <span>Whole word — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span> : <span>Letter "{k}" — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>}</li>
                   ))}
                 </ul>
               </div>

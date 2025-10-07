@@ -17,6 +17,8 @@ export default function GameRoom({ roomId, playerName }) {
   const phase = state.phase || 'lobby'
   const hostId = state.hostId
   const players = state.players || []
+  const playerIdToName = {}
+  players.forEach(p => { playerIdToName[p.id] = p.name })
   const submittedCount = players.filter(p => p.hasWord).length
 
   const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
@@ -69,7 +71,8 @@ export default function GameRoom({ roomId, playerName }) {
                           isSelf={p.id === myId}
                           viewerId={myId}
                           canGuess={phase === 'playing' && myId === currentTurnId && p.id !== myId}
-                          onGuess={(targetId, guess) => sendGuess(targetId, guess)} />
+                          onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
+                          playerIdToName={playerIdToName}/>
           )
         })}
       </div>
