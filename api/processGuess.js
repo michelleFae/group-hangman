@@ -133,11 +133,14 @@ module.exports = async (req, res) => {
       }
     }
 
-    // advance turn
-    const activeTurnOrder = room.turnOrder || []
-    if (activeTurnOrder.length > 0) {
-      const nextIndex = (currentIndex + 1) % activeTurnOrder.length
-      updates[`currentTurnIndex`] = nextIndex
+    // advance turn only if we haven't already set currentTurnIndex above
+    // if we modified the turnOrder (e.g. eliminated a player) prefer that new order
+    if (!Object.prototype.hasOwnProperty.call(updates, 'currentTurnIndex')) {
+      const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (room.turnOrder || [])
+      if (effectiveTurnOrder.length > 0) {
+        const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
+        updates[`currentTurnIndex`] = nextIndex
+      }
     }
 
     if (Object.keys(updates).length > 0) await roomRef.update(updates)

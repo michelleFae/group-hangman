@@ -14,7 +14,8 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "firebase": "^9.23.0"
+    "firebase": "^9.23.0",
+    "firebase-admin": "^12.5.0"
   },
   "devDependencies": {
     "vite": "^5.1.0",
