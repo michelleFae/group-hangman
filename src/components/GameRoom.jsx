@@ -24,6 +24,16 @@ export default function GameRoom({ roomId, playerName }) {
   const currentTurnIndex = state.currentTurnIndex || 0
   const currentTurnId = (state.turnOrder || [])[currentTurnIndex]
 
+  if (room.phase === 'ended') {
+        return (
+            <div className="victory-screen">
+            <h1>🎉 {room.winnerName} Wins! 🎉</h1>
+            <p>All words guessed. Game over!</p>
+            <button onClick={() => window.location.reload()}>Play again</button>
+            </div>
+        )
+    }
+
   return (
     <div className="game-room">
       <h2>Room: {roomId} — phase: {phase}</h2>
@@ -85,6 +95,7 @@ export default function GameRoom({ roomId, playerName }) {
       <div className="controls">
         {/* Controls for guesses and power-ups will go here during playing phase */}
       </div>
+      
     </div>
   )
 }

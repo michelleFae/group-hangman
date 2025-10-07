@@ -146,7 +146,23 @@ module.exports = async (req, res) => {
 
     if (Object.keys(updates).length > 0) await roomRef.update(updates)
 
-    return res.status(200).json({ ok: true })
+    // Check if only one player remains uneliminated
+    const freshPlayersSnap = await roomRef.child('players').once('value')
+    const freshPlayers = freshPlayersSnap.val() || {}
+    const alive = Object.values(freshPlayers).filter(p => !p.eliminated)
+    if (alive.length === 1) {
+        const winner = alive[0]
+        const gameOverUpdates = {
+            phase: 'ended',
+            winnerId: winner.id || null,
+            winnerName: winner.name || 'Unknown',
+            endedAt: Date.now()
+        }
+        await roomRef.update(gameOverUpdates)
+        console.log("Game over — winner:", winner.name)
+
+        return res.status(200).json({ ok: true })
+  }
   } catch (err) {
     console.error('processGuess error', err)
     return res.status(500).json({ error: err.message })
