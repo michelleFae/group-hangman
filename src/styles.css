@@ -284,21 +284,29 @@ button[disabled] {
 
 /* Highlight the screen when it's the viewer's turn */
 body.my-turn-body {
-  transition: background-color 300ms ease, color 300ms ease;
-  background-color: #222 !important; /* dark background to contrast */
-  color: #f7f7f7 !important;
+  transition: background 300ms ease, color 300ms ease;
+  /* Use a bright warm gradient so the page clearly signals it's your turn */
+  background: linear-gradient(135deg, #fff9c4 0%, #fff176 100%) !important;
+  color: #111 !important;
 }
 
-/* Invert some card-like UI elements when my-turn is active for better contrast */
+/* Make card-like UI elements light so text is readable against the bright page background */
 body.my-turn-body .card,
 body.my-turn-body .notice,
 body.my-turn-body .toast,
 body.my-turn-body .modal-dialog {
-  background: rgba(255,255,255,0.06) !important;
-  color: #fff !important;
-  border-color: rgba(255,255,255,0.06) !important;
+  background: rgba(255,255,255,0.95) !important;
+  color: #111 !important;
+  border-color: rgba(0,0,0,0.06) !important;
 }
 
-/* Slight emphasis on submit bar and player circles during turn */
-body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.6) }
-body.my-turn-body .player { box-shadow: 0 12px 30px rgba(0,0,0,0.6) }
+/* Ensure player tiles are light with dark text for readability */
+body.my-turn-body .player {
+  background: linear-gradient(180deg, #ffffff, #fffde7) !important;
+  color: #111 !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.06) !important;
+}
+body.my-turn-body .player .avatar { color: #111 !important; box-shadow: 0 6px 18px rgba(0,0,0,0.06) !important }
+
+/* Submit bar and other controls should remain prominent */
+body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important }

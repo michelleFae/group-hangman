@@ -456,6 +456,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             const toastId = `reset_fail_${Date.now()}`
                             setToasts(t => [...t, { id: toastId, text: 'Could not reset room for replay' }])
                             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
+                            // show an alert with detailed errors so the deployed user can copy them for debugging
+                            try {
+                              const pretty = errors.map(e => `${e.step}: ${typeof e.err === 'string' ? e.err : JSON.stringify(e.err, null, 2)}`).join('\n\n')
+                              window.alert('Reset failed — diagnostic steps:\n\n' + pretty + '\n\n(See console for full stacks)')
+                            } catch (ee) {
+                              try { window.alert('Reset failed — see console for details') } catch (e2) {}
+                            }
                             // do not rethrow raw errors - we already informed the user and logged details
                           }
                         } catch (e) {
