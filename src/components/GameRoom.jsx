@@ -372,6 +372,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           } catch (e) { console.warn('Reset: debug log failed', e) }
                           // Try a sequence of strategies; collect errors and only fail after all attempts
                           const errors = []
+                          console.log('Reset: diagnostic info:', {
+                            hasRoomRefUpdate: !!(roomRef && typeof roomRef.update === 'function'),
+                            typeof_dbUpdate: typeof dbUpdate,
+                            hasFetch: typeof fetch === 'function',
+                            hasFirebaseAuthGlobal: !!(window && window.__firebaseAuth && window.__firebaseAuth.currentUser),
+                            runtimeDBURL: !!window.__firebaseDatabaseURL
+                          })
                           // 1) try compat-style ref.update first (works in many bundles)
                           try {
                             if (roomRef && typeof roomRef.update === 'function') {
@@ -380,7 +387,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                               throw new Error('roomRef.update not available')
                             }
                           } catch (err1) {
-                            errors.push({ step: 'ref.update', err: err1 })
+                            console.error('Reset: ref.update failed', err1 && err1.stack ? err1.stack : err1)
+                            errors.push({ step: 'ref.update', err: err1 && (err1.stack || err1.message || String(err1)) })
                             // 2) try the named imported update (modular SDK)
                             try {
                               if (typeof dbUpdate === 'function') {
@@ -389,7 +397,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                                 throw new Error('named dbUpdate not a function')
                               }
                             } catch (err2) {
-                              errors.push({ step: 'named dbUpdate', err: err2 })
+                              console.error('Reset: named dbUpdate failed', err2 && err2.stack ? err2.stack : err2)
+                              errors.push({ step: 'named dbUpdate', err: err2 && (err2.stack || err2.message || String(err2)) })
                               // 3) try dynamic import variants
                               try {
                                 const mod = await import('firebase/database')
@@ -401,7 +410,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                                   throw new Error('dynamic import did not expose update()')
                                 }
                               } catch (err3) {
-                                errors.push({ step: 'dynamic import', err: err3 })
+                                console.error('Reset: dynamic import failed', err3 && err3.stack ? err3.stack : err3)
+                                errors.push({ step: 'dynamic import', err: err3 && (err3.stack || err3.message || String(err3)) })
                                 // 4) last resort: REST PATCH
                                 try {
                                   const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
@@ -411,7 +421,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                                   const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) })
                                   if (!res.ok) throw new Error('REST fallback failed: ' + res.status + ' ' + (await res.text()))
                                 } catch (err4) {
-                                  errors.push({ step: 'rest', err: err4 })
+                                  console.error('Reset: REST fallback failed', err4 && err4.stack ? err4.stack : err4)
+                                  errors.push({ step: 'rest', err: err4 && (err4.stack || err4.message || String(err4)) })
                                 }
                               }
                             }
@@ -740,6 +751,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       {phase === 'submit' && (() => {
         const me = players.find(p => p.id === myId) || {}
         const myHasSubmitted = !!me.hasWord
+        const candidateInput = (word || '').toString().trim()
+        const localInvalid = !candidateInput || candidateInput.length === 1 || !/^[a-zA-Z]+$/.test(candidateInput)
         return (
           <div className="submit-bar card">
             <div className="submit-left">
@@ -757,8 +770,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div className="submit-controls">
               {!myHasSubmitted ? (
                 <>
-                  <input placeholder="your word" value={word} onChange={e => setWord(e.target.value)} />
-                  <button onClick={handleSubmitWord}>Submit</button>
+                  <input placeholder="your word" value={word} onChange={e => { setWord(e.target.value); setWordError('') }} />
+                  <button onClick={handleSubmitWord} disabled={isCheckingDictionary || localInvalid}>{isCheckingDictionary ? 'Checking…' : 'Submit'}</button>
+                  {/* inline helper / error */}
+                  {(wordError || (!isCheckingDictionary && localInvalid && candidateInput)) && (
+                    <div className="small-error" style={{ marginLeft: 12 }}>
+                      {wordError || (candidateInput && candidateInput.length === 1 ? 'Please pick a word that is at least 2 letters long.' : 'Words may only contain letters. No spaces or punctuation.')}
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ padding: '8px 12px' }}>Submitted — waiting for others</div>
