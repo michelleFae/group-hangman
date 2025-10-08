@@ -389,58 +389,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     </div>
   )
 
-  if (phase === 'ended') {
-    // Use the top-level computed values (standings, isWinner, confettiPieces, cashPieces)
-    // to avoid calling hooks conditionally. Those values are computed above.
-    return (
-      <>
-      {modeBadge}
-      <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
-        {isWinner && confettiPieces.map((c, i) => (
-          <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
-        ))}
-        {state?.winnerByHangmoney && cashPieces.map((c, i) => (
-          <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
-        ))}
-
-        <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state?.winnerName} Wins`}</h1>
-        <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
-
-        <div className="standings card" style={{ marginTop: 12 }}>
-          <h4>Final standings</h4>
-          <ol>
-            {sanitizedStandings.map((p, idx) => {
-              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
-              const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
-              return (
-                <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
-                    <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
-                  </div>
-                  <div style={{ fontWeight: 800 }}>
-                    <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                      ${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
-                    </span>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          {/* Per-player rematch opt-in: everyone clicks 'Play again' to indicate they want a rematch.
-              When all players have wantsRematch=true, the host will attempt to reset the room. */}
-          <div style={{ marginBottom: 8 }}>
-            <PlayAgainControls isHost={isHost} myId={myId} players={players} />
-          </div>
-          <div style={{ color: '#ddd' }}>If everyone clicks Play again, the room will reset automatically.</div>
-        </div>
-      </div>
-      </>
-    )
-  }
+  
 
   // Component: per-player Play Again controls
   function PlayAgainControls({ isHost, myId, players }) {
@@ -839,7 +788,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       </div>
       {/* Bottom-fixed submit bar (shown during submit phase). This contains the secret-word entry and submit button
           and is intentionally separated so it can be reused later for power-ups. */}
-      {phase === 'submit' && (() => {
+  {phase === 'submit' && (() => {
         const me = players.find(p => p.id === myId) || {}
         const myHasSubmitted = !!me.hasWord
         const candidateInput = (word || '').toString().trim()
@@ -889,6 +838,53 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           </div>
         )
       })()}
+        {/* Render ended/victory screen after hooks have been declared to avoid skipping hooks */}
+        {phase === 'ended' && (
+          <>
+          {modeBadge}
+          <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
+            {isWinner && confettiPieces.map((c, i) => (
+              <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
+            ))}
+            {state?.winnerByHangmoney && cashPieces.map((c, i) => (
+              <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
+            ))}
+
+            <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state?.winnerName} Wins`}</h1>
+            <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
+
+            <div className="standings card" style={{ marginTop: 12 }}>
+              <h4>Final standings</h4>
+              <ol>
+                {sanitizedStandings.map((p, idx) => {
+                  const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
+                  const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
+                  return (
+                    <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
+                        <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                      </div>
+                      <div style={{ fontWeight: 800 }}>
+                        <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
+                          ${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                        </span>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ marginBottom: 8 }}>
+                <PlayAgainControls isHost={isHost} myId={myId} players={players} />
+              </div>
+              <div style={{ color: '#ddd' }}>If everyone clicks Play again, the room will reset automatically.</div>
+            </div>
+          </div>
+          </>
+        )}
       
     </div>
   )
