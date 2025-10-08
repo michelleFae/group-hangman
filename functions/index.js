@@ -273,33 +273,55 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
         // advance index
         const nextIndex = (currentIndex + 1) % turnOrder.length
 
-        // if a timeout for this same turn already exists, skip to avoid duplicate penalties
-        const existingTimeouts = curr.timeouts || {}
-        const alreadyRecordedForTurn = Object.keys(existingTimeouts).some(k => {
-          try {
-            const te = existingTimeouts[k]
-            // if the existing timeout records the originating turn start, compare to avoid double-applying
-            return te && te.player === timedOutPlayerId && te.turnStartedAt && te.turnStartedAt === curr.currentTurnStartedAt
-          } catch (e) { return false }
-        })
-        if (alreadyRecordedForTurn) return curr
+        // Logging: surface existing timeouts for debugging
+        try {
+          const existingTimeouts = curr.timeouts || {}
+          const keys = Object.keys(existingTimeouts)
+          if (keys.length > 0) {
+            console.log(`advanceTimedTurns: room=${roomId} existingTimeouts=${keys.length}`, keys.map(k => ({ key: k, val: existingTimeouts[k] })))
+          }
+
+          // stricter duplicate checks:
+          // 1) if any existing timeout for this player has the same turnStartedAt, skip
+          // 2) if any existing timeout for this player has a ts within 10s, skip (recent duplicate)
+          const alreadyRecordedForTurn = keys.some(k => {
+            try {
+              const te = existingTimeouts[k]
+              if (!te || te.player !== timedOutPlayerId) return false
+              if (te.turnStartedAt && curr.currentTurnStartedAt && te.turnStartedAt === curr.currentTurnStartedAt) {
+                console.log(`advanceTimedTurns: skipping room=${roomId} player=${timedOutPlayerId} because existing timeout ${k} matches turnStartedAt`)
+                return true
+              }
+              if (te.ts && Math.abs((te.ts || 0) - Date.now()) < 10000) {
+                console.log(`advanceTimedTurns: skipping room=${roomId} player=${timedOutPlayerId} because existing timeout ${k} ts is recent (${te.ts})`)
+                return true
+              }
+              return false
+            } catch (e) { return false }
+          })
+          if (alreadyRecordedForTurn) return curr
+        } catch (logErr) { console.warn('advanceTimedTurns: logging/dedupe check failed', logErr) }
 
         // deduct penalty of 2 hangmoney from timed out player (min 0)
         const playerNode = (curr.players && curr.players[timedOutPlayerId]) || {}
         const prevHang = typeof playerNode.hangmoney === 'number' ? playerNode.hangmoney : 0
         const newHang = Math.max(0, prevHang - 2)
 
-        // apply updates
-        if (!curr.players) curr.players = {}
-        if (!curr.players[timedOutPlayerId]) curr.players[timedOutPlayerId] = {}
-        curr.players[timedOutPlayerId].hangmoney = newHang
-        curr.currentTurnIndex = nextIndex
-        curr.currentTurnStartedAt = Date.now()
+    // apply updates: deduct hangmoney and advance
+    if (!curr.players) curr.players = {}
+    if (!curr.players[timedOutPlayerId]) curr.players[timedOutPlayerId] = {}
+    curr.players[timedOutPlayerId].hangmoney = newHang
+    curr.currentTurnIndex = nextIndex
+    // preserve the expired turn's start so consumers can dedupe precisely; record oldTurnStartedAt before moving it forward
+  const expiredTurnStartedAt = curr.currentTurnStartedAt || null
+  curr.currentTurnStartedAt = Date.now()
 
-  // optionally log timeout event and include the originating turn start timestamp
+  // optionally log timeout event and include the originating turn start timestamp (expiredTurnStartedAt)
   if (!curr.timeouts) curr.timeouts = {}
   const tkey = `t_${Date.now()}`
-  curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now(), turnStartedAt: curr.currentTurnStartedAt }
+  curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now(), turnStartedAt: expiredTurnStartedAt }
+
+  console.log(`advanceTimedTurns: applied timeout room=${roomId} key=${tkey} player=${timedOutPlayerId} expiredTurnStartedAt=${expiredTurnStartedAt} newHang=${newHang}`)
 
         return curr
       })

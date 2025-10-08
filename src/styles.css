@@ -186,6 +186,9 @@ button[disabled] {
 .multi-hit-toast .confetti-like:nth-child(3) { left: 60px; background: #81D4FA; transform: rotate(18deg) }
 
 @keyframes mh-fall { from { transform: translateY(-8px) rotate(0deg); opacity: 1 } to { transform: translateY(18px) rotate(45deg); opacity: 0 } }
+/* Fade-out animation for toasts when being removed */
+.toast.removing { animation: toast-out .9s forwards }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-8px) scale(.98) } }
 /* player flash for penalty */
 .player.flash-penalty { animation: flash-penalty 1s ease-in-out }
 @keyframes flash-penalty { 0% { box-shadow: 0 0 0 rgba(255,0,0,0) } 10% { box-shadow: 0 0 18px rgba(255,0,0,0.6) } 50% { box-shadow: 0 0 10px rgba(255,0,0,0.24) } 100% { box-shadow: 0 0 0 rgba(255,0,0,0) } }

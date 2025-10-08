@@ -124,6 +124,24 @@ Troubleshooting & tips
 - For Vercel deployments make sure `FIREBASE_SERVICE_ACCOUNT` is present and correctly formatted (JSON vs base64). If the serverless function logs "Missing FIREBASE_SERVICE_ACCOUNT", check that variable.
 - If anonymous rejoin fails after refresh, check localStorage for `gh_anon_<roomId>` and confirm the corresponding player node still exists in the DB.
 
+Debugging extra timeout penalties
+--
+If you see duplicate or extra -2 timeout penalties, enable extra logging:
+
+- Client-side (in browser console):
+  - Open DevTools and run:
+
+```javascript
+localStorage.setItem('gh_debug_timeouts', '1')
+```
+
+  - The client will log when the host's TimerWatcher considers writing a timeout, when it skips due to an existing timeout entry, and the details of the timeout it writes.
+
+- Server-side (Cloud Functions / Vercel):
+  - For Firebase Functions, check function logs with `firebase functions:log` or in the Firebase Console -> Functions -> Logs.
+  - For the serverless handler deployed to Vercel, use the Vercel dashboard's function logs or `vercel logs <deployment-url>`.
+  - The server-side `advanceTimedTurns` scheduled job now logs existing timeout keys per room, why it skips duplicates, and when it applies a penalty (including the `turnStartedAt` it used).
+
 Contributing
 --
 Contributions welcome. Open an issue or PR with a clear description of the change.

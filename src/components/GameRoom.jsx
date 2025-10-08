@@ -74,6 +74,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // watch for timeout logs in state.timeouts to show toast and flash player
   // dedupe timeouts per player to avoid duplicate toasts when both client and server
   const processedTimeoutPlayersRef = useRef({})
+  // also dedupe by timeout key so the same timeout entry doesn't re-trigger repeatedly
+  const processedTimeoutKeysRef = useRef({})
   // track expected hangmoney values after a pending deduction so the UI can wait for DB confirmation
   const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
@@ -109,10 +111,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         entries.forEach(e => {
           if (e && e.type === 'letter' && (Number(e.count) || 0) >= 2) {
             const key = `${targetId}:${e.letter}:${e.count}`
-            if (!multiHitSeenRef.current[key]) {
+          if (!multiHitSeenRef.current[key]) {
               multiHitSeenRef.current[key] = true
-              setToasts(t => [...t, { id: `mh_${Date.now()}`, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}` , multi: true }])
-              setTimeout(() => setToasts(t => t.filter(x => x.id !== `mh_${Date.now()}`)), 3500)
+              const toastId = `mh_${Date.now()}`
+              setToasts(t => [...t, { id: toastId, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}` , multi: true }])
+              // remove this multi-hit toast after 7 seconds
+                // after 7s, mark toast as removing so CSS fade-out can run
+                setTimeout(() => {
+                  setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x))
+                }, 7000)
+                // actually remove the toast after 8s (allow ~1s for fade animation)
+                setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
             }
           }
         })
@@ -144,10 +153,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // mark processed for this player (store both ts and turnStartedAt when available)
   processedTimeoutPlayersRef.current[player] = { ts, turnStartedAt: e.turnStartedAt || null }
 
-      // show toast
-      const toastId = `${k}`
+    // don't re-show the same timeout entry's toast repeatedly
+    if (processedTimeoutKeysRef.current[k]) return
+    processedTimeoutKeysRef.current[k] = true
+
+    // show toast
+    const toastId = `${k}`
   const toast = { id: toastId, text: `-2 hangmoney for ${playerName} (timed out)` }
-      setToasts(t => [...t, toast])
+    setToasts(t => [...t, toast])
       // auto-remove toast after 4s
       setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
 
@@ -377,12 +390,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const roomRef = dbRef(db, `rooms/${roomId}`)
         dbGet(roomRef).then(async snap => {
           const r = snap.val() || {}
+          const debug = (() => { try { return !!localStorage.getItem('gh_debug_timeouts') } catch (e) { return false } })()
+          if (debug) console.log('TimerWatcher: expired check', { roomId, msLeft, localHostId: r.hostId, currentTurnIndex: r.currentTurnIndex, now: Date.now() })
           const order = r.turnOrder || []
           if (!order || order.length === 0) return
 
           // only the host should write authoritative timeout advances to avoid races
           const localMyId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
-          if (!r.hostId || r.hostId !== localMyId) return
+          if (!r.hostId || r.hostId !== localMyId) {
+            if (debug) console.log('TimerWatcher: not host, skipping authoritative timeout write', { roomId, rHost: r.hostId, localMyId })
+            return
+          }
 
           const timedOutPlayer = order[r.currentTurnIndex || 0]
           // check if a timeout for this exact turn (same turn start) already exists
@@ -394,7 +412,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               return te && te.player === timedOutPlayer && te.turnStartedAt && r.currentTurnStartedAt && te.turnStartedAt === r.currentTurnStartedAt
             } catch (e) { return false }
           })
-          if (recent) return
+          if (recent) {
+            if (debug) console.log('TimerWatcher: skipping timeout write because recent entry exists', { roomId, recentKey: recent, recentEntry: timeouts[recent] })
+            return
+          }
 
           const nextIdx = ((r.currentTurnIndex || 0) + 1) % order.length
           // write an authoritative timeout entry for auditing and to notify other clients
@@ -402,6 +423,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
           // include the expired turn's start timestamp so consumers can dedupe by turn
           updates[`timeouts/${tkey}`] = { player: timedOutPlayer, deducted: 2, ts: Date.now(), turnStartedAt: r.currentTurnStartedAt || null }
+          if (debug) console.log('TimerWatcher: writing timeout', { roomId, tkey, timedOutPlayer, expiredTurnStartedAt: r.currentTurnStartedAt || null })
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
@@ -565,7 +587,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} className={`toast ${t.multi ? 'multi-hit-toast' : ''}`}>
+          <div key={t.id} className={`toast ${t.multi ? 'multi-hit-toast' : ''} ${t.removing ? 'removing' : ''}`}>
             {t.multi && (
               <>
                 <span className="confetti-like" />
