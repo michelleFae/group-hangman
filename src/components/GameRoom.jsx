@@ -204,7 +204,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     </div>
   )
 
-  if (state.phase === 'ended') {
+  if (phase === 'ended') {
     // Use the top-level computed values (standings, isWinner, confettiPieces, cashPieces)
     // to avoid calling hooks conditionally. Those values are computed above.
     return (
@@ -214,11 +214,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         {isWinner && confettiPieces.map((c, i) => (
           <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
         ))}
-        {state && state.winnerByHangmoney && cashPieces.map((c, i) => (
+        {state?.winnerByHangmoney && cashPieces.map((c, i) => (
           <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
         ))}
 
-        <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state.winnerName} Wins`}</h1>
+        <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state?.winnerName} Wins`}</h1>
         <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
 
         <div className="standings card" style={{ marginTop: 12 }}>
@@ -233,7 +233,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                     <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
                   </div>
-                  <div style={{ fontWeight: 700 }}>${p.hangmoney || 0}{p.id === state.winnerId ? ' (winner)' : ''}</div>
+                  <div style={{ fontWeight: 700 }}>${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}</div>
                 </li>
               )
             })}
@@ -445,7 +445,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       <div className="circle">
         {players.length === 0 && <div>No players yet — wait for others to join.</div>}
         <div className="turn-indicator">Current turn: {players.find(p => p.id === currentTurnId)?.name || '—'}</div>
-        {phase === 'playing' && state.timed && state.turnTimeoutSeconds && state.currentTurnStartedAt && (
+      {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
           <div className="turn-timer">
             <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now()) / (state.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
             <div className="time">{(() => {
@@ -513,7 +513,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       {/* Submit bar moved to bottom so it can be reused for power-ups later */}
 
-      {phase === 'lobby' && state.password && (
+  {phase === 'lobby' && state?.password && (
         <div className="room-password">
           <strong>Room Password:</strong> {state.password}
           {isHost && <span> (You are the host)</span>}
@@ -532,7 +532,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           <div className="submit-bar card">
             <div className="submit-left">
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
-              {state.starterBonus && state.starterBonus.enabled && (
+              {state?.starterBonus && state.starterBonus.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#666' }} title={state.starterBonus.description}>
                   Starter rule: <strong>{state.starterBonus.description}</strong>
                 </div>
