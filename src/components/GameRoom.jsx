@@ -507,15 +507,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       </div>
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
-      {phase === 'playing' && state.timed && state.turnTimeoutSeconds && state.currentTurnStartedAt && (
+        {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
         <TimerWatcher roomId={roomId} state={state} />
       )}
 
       {/* Submit bar moved to bottom so it can be reused for power-ups later */}
 
-  {phase === 'lobby' && state?.password && (
+      {phase === 'lobby' && state?.password && (
         <div className="room-password">
-          <strong>Room Password:</strong> {state.password}
+          <strong>Room Password:</strong> {state?.password}
           {isHost && <span> (You are the host)</span>}
         </div>
       )}
@@ -532,9 +532,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           <div className="submit-bar card">
             <div className="submit-left">
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
-              {state?.starterBonus && state.starterBonus.enabled && (
-                <div style={{ marginTop: 6, fontSize: 13, color: '#666' }} title={state.starterBonus.description}>
-                  Starter rule: <strong>{state.starterBonus.description}</strong>
+              {state?.starterBonus?.enabled && (
+                <div style={{ marginTop: 6, fontSize: 13, color: '#666' }} title={state?.starterBonus?.description}>
+                  Starter rule: <strong>{state?.starterBonus?.description}</strong>
                 </div>
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>
