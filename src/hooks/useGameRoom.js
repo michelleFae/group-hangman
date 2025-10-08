@@ -27,7 +27,15 @@ export default function useGameRoom(roomId, playerName) {
       const raw = snapshot.val() || {}
       console.log('Room data updated:', raw)
       const playersObj = raw.players || {}
-      const players = Object.keys(playersObj).map(k => playersObj[k])
+      // build a sanitized array of player objects with id preserved
+      const players = Object.keys(playersObj).map(k => {
+        const val = playersObj[k]
+        if (val && typeof val === 'object') return { id: k, ...val }
+        return null
+      }).filter(x => x && typeof x === 'object')
+      if (Object.keys(playersObj).length !== players.length) {
+        try { console.warn('useGameRoom: filtered invalid entries from playersObj', { playersObj }) } catch (e) {}
+      }
       setState({ ...raw, players, password: raw.password || '' })
       console.log('State updated with room data:', { ...raw, players, password: raw.password || '' })
     })

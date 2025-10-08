@@ -843,7 +843,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             })()}</div>
           </div>
         )}
-        {players.map(p => {
+        {(() => {
+          // defensive: ensure players is an array of objects (some DB writes may briefly produce non-object entries)
+          const sanitized = (players || []).filter(x => x && typeof x === 'object')
+          if (sanitized.length !== (players || []).length) {
+            try { console.warn('GameRoom: filtered invalid player entries from state.players', { rawPlayers: players, stateSnapshot: state }) } catch (e) {}
+          }
+          return sanitized.map(p => {
           // derive viewer-specific private data. viewer's node lives under state.players keyed by id — we need to find viewer's full object
           const viewerNode = players.find(x => x.id === myId) || {}
           // viewerNode may contain privateWrong, privateHits, privateWrongWords which are objects keyed by targetId
@@ -878,7 +884,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           pendingDeduct={pendingDeducts[p.id] || 0}
                           isWinner={p.id === state?.winnerId} />
           )
-        })}
+          })
+        })()}
       </div>
 
       <div className="toast-container">
