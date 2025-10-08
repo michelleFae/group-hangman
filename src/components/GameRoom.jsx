@@ -253,8 +253,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const currentTurnIndex = state?.currentTurnIndex || 0
   const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
   // derive some end-of-game values and visual pieces at top-level so hooks are not called conditionally
-  const myName = playerName
-  const isWinner = state?.winnerName === myName
+  // derive viewer name from server state if available (covers refresh cases)
+  const myNode = (state?.players || []).find(p => p.id === myId) || {}
+  const myName = myNode.name || playerName
+  // consider the viewer a winner if the room's winnerId matches their id,
+  // or if the stored winnerName equals their effective name (covers legacy rooms)
+  const isWinner = (state?.winnerId && myId && state.winnerId === myId) || (state?.winnerName && state.winnerName === myName)
   // compute standings by hangmoney desc as a best-effort ranking
   const standings = (state?.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
 
@@ -366,44 +370,59 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             console.log('Reset: typeof dbUpdate =', typeof dbUpdate)
                             console.log('Reset: updates preview', Object.keys(updates).slice(0,20))
                           } catch (e) { console.warn('Reset: debug log failed', e) }
+                          // Try a sequence of strategies; collect errors and only fail after all attempts
+                          const errors = []
+                          // 1) try compat-style ref.update first (works in many bundles)
                           try {
-                            if (typeof dbUpdate === 'function') {
-                              await dbUpdate(roomRef, updates)
+                            if (roomRef && typeof roomRef.update === 'function') {
+                              await roomRef.update(updates)
                             } else {
-                              // fallback: try dynamic import and multiple strategies
+                              throw new Error('roomRef.update not available')
+                            }
+                          } catch (err1) {
+                            errors.push({ step: 'ref.update', err: err1 })
+                            // 2) try the named imported update (modular SDK)
+                            try {
+                              if (typeof dbUpdate === 'function') {
+                                await dbUpdate(roomRef, updates)
+                              } else {
+                                throw new Error('named dbUpdate not a function')
+                              }
+                            } catch (err2) {
+                              errors.push({ step: 'named dbUpdate', err: err2 })
+                              // 3) try dynamic import variants
                               try {
                                 const mod = await import('firebase/database')
-                                console.log('Reset: dynamic import returned keys:', Object.keys(mod || {}))
-                                if (typeof mod.update === 'function') {
+                                if (mod && typeof mod.update === 'function') {
                                   await mod.update(roomRef, updates)
-                                } else if (mod.default && typeof mod.default.update === 'function') {
+                                } else if (mod && mod.default && typeof mod.default.update === 'function') {
                                   await mod.default.update(roomRef, updates)
-                                } else if (roomRef && typeof roomRef.update === 'function') {
-                                  // compat-style ref.update
-                                  await roomRef.update(updates)
                                 } else {
-                                  // Last resort: try REST PATCH to the realtime DB using an ID token if available
-                                  try {
-                                    const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
-                                    // determine DB URL: prefer runtime-injected global, otherwise try to infer from window.location or env var
-                                    const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
-                                    if (!dbUrl) throw new Error('No database URL available for REST fallback')
-                                    const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
-                                    const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) })
-                                    if (!res.ok) throw new Error('REST fallback failed: ' + res.status + ' ' + (await res.text()))
-                                  } catch (restErr) {
-                                    console.error('Reset: REST fallback failed', restErr)
-                                    throw restErr
-                                  }
+                                  throw new Error('dynamic import did not expose update()')
                                 }
-                              } catch (impErr) {
-                                console.error('Reset: dynamic import/fallbacks failed', impErr)
-                                throw impErr
+                              } catch (err3) {
+                                errors.push({ step: 'dynamic import', err: err3 })
+                                // 4) last resort: REST PATCH
+                                try {
+                                  const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
+                                  const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
+                                  if (!dbUrl) throw new Error('No database URL available for REST fallback')
+                                  const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
+                                  const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) })
+                                  if (!res.ok) throw new Error('REST fallback failed: ' + res.status + ' ' + (await res.text()))
+                                } catch (err4) {
+                                  errors.push({ step: 'rest', err: err4 })
+                                }
                               }
                             }
-                          } catch (callErr) {
-                            console.error('Reset: db update call failed', callErr)
-                            throw callErr
+                          }
+                          if (errors.length > 0) {
+                            console.error('Reset: all update strategies failed', errors.map(e => ({ step: e.step, message: e.err && e.err.message })))
+                            // show a short toast so the user knows reset failed
+                            const toastId = `reset_fail_${Date.now()}`
+                            setToasts(t => [...t, { id: toastId, text: 'Could not reset room for replay' }])
+                            setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
+                            throw new Error('All reset update strategies failed')
                           }
                         } catch (e) {
                           console.warn('Could not reset room for replay', e && e.stack ? e.stack : e)
