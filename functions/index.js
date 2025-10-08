@@ -273,15 +273,16 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
         // advance index
         const nextIndex = (currentIndex + 1) % turnOrder.length
 
-        // if a recent timeout for this player already exists, skip to avoid duplicate penalties
+        // if a timeout for this same turn already exists, skip to avoid duplicate penalties
         const existingTimeouts = curr.timeouts || {}
-        const alreadyRecent = Object.keys(existingTimeouts).some(k => {
+        const alreadyRecordedForTurn = Object.keys(existingTimeouts).some(k => {
           try {
             const te = existingTimeouts[k]
-            return te && te.player === timedOutPlayerId && Math.abs((te.ts || 0) - Date.now()) < 5000
+            // if the existing timeout records the originating turn start, compare to avoid double-applying
+            return te && te.player === timedOutPlayerId && te.turnStartedAt && te.turnStartedAt === curr.currentTurnStartedAt
           } catch (e) { return false }
         })
-        if (alreadyRecent) return curr
+        if (alreadyRecordedForTurn) return curr
 
         // deduct penalty of 2 hangmoney from timed out player (min 0)
         const playerNode = (curr.players && curr.players[timedOutPlayerId]) || {}
@@ -295,10 +296,10 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
         curr.currentTurnIndex = nextIndex
         curr.currentTurnStartedAt = Date.now()
 
-        // optionally log timeout event
-        if (!curr.timeouts) curr.timeouts = {}
-        const tkey = `t_${Date.now()}`
-        curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now() }
+  // optionally log timeout event and include the originating turn start timestamp
+  if (!curr.timeouts) curr.timeouts = {}
+  const tkey = `t_${Date.now()}`
+  curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now(), turnStartedAt: curr.currentTurnStartedAt }
 
         return curr
       })

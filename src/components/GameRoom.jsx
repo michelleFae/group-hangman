@@ -132,12 +132,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const playerObj = (state.players || []).find(p => p.id === player)
   const playerName = (playerObj && playerObj.name) ? playerObj.name : player
 
-      // If we've recently processed a timeout for this player, skip to avoid dupes
-      const last = processedTimeoutPlayersRef.current[player] || 0
-      if (Math.abs(ts - last) < 5000) return
+  // If we've recently processed a timeout for this player, skip to avoid dupes.
+  // Prefer comparing the originating turnStartedAt when present so a single timed-out turn only yields one penalty.
+  const seen = processedTimeoutPlayersRef.current[player] || {}
+  const seenTurn = seen.turnStartedAt
+  if (e.turnStartedAt && seenTurn && e.turnStartedAt === seenTurn) return
+  // fallback: skip if we've processed a timeout with very similar ts recently
+  const last = seen.ts || 0
+  if (!e.turnStartedAt && Math.abs(ts - last) < 5000) return
 
-      // mark processed for this player (use the timeout's ts)
-      processedTimeoutPlayersRef.current[player] = ts
+  // mark processed for this player (store both ts and turnStartedAt when available)
+  processedTimeoutPlayersRef.current[player] = { ts, turnStartedAt: e.turnStartedAt || null }
 
       // show toast
       const toastId = `${k}`
@@ -380,12 +385,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           if (!r.hostId || r.hostId !== localMyId) return
 
           const timedOutPlayer = order[r.currentTurnIndex || 0]
-          // check if a recent timeout for this player already exists (within 5s)
+          // check if a timeout for this exact turn (same turn start) already exists
           const timeouts = r.timeouts || {}
           const recent = Object.keys(timeouts || {}).find(k => {
             try {
               const te = timeouts[k]
-              return te && te.player === timedOutPlayer && Math.abs((te.ts || 0) - Date.now()) < 5000
+              // prefer dedupe by turnStartedAt when available (prevents duplicates even if ts differs)
+              return te && te.player === timedOutPlayer && te.turnStartedAt && r.currentTurnStartedAt && te.turnStartedAt === r.currentTurnStartedAt
             } catch (e) { return false }
           })
           if (recent) return
@@ -394,7 +400,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // write an authoritative timeout entry for auditing and to notify other clients
           const tkey = `t_${Date.now()}`
           const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
-          updates[`timeouts/${tkey}`] = { player: timedOutPlayer, deducted: 2, ts: Date.now() }
+          // include the expired turn's start timestamp so consumers can dedupe by turn
+          updates[`timeouts/${tkey}`] = { player: timedOutPlayer, deducted: 2, ts: Date.now(), turnStartedAt: r.currentTurnStartedAt || null }
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
