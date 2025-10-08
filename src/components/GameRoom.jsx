@@ -402,7 +402,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setSubmitting(true)
         setIsResetting(true)
 
-        const updates = { phase: 'waiting', open: true }
+  const updates = { phase: 'lobby', open: true }
         ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
