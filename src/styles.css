@@ -281,3 +281,24 @@ button[disabled] {
 /* private hit chips (repeat letters for occurrences) */
 .private-hit-chips { display:inline-flex; gap:6px; margin-left: 6px }
 .hit-chip { background: #dff0d8; color: #1b5e20; padding: 4px 6px; border-radius: 6px; font-weight:700; box-shadow: 0 4px 10px rgba(27,94,32,0.06) }
+
+/* Highlight the screen when it's the viewer's turn */
+body.my-turn-body {
+  transition: background-color 300ms ease, color 300ms ease;
+  background-color: #222 !important; /* dark background to contrast */
+  color: #f7f7f7 !important;
+}
+
+/* Invert some card-like UI elements when my-turn is active for better contrast */
+body.my-turn-body .card,
+body.my-turn-body .notice,
+body.my-turn-body .toast,
+body.my-turn-body .modal-dialog {
+  background: rgba(255,255,255,0.06) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
+/* Slight emphasis on submit bar and player circles during turn */
+body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.6) }
+body.my-turn-body .player { box-shadow: 0 12px 30px rgba(0,0,0,0.6) }

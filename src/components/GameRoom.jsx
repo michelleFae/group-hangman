@@ -53,6 +53,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => {}
   }, [state?.winnerByHangmoney])
 
+  // highlight when it's the viewer's turn by adding/removing a body-level class
+  useEffect(() => {
+    try {
+      const myIdLocal = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+      const isMyTurnNow = state && state.turnOrder && state.currentTurnIndex != null && state.turnOrder[state.currentTurnIndex] === myIdLocal
+      if (isMyTurnNow) document.body.classList.add('my-turn-body')
+      else document.body.classList.remove('my-turn-body')
+    } catch (e) {}
+    return () => {}
+  }, [state?.turnOrder, state?.currentTurnIndex])
+
   // write timing preview to room so all players (including non-hosts) can see before start
   async function updateRoomTiming(timed, seconds) {
     try {
