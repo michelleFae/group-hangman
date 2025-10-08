@@ -157,7 +157,7 @@ exports.processGuess = functions.database
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
 
-  // correct word: award +5 as a delta
+  // correct word: award +5 as a delta.
   hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
         // mark eliminated and add guessedBy for word
