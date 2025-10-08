@@ -36,20 +36,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
     if (!state) return
-    setTimedMode(!!state.timed)
-    setTurnSeconds(state.turnTimeoutSeconds || 30)
+    setTimedMode(!!state?.timed)
+    setTurnSeconds(state?.turnTimeoutSeconds || 30)
     // sync winner-by-money mode from room state
-    setWinnerByHangmoney(!!state.winnerByHangmoney)
-  }, [state && state.timed, state && state.turnTimeoutSeconds])
+    setWinnerByHangmoney(!!state?.winnerByHangmoney)
+  }, [state?.timed, state?.turnTimeoutSeconds])
 
   // toggle a body-level class so the background becomes green when money-mode is active
   useEffect(() => {
     try {
-      if (state && state.winnerByHangmoney) document.body.classList.add('money-theme-body')
+      if (state?.winnerByHangmoney) document.body.classList.add('money-theme-body')
       else document.body.classList.remove('money-theme-body')
     } catch (e) {}
     return () => {}
-  }, [state && state.winnerByHangmoney])
+  }, [state?.winnerByHangmoney])
 
   // write timing preview to room so all players (including non-hosts) can see before start
   async function updateRoomTiming(timed, seconds) {
@@ -78,9 +78,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Notify players when host changes
   useEffect(() => {
-    if (!state) return
-    const prev = prevHostRef.current
-    const current = state.hostId
+  if (!state) return
+  const prev = prevHostRef.current
+  const current = state?.hostId
     // initialize on first run
     if (prev === null) {
       prevHostRef.current = current
@@ -95,7 +95,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
       prevHostRef.current = current
     }
-  }, [state && state.hostId])
+  }, [state?.hostId])
   useEffect(() => {
     if (!state) return
     // scan for privateHits where the current viewer (myId) has an entry with count >= 2
@@ -188,17 +188,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }, [isWinner])
 
   const cashPieces = useMemo(() => {
-    if (!state || !state.winnerByHangmoney) return []
+    if (!state?.winnerByHangmoney) return []
     return new Array(28).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, rotate: Math.random() * 360, top: -10 - (Math.random()*40) }))
-  }, [state && state.winnerByHangmoney])
+  }, [state?.winnerByHangmoney])
 
   const modeBadge = (
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
       <div className="mode-badge card" style={{ padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-  <span style={{ fontSize: 16 }}>{state && state.winnerByHangmoney ? '💸' : '🛡️'}</span>
+  <span style={{ fontSize: 16 }}>{state?.winnerByHangmoney ? '💸' : '🛡️'}</span>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-          <strong style={{ fontSize: 13 }}>{state && state.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
-          <small style={{ color: '#666', fontSize: 12 }}>{state && state.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
+          <strong style={{ fontSize: 13 }}>{state?.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
+          <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
         </div>
       </div>
     </div>
@@ -384,10 +384,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   </label>
                 )}
               </>
-            ) : (
+              ) : (
               <div style={{ color: '#555' }}>
-                Timed mode: <strong>{state.timed ? 'On' : 'Off'}</strong>
-                {state.timed && <span style={{ marginLeft: 12 }}>Seconds per turn: <strong>{state.turnTimeoutSeconds}</strong></span>}
+                Timed mode: <strong>{state?.timed ? 'On' : 'Off'}</strong>
+                {state?.timed && <span style={{ marginLeft: 12 }}>Seconds per turn: <strong>{state?.turnTimeoutSeconds}</strong></span>}
               </div>
             )}
           </div>
@@ -445,11 +445,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       <div className="circle">
         {players.length === 0 && <div>No players yet — wait for others to join.</div>}
         <div className="turn-indicator">Current turn: {players.find(p => p.id === currentTurnId)?.name || '—'}</div>
-      {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
+        {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
           <div className="turn-timer">
-            <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now()) / (state.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
+            <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
             <div className="time">{(() => {
-              const msLeft = Math.max(0, state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now())
+              const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
               const s = Math.ceil(msLeft / 1000)
               return `${s}s`
             })()}</div>
@@ -467,13 +467,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
           // clone player and attach viewer's private data under _viewer so child can render it
           // compute ms left for the current player
-          const msLeftForPlayer = (state.currentTurnStartedAt && state.turnTimeoutSeconds && state.timed && currentTurnId === p.id)
-            ? Math.max(0, state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now())
+          const msLeftForPlayer = (state?.currentTurnStartedAt && state?.turnTimeoutSeconds && state?.timed && currentTurnId === p.id)
+            ? Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
             : null
 
           const playerWithViewer = { ...p, _viewer: viewerPrivate }
 
-          const wasPenalized = Object.keys(state.timeouts || {}).some(k => (state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
+          const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
           return (
             <PlayerCircle key={p.id}
                           player={playerWithViewer}
