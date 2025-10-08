@@ -344,6 +344,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // compute standings by hangmoney desc as a best-effort ranking
   const standings = (state?.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
 
+  // defensive: ensure standings are valid objects before rendering (prevents invalid element type errors)
+  const sanitizedStandings = (standings || []).filter(p => p && typeof p === 'object' && (p.id || p.name))
+  if (sanitizedStandings.length !== (standings || []).length) {
+    try { console.warn('GameRoom: filtered invalid entries from standings before rendering end screen', { rawStandings: standings, stateSnapshot: state }) } catch (e) {}
+  }
+
   const confettiPieces = useMemo(() => {
     if (!isWinner) return []
     const colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
@@ -492,7 +498,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         <div className="standings card" style={{ marginTop: 12 }}>
           <h4>Final standings</h4>
           <ol>
-            {standings.map((p, idx) => {
+            {sanitizedStandings.map((p, idx) => {
               const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
               const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
               return (
