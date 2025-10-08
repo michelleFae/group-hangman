@@ -74,6 +74,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // watch for timeout logs in state.timeouts to show toast and flash player
   // dedupe timeouts per player to avoid duplicate toasts when both client and server
   const processedTimeoutPlayersRef = useRef({})
+  // track expected hangmoney values after a pending deduction so the UI can wait for DB confirmation
+  const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
 
   // Notify players when host changes
@@ -144,19 +146,41 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // auto-remove toast after 4s
       setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
 
-      // set a short-lived visual marker for pending deduction
+      // set a visual marker for pending deduction and record the expected hangmoney
       if (e && typeof e.deducted === 'number') {
+        // compute current hangmoney for this player from the in-memory state if possible
+        const playerObj = (state.players || []).find(p => p.id === player) || {}
+        const currentHang = Number(playerObj.hangmoney) || 0
+        const expectedAfter = currentHang - e.deducted
+        expectedHangRef.current[player] = expectedAfter
+        // store the negative delta for UI display (e.g. -2)
         setPendingDeducts(prev => ({ ...prev, [player]: (prev[player] || 0) - e.deducted }))
-        setTimeout(() => {
-          setPendingDeducts(prev => {
-            const copy = { ...prev }
-            delete copy[player]
-            return copy
-          })
-        }, 3500)
+        // DO NOT auto-clear after a fixed timeout here — wait until DB reflects the change (see effect below)
       }
     })
   }, [state])
+
+  // clear pending deductions when we observe the DB has applied the hangmoney change
+  useEffect(() => {
+    if (!state || !state.players) return
+    const updated = { ...pendingDeducts }
+    let changed = false
+    Object.keys(expectedHangRef.current || {}).forEach(pid => {
+      const expected = expectedHangRef.current[pid]
+      const p = (state.players || []).find(x => x.id === pid)
+      if (!p) return
+      const actual = Number(p.hangmoney) || 0
+      // once actual is less-than-or-equal-to expected, consider the deduction persisted
+      if (actual <= expected) {
+        if (typeof updated[pid] !== 'undefined') {
+          delete updated[pid]
+          changed = true
+        }
+        delete expectedHangRef.current[pid]
+      }
+    })
+    if (changed) setPendingDeducts(updated)
+  }, [state?.players])
 
   const phase = state?.phase || 'lobby'
   const hostId = state?.hostId
@@ -233,7 +257,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                     <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
                   </div>
-                  <div style={{ fontWeight: 700 }}>${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}</div>
+                  <div style={{ fontWeight: 800 }}>
+                    <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
+                      ${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                    </span>
+                  </div>
                 </li>
               )
             })}
@@ -522,7 +550,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                           starterApplied={!!state?.starterBonus?.applied}
                           flashPenalty={wasPenalized}
-                          pendingDeduct={pendingDeducts[p.id] || 0} />
+                          pendingDeduct={pendingDeducts[p.id] || 0}
+                          isWinner={p.id === state?.winnerId} />
           )
         })}
       </div>

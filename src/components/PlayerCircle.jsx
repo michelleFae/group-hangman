@@ -1,12 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0 }) {
+export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false }) {
   // accept starterApplied prop to control when starter badge is visible
   const starterApplied = arguments[0] && arguments[0].starterApplied
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
   const [soundedLow, setSoundedLow] = useState(false)
   const [animateHang, setAnimateHang] = useState(false)
+  const [pulse, setPulse] = useState(false)
+  const lastDisplayedRef = useRef(null)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
 
@@ -114,6 +116,17 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
     }
   }, [flashPenalty])
 
+  // pulse when the displayed hangmoney amount changes
+  useEffect(() => {
+    const displayed = (Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)
+    if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
+      setPulse(true)
+      const id = setTimeout(() => setPulse(false), 450)
+      return () => clearTimeout(id)
+    }
+    lastDisplayedRef.current = displayed
+  }, [player.hangmoney, pendingDeduct])
+
   return (
     <div className={`player ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
       <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
@@ -124,7 +137,11 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
           )}
         </div>
         {/* Show pending deduction visually while DB update appears; pendingDeduct is negative for a deduction */}
-        <div className={`hangmoney ${animateHang ? 'decrement' : ''}`}>${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}</div>
+        <div className={`hangmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`}>
+          <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700, transition: 'transform 180ms ease, box-shadow 180ms ease' }}>
+            ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
+          </span>
+        </div>
         <div className="revealed">{revealed.join(' ')}</div>
       </div>
       <div className="actions">

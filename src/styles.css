@@ -194,6 +194,13 @@ button[disabled] {
 .hangmoney.decrement { animation: hang-decrement 1s ease-in-out }
 @keyframes hang-decrement { 0% { transform: translateY(0); color: var(--accent-2) } 30% { transform: translateY(-6px); color: #c62828 } 100% { transform: translateY(0); color: var(--accent-2) } }
 
+/* brief pulse when hangmoney changes */
+.hangmoney.pulse span {
+  transform: scale(1.08);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+}
+.hangmoney.pulse span { transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms cubic-bezier(.2,.9,.2,1) }
+
 /* ensure avatar background uses provided color gracefully */
 .player .avatar { color: #333; box-shadow: 0 6px 18px rgba(0,0,0,0.06); display:inline-flex; align-items:center; justify-content:center }
 

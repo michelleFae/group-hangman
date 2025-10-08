@@ -116,25 +116,8 @@ export default function useGameRoom(roomId, playerName) {
       get(roomRootRef).then(snapshot => {
         const roomVal = snapshot.val() || {}
         console.log('Room data fetched:', roomVal)
-        if (!snapshot.exists()) {
-          dbSet(roomRootRef, { hostId: uid, phase: 'lobby', open: true, players: {}, password: password || '' })
-          console.log('Room created with password:', password)
-        } else if (roomVal && roomVal.open === false) {
-          console.warn('Room is closed to new joins')
-          return
-        } else if (roomVal.password && roomVal.password !== password) {
-          console.warn('Incorrect password')
-          // Do not show an alert here; let the caller (Lobby) show inline feedback
-          return
-        }
-        // enforce max players
-        const playersObj = roomVal.players || {}
-        const count = Object.keys(playersObj).length
-        if (count >= 20) {
-          alert('Room is full (20 players max)')
-          return
-        }
         // If an authenticated player node already exists for this UID, reuse it instead of overwriting
+        const playersObj = roomVal.players || {}
         if (playersObj && playersObj[uid]) {
           playerIdRef.current = uid
           const pRef = dbRef(db, `${playersRefPath}/${uid}`)
@@ -142,14 +125,45 @@ export default function useGameRoom(roomId, playerName) {
           try { startHeartbeat() } catch (e) {}
           setState(prev => ({ ...prev, password: roomVal?.password || password }))
           console.log('Reused existing authenticated player node for uid', uid)
-        } else {
+          return
+        }
+
+        if (!snapshot.exists()) {
+          dbSet(roomRootRef, { hostId: uid, phase: 'lobby', open: true, players: {}, password: password || '' })
+          console.log('Room created with password:', password)
           // pick color and add player
           pickColorAndSetPlayer(uid).then(chosen => {
-            setState(prev => ({ ...prev, password: roomVal?.password || password }))
-            console.log('Player joined room with color:', chosen)
+            setState(prev => ({ ...prev, password: password }))
+            console.log('Player joined new room with color:', chosen)
             try { startHeartbeat() } catch (e) {}
           })
+          return
         }
+
+        // room exists but no existing player node for this UID. Enforce open/password before creating a new node.
+        if (roomVal && roomVal.open === false) {
+          console.warn('Room is closed to new joins')
+          return
+        }
+        if (roomVal.password && roomVal.password !== password) {
+          console.warn('Incorrect password')
+          // Do not show an alert here; let the caller (Lobby) show inline feedback
+          return
+        }
+
+        // enforce max players
+        const count = Object.keys(playersObj).length
+        if (count >= 20) {
+          alert('Room is full (20 players max)')
+          return
+        }
+
+        // pick color and add player
+        pickColorAndSetPlayer(uid).then(chosen => {
+          setState(prev => ({ ...prev, password: roomVal?.password || password }))
+          console.log('Player joined room with color:', chosen)
+          try { startHeartbeat() } catch (e) {}
+        })
       })
       return
     }
