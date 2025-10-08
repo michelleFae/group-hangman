@@ -240,13 +240,16 @@ export default function useGameRoom(roomId, playerName) {
         const room = roomSnap.val() || {}
         console.log('useGameRoom: fetched room for autoRejoin', room)
         if (!mounted) return
-          // allow auto-rejoin for stored anon id or when current auth uid matches a player node
-          const uid = auth && auth.currentUser && auth.currentUser.uid
-          const hasAuthPlayer = uid && room.players && room.players[uid]
-          if (room.phase === 'playing' && (stored || hasAuthPlayer)) {
-            console.log('useGameRoom: attempting auto rejoin via joinRoom for', roomId, 'stored?', !!stored, 'hasAuthPlayer?', !!hasAuthPlayer)
-            try { await joinRoom(room.password || '') } catch (e) { console.warn('useGameRoom: joinRoom autoRejoin failed', e) }
-          }
+        // allow auto-rejoin for stored anon id or when current auth uid matches a player node
+        const uid = auth && auth.currentUser && auth.currentUser.uid
+        const hasAuthPlayer = uid && room.players && room.players[uid]
+        // Previously we only auto-rejoined when room.phase === 'playing'. That prevented non-hosts
+        // from reattaching after refresh when the host was active. Attempt rejoin whenever we have
+        // a stored anon id or an authenticated player node (this is a best-effort reattach).
+        if ((stored || hasAuthPlayer)) {
+          console.log('useGameRoom: attempting auto rejoin via joinRoom for', roomId, 'stored?', !!stored, 'hasAuthPlayer?', !!hasAuthPlayer, 'phase', room.phase)
+          try { await joinRoom(room.password || '') } catch (e) { console.warn('useGameRoom: joinRoom autoRejoin failed', e) }
+        }
       } catch (e) {
         console.warn('useGameRoom: autoRejoin encountered error', e)
       }
