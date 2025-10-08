@@ -207,29 +207,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   )
 
   if (state.phase === 'ended') {
-    const myName = playerName
-    const isWinner = state.winnerName === myName
-
-    // compute standings by hangmoney desc as a best-effort ranking
-    const standings = (state.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
-
-    const confettiPieces = useMemo(() => {
-      if (!isWinner) return []
-      const colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
-      return new Array(48).fill(0).map(() => ({
-        left: Math.random() * 100,
-        delay: Math.random() * 0.8,
-        size: 6 + Math.random() * 12,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        rotate: Math.random() * 360
-      }))
-    }, [isWinner, state.phase])
-
-    const cashPieces = useMemo(() => {
-      if (!state || !state.winnerByHangmoney) return []
-      return new Array(28).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, rotate: Math.random() * 360, top: -10 - (Math.random()*40) }))
-    }, [state && state.winnerByHangmoney])
-
+    // Use the top-level computed values (standings, isWinner, confettiPieces, cashPieces)
+    // to avoid calling hooks conditionally. Those values are computed above.
     return (
       <>
       {modeBadge}
