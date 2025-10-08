@@ -70,8 +70,13 @@ exports.processGuess = functions.database
     }
 
     const updates = {}
-
     const isLetter = value.length === 1
+
+  // baseline: give a small reward for taking a turn; may be overridden for correct actions
+  const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+  let hangIncrement = 1
+
+  // we'll write hangmoney once into updates at the end of processing
 
       if (isLetter) {
       const letter = lc(value)
@@ -86,7 +91,7 @@ exports.processGuess = functions.database
 
       const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
 
-      if (count > 0) {
+  if (count > 0) {
         // compute how many of this letter are already recorded in revealed
         const existing = prevRevealed.filter(x => x === letter).length
         const toAdd = Math.max(0, count - existing)
@@ -95,37 +100,44 @@ exports.processGuess = functions.database
           updates[`players/${targetId}/revealed`] = prevRevealed
         }
 
-        // award 2 hangmoney per occurrence
-        const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + (2 * count)
+        // award 2 hangmoney per newly revealed occurrence only (replace baseline)
+        if (toAdd > 0) {
+          hangIncrement = 2 * toAdd
 
-        // update guessedBy for owner visibility
+          // record or aggregate private hit for guesser: keep a single entry per letter and sum counts
+          const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+          let merged = false
+          for (let i = 0; i < prevHits.length; i++) {
+            const h = prevHits[i]
+            if (h && h.type === 'letter' && h.letter === letter) {
+              prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
+              merged = true
+              break
+            }
+          }
+          if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
+          updates[`players/${from}/privateHits/${targetId}`] = prevHits
+        }
+        // update guessedBy for owner visibility (only add guesser once)
         const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
         if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
         updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
-
-        // record or aggregate private hit for guesser: keep a single entry per letter and sum counts
-        const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-        let merged = false
-        for (let i = 0; i < prevHits.length; i++) {
-          const h = prevHits[i]
-          if (h && h.type === 'letter' && h.letter === letter) {
-            prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
-            merged = true
-            break
-          }
-        }
-        if (!merged) prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
-        updates[`players/${from}/privateHits/${targetId}`] = prevHits
-      } else {
+  } else {
         // wrong or already guessed
-        const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
-        if (!prevWrong.includes(letter)) {
-          prevWrong.push(letter)
-          updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-          // reward the target for a wrong guess against them
-          const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
-          updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+        // if the letter was already fully revealed (existing >= count) do nothing
+        const existing = prevRevealed.filter(x => x === letter).length
+        if (existing >= count) {
+          // already fully guessed earlier; no points, no private wrong recorded
+        } else {
+          // wrong guess (letter not in word)
+          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+          if (!prevWrong.includes(letter)) {
+            prevWrong.push(letter)
+            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+            // reward the target for a wrong guess against them
+            const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+            updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+          }
         }
       }
     } else {
@@ -182,6 +194,11 @@ exports.processGuess = functions.database
       updates[`currentTurnStartedAt`] = Date.now()
     }
 
+    // apply hangmoney increment for the guesser if not already set by another branch (e.g., correct-word)
+    if (typeof updates[`players/${from}/hangmoney`] === 'undefined') {
+      updates[`players/${from}/hangmoney`] = prevHang + hangIncrement
+    }
+
     // write updates atomically at /rooms/{roomId}
     if (Object.keys(updates).length > 0) {
       await roomRef.update(updates)
@@ -226,6 +243,16 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
 
         // advance index
         const nextIndex = (currentIndex + 1) % turnOrder.length
+
+        // if a recent timeout for this player already exists, skip to avoid duplicate penalties
+        const existingTimeouts = curr.timeouts || {}
+        const alreadyRecent = Object.keys(existingTimeouts).some(k => {
+          try {
+            const te = existingTimeouts[k]
+            return te && te.player === timedOutPlayerId && Math.abs((te.ts || 0) - Date.now()) < 5000
+          } catch (e) { return false }
+        })
+        if (alreadyRecent) return curr
 
         // deduct penalty of 2 hangmoney from timed out player (min 0)
         const playerNode = (curr.players && curr.players[timedOutPlayerId]) || {}

@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 
 export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0 }) {
+  // accept starterApplied prop to control when starter badge is visible
+  const starterApplied = arguments[0] && arguments[0].starterApplied
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
   const [soundedLow, setSoundedLow] = useState(false)
@@ -117,7 +119,7 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
       <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
       <div className="meta">
         <div className="name">{player.name} {player.eliminated ? '(out)' : ''}
-          {player.starterBonusAwarded && phase === 'submit' && (
+          {player.starterBonusAwarded && phase === 'submit' && starterApplied && (
             <span className="starter-badge" title="Starter bonus awarded">+10</span>
           )}
         </div>

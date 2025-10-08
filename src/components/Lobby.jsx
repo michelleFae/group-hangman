@@ -192,14 +192,14 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
       {/* ARIA live region for announcements */}
       <div ref={ariaLiveRef} aria-live="polite" style={{ position: 'absolute', left: -9999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }} />
 
-      <div className="card">
+      <div className={`card ${room && room.toString().trim() ? 'card-dimmed' : ''}`}>
         <h3>Create room</h3>
         <input placeholder="room name (auto)" value={createdRoom || 'auto-generated'} disabled />
         <input placeholder="password (optional)" value={password} onChange={e => {
           setPassword(e.target.value)
           console.log('Password updated to:', e.target.value)
         }} />
-        <button onClick={handleCreate}>Create</button>
+        <button onClick={handleCreate} disabled={!!(room && room.toString().trim())}>Create</button>
 
         {createdRoom && (
           <div className="share">

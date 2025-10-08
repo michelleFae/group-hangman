@@ -300,12 +300,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const candidate = (w || '').toString().trim().toLowerCase()
     if (!/^[a-z]+$/.test(candidate)) return false
     try {
+      // Primary check: dictionaryapi.dev (free, broad coverage)
       const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${candidate}`)
-      if (!res.ok) return false
-      const data = await res.json()
-      return Array.isArray(data) && data.length > 0
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data) && data.length > 0) return true
+      }
+
+      // Fallback: Datamuse (no API key, good lexical coverage)
+      // Use an exact-spelling query and check if it returns the same word
+      try {
+        const dm = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(candidate)}&max=1`)
+        if (dm.ok) {
+          const ddata = await dm.json()
+          if (Array.isArray(ddata) && ddata.length > 0 && ddata[0].word && ddata[0].word.toLowerCase() === candidate) {
+            return true
+          }
+        }
+      } catch (e2) {
+        // ignore datamuse failure and fall through
+      }
+
+      // If neither service affirmed the word, treat as non-word
+      return false
     } catch (e) {
-      console.warn('Dictionary check failed, allowing word by default', e)
+      console.warn('Dictionary check encountered an error, allowing word by default', e)
       // network failsafe: allow submission so users aren't blocked by lookup flakiness
       return true
     }
@@ -327,11 +346,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const r = snap.val() || {}
           const order = r.turnOrder || []
           if (!order || order.length === 0) return
+
+          // only the host should write authoritative timeout advances to avoid races
+          const localMyId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+          if (!r.hostId || r.hostId !== localMyId) return
+
+          const timedOutPlayer = order[r.currentTurnIndex || 0]
+          // check if a recent timeout for this player already exists (within 5s)
+          const timeouts = r.timeouts || {}
+          const recent = Object.keys(timeouts || {}).find(k => {
+            try {
+              const te = timeouts[k]
+              return te && te.player === timedOutPlayer && Math.abs((te.ts || 0) - Date.now()) < 5000
+            } catch (e) { return false }
+          })
+          if (recent) return
+
           const nextIdx = ((r.currentTurnIndex || 0) + 1) % order.length
           // write an authoritative timeout entry for auditing and to notify other clients
           const tkey = `t_${Date.now()}`
           const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
-          updates[`timeouts/${tkey}`] = { player: order[r.currentTurnIndex || 0], deducted: 2, ts: Date.now() }
+          updates[`timeouts/${tkey}`] = { player: timedOutPlayer, deducted: 2, ts: Date.now() }
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
@@ -485,6 +520,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
                           playerIdToName={playerIdToName}
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
+                          starterApplied={!!state?.starterBonus?.applied}
                           flashPenalty={wasPenalized}
                           pendingDeduct={pendingDeducts[p.id] || 0} />
           )
