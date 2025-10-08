@@ -1,8 +1,12 @@
 import React, { useState } from 'react'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {} }) {
+export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0 }) {
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
+  const [soundedLow, setSoundedLow] = useState(false)
+  const [animateHang, setAnimateHang] = useState(false)
+  const [showGuessDialog, setShowGuessDialog] = useState(false)
+  const [guessValue, setGuessValue] = useState('')
 
   // viewer-specific private arrays are stored on the player object under their own node when server processed
   // For example: rooms/{roomId}/players/{viewerId}/privateWrong/{targetId} and privateHits
@@ -30,68 +34,152 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
     return <span key={idx} style={{ color: '#333' }}>{ch}</span>
   })
 
+  // masked word rendering for non-owners and default view
+  // Masked rendering: only show underscores (and letter count) if the viewer has explicit permission
+  // to see masked structure (e.g. via a power-up). Otherwise keep it fully hidden to avoid revealing length.
+  const showMasked = !!(player && player._viewer && player._viewer.showMasked)
+  const maskedRendered = showMasked ? ownerWord.split('').map((ch, idx) => {
+    const lower = ch.toLowerCase()
+    if (revealedSet.has(lower)) {
+      return <span key={idx} style={{ color: '#000', fontWeight: 700, marginRight: 4 }}>{ch}</span>
+    }
+    return <span key={idx} style={{ color: '#999', marginRight: 4 }}>_</span>
+  }) : null
+
+  // derive halo color (semi-transparent) from player.color
+  const avatarColor = player.color || '#FFD1D1'
+  // Convert hex to rgba with 0.28 alpha
+  function hexToRgba(hex, alpha = 0.28) {
+    const h = hex.replace('#', '')
+    const bigint = parseInt(h.length === 3 ? h.split('').map(c => c+c).join('') : h, 16)
+    const r = (bigint >> 16) & 255
+    const g = (bigint >> 8) & 255
+    const b = bigint & 255
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+  const haloRgba = hexToRgba(avatarColor, 0.28)
+
+  // play a short beep when time goes under 5s, and a different beep when time expires
+  React.useEffect(() => {
+    if (timeLeftMs == null) {
+      setSoundedLow(false)
+      return
+    }
+    const s = Math.ceil(timeLeftMs / 1000)
+    if (s <= 0) {
+      // expired
+      try { navigator.vibrate && navigator.vibrate(200) } catch (e) {}
+      // short lower-pitch beep for end
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)()
+        const o = ctx.createOscillator()
+        const g = ctx.createGain()
+        o.type = 'sine'
+        o.frequency.value = 220
+        g.gain.value = 0.001
+        o.connect(g); g.connect(ctx.destination)
+        o.start()
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
+        setTimeout(() => { o.stop(); ctx.close() }, 400)
+      } catch (e) {}
+      setSoundedLow(false)
+      return
+    }
+    if (s <= 5 && !soundedLow) {
+      try { navigator.vibrate && navigator.vibrate([60,30,60]) } catch (e) {}
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)()
+        const o = ctx.createOscillator()
+        const g = ctx.createGain()
+        o.type = 'sine'
+        o.frequency.value = 880
+        g.gain.value = 0.002
+        o.connect(g); g.connect(ctx.destination)
+        o.start()
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12)
+        setTimeout(() => { o.stop(); ctx.close() }, 160)
+      } catch (e) {}
+      setSoundedLow(true)
+    }
+  }, [timeLeftMs])
+
+  // when parent signals penalty flash, animate hangmoney briefly
+  React.useEffect(() => {
+    if (flashPenalty) {
+      setAnimateHang(true)
+      const id = setTimeout(() => setAnimateHang(false), 1000)
+      return () => clearTimeout(id)
+    }
+  }, [flashPenalty])
+
   return (
-    <div className="player">
-      <div className="avatar">{player.name[0] || '?'}</div>
+    <div className={`player ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
+      <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
       <div className="meta">
         <div className="name">{player.name} {player.eliminated ? '(out)' : ''}</div>
-        <div className="hangmoney">${player.hangmoney || 0}</div>
+        {/* Show pending deduction visually while DB update appears; pendingDeduct is negative for a deduction */}
+        <div className={`hangmoney ${animateHang ? 'decrement' : ''}`}>${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}</div>
         <div className="revealed">{revealed.join(' ')}</div>
       </div>
       <div className="actions">
+        {/* Controls first for non-self viewers, then hidden word below (so Locked appears above hidden) */}
         {isSelf ? (
-          <>
+          <div style={{ marginBottom: 8 }}>
             <button onClick={() => setShowWord(s => !s)}>{showWord ? 'Hide word' : 'Show word'}</button>
             <div style={{ marginTop: 6 }}>{showWord ? (
               <span>{fullWordRendered}</span>
             ) : (player.word ? <span>{'_ '.repeat((player.word || '').length)}</span> : '(hidden)')}</div>
-
-            {/* show who guessed which letters/word for the owner */}
-            {Object.keys(guessedBy).length > 0 && (
-              <div style={{ marginTop: 8, background: '#f6f6f6', padding: 8, borderRadius: 6 }}>
-                <strong>Guessed by:</strong>
-                <ul className="guessed-by-list" style={{ marginTop: 6, marginLeft: 18 }}>
-                {Object.entries(guessedBy).map(([k, arr]) => (
-                    <li key={k}>
-                    {k === '__word'
-                        ? <span>Whole word — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>
-                        : <span>Letter "{k}" — by: {arr.map(uid => playerIdToName[uid] || uid).join(', ')}</span>
-                    }
-                    </li>
-                ))}
-                </ul>
-              </div>
-            )}
-          </>
+          </div>
         ) : (
-          <div>
-            <button disabled={!canGuess} onClick={() => {
-              const val = prompt('Enter a single letter or a full-word guess:')
-              if (!val) return
-              const isLetter = val.length === 1
-              onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val.trim() })
-            }}>{canGuess ? 'Guess' : 'Locked'}</button>
+          <div style={{ marginBottom: 8 }}>
+            <div>
+              <>
+                <button disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Locked'}</button>
+                {showGuessDialog && (
+                  <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
+                    <input placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={() => {
+                        const val = (guessValue || '').trim()
+                        if (!val) return
+                        const isLetter = val.length === 1 && /^[a-zA-Z]$/.test(val)
+                        onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val })
+                        setShowGuessDialog(false)
+                      }}>Submit</button>
+                      <button onClick={() => setShowGuessDialog(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </>
 
-            {/* show private correct hits (only visible to the guesser) */}
-            {privateHits.length > 0 && (
-              <div style={{ marginTop: 8, background: '#e6ffe6', padding: 6, borderRadius: 4 }}>
-                <strong>Your correct guesses:</strong>
-                <ul style={{ margin: '6px 0 0 12px' }}>
-                  {privateHits.map((h, idx) => (
-                    <li key={idx}>{h.type === 'letter' ? `Letter "${h.letter}" — ${h.count} occurrence(s)` : `Word "${h.word}"`}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {/* show private correct hits (only visible to the guesser) */}
+              {privateHits.length > 0 && (
+                <div style={{ marginTop: 8, background: '#e6ffe6', padding: 6, borderRadius: 4 }}>
+                  <strong>Your correct guesses:</strong>
+                  <ul style={{ margin: '6px 0 0 12px' }}>
+                    {privateHits.map((h, idx) => (
+                      <li key={idx}>{h.type === 'letter' ? `Letter "${h.letter}" — ${h.count} occurrence(s)` : `Word "${h.word}"`}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {/* show private wrong letters/words only to the guesser */}
-            {privateWrong.length > 0 && (
-              <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
-                <strong>Wrong letters:</strong> {privateWrong.join(', ')}
-              </div>
-            )}
+              {/* show private wrong letters/words only to the guesser */}
+              {privateWrong.length > 0 && (
+                <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
+                  <strong>Wrong letters:</strong> {privateWrong.join(', ')}
+                </div>
+              )}
+            </div>
+            {/* hidden word below locked/guess */}
+            <div style={{ marginTop: 8 }}>
+              {player.word ? (
+                showMasked ? <span>{maskedRendered}</span> : <span>(hidden)</span>
+              ) : <span>(hidden)</span>}
+            </div>
           </div>
         )}
+
       </div>
     </div>
   )

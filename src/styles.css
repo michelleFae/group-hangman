@@ -1,10 +1,89 @@
-body { font-family: system-ui, sans-serif; padding: 20px; }
-.lobby { max-width: 600px; margin: 0 auto; }
-.card { border: 1px solid #ddd; padding: 12px; margin: 12px 0; }
-.circle { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-.player { width: 160px; border: 1px solid #ccc; padding: 8px; border-radius: 8px; text-align: center }
-.avatar { width: 48px; height: 48px; border-radius: 24px; background: #eee; display:inline-flex; align-items:center; justify-content:center; font-weight:700 }
-.hangmoney { color: green; font-weight:700 }
+:root{
+  --bg: #EDE7F6; /* Soft lilac */
+  --accent: #B39DDB; /* Lavender */
+  --accent-2: #81D4FA; /* Sky blue */
+  --highlight: #FFABAB; /* Peach pink */
+  --text: #333333; /* Charcoal */
+  --muted: #7b6f8a;
+  --halo: rgba(255,171,171,0.28); /* Pulse halo color */
+}
+
+*{box-sizing:border-box}
+body {
+  font-family: 'Baloo 2', 'Poppins', system-ui, sans-serif;
+  background: linear-gradient(180deg, var(--bg), #F7F3FB 80%);
+  color: var(--text);
+  padding: 28px;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* Subtle floating background blobs */
+.body-decor {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+}
+.blob {
+  position: absolute; filter: blur(36px); opacity: .35; transform: translateZ(0);
+}
+.blob.l { width: 420px; height: 420px; background: var(--accent); left: -100px; top: -80px; border-radius: 50%; animation: floaty 8s ease-in-out infinite; }
+.blob.r { width: 360px; height: 360px; background: var(--accent-2); right: -100px; bottom: -60px; border-radius: 50%; animation: floaty 10s ease-in-out infinite; }
+
+@keyframes floaty {
+  0% { transform: translateY(0) translateX(0) }
+  50% { transform: translateY(18px) translateX(6px) }
+  100% { transform: translateY(0) translateX(0) }
+}
+
+/* Cards and layout */
+.lobby, .game-room { max-width: 980px; margin: 0 auto; position: relative; z-index: 1 }
+.card { background: rgba(255,255,255,0.85); border: none; padding: 18px; margin: 16px 0; border-radius: 16px; box-shadow: 0 6px 18px rgba(99,79,130,0.08); transition: transform .22s cubic-bezier(.2,.9,.2,1), box-shadow .2s }
+.card:hover { transform: translateY(-6px); box-shadow: 0 12px 28px rgba(99,79,130,0.12) }
+
+h1, h2, h3 { font-family: 'Baloo 2', 'Poppins', sans-serif; color: var(--text); margin: 0 0 12px 0 }
+h1 { font-size: 36px }
+
+input, button { font-family: inherit }
+input { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); outline: none; transition: box-shadow .12s, transform .12s }
+input:focus { box-shadow: 0 6px 18px rgba(63,81,181,0.08); transform: translateY(-2px) }
+
+button { padding: 10px 12px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 6px 14px rgba(115,90,170,0.12); transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s }
+button:hover { transform: translateY(-3px) }
+
+/* Disabled button styles: grey, no hover, show not-allowed cursor */
+button:disabled,
+button[disabled] {
+  background: linear-gradient(90deg, #e0e0e0, #d6d6d6);
+  color: #777;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* helper class for Locked style in case logic uses class instead of disabled attribute */
+.btn-locked {
+  background: linear-gradient(90deg, #efefef, #e3e3e3);
+  color: #777;
+  cursor: not-allowed;
+  pointer-events: none; /* prevent clicks */
+  box-shadow: none;
+}
+
+/* Player circles */
+.circle { display:flex; gap: 16px; flex-wrap:wrap; justify-content:center }
+.player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95)); box-shadow: 0 8px 20px rgba(103,80,145,0.06); transition: transform .18s }
+.player:hover { transform: translateY(-6px) }
+.avatar { width:56px; height:56px; border-radius:50%; background: linear-gradient(135deg,var(--highlight), #ffd1d1); display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--text); font-size:20px }
+.meta { margin-left: 76px; margin-top: -56px }
+.name { font-weight:700 }
+.hangmoney { color: var(--accent-2); font-weight:700 }
+.revealed { margin-top: 6px; color: var(--muted); font-size: 13px }
+
+.turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:var(--accent); }
+
+.room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(179,157,219,0.12), rgba(129,212,250,0.08)); display:inline-block }
+
+.victory-screen { text-align:center; padding: 36px; border-radius: 16px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); color: white }
+
 .guessed-by-list li {
   display: flex;
   flex-wrap: wrap; /* allow wrapping but keep inline alignment */
@@ -14,4 +93,107 @@ body { font-family: system-ui, sans-serif; padding: 20px; }
 
 .guessed-by-list li span {
   display: inline; /* ensure spans are inline, not block */
+}
+
+/* Hangxiety header */
+.hangxiety-header { text-align: center; margin-bottom: 20px }
+.hangxiety-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
+.hangxiety-title .bubble { display:inline-block; margin-left: 8px; transform-origin: 50% 50%; animation: bubble-bounce 1.6s cubic-bezier(.2,.9,.2,1) infinite }
+.hangxiety-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
+
+@keyframes bubble-bounce {
+  0% { transform: translateY(0) rotate(0deg) }
+  25% { transform: translateY(-6px) rotate(-6deg) }
+  50% { transform: translateY(0) rotate(0deg) }
+  75% { transform: translateY(-4px) rotate(6deg) }
+  100% { transform: translateY(0) rotate(0deg) }
+}
+
+/* notice card */
+.notice { border: 1px dashed rgba(0,0,0,0.06); background: linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.8)); padding: 12px; border-radius: 12px; text-align: center }
+.notice h4 { margin: 0 0 6px 0 }
+
+/* waiting pulse using CSS variable --halo */
+@keyframes pulse-slow { 0% { box-shadow: 0 0 0 0 var(--halo) } 70% { box-shadow: 0 0 0 12px rgba(0,0,0,0) } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0) } }
+.waiting-pulse { animation: none }
+.waiting-pulse .avatar { animation: pulse-slow 1.8s infinite; }
+
+/* glowing start button when ready */
+.start-ready {
+  box-shadow: 0 8px 30px rgba(179,157,219,0.28), 0 0 20px rgba(129,212,250,0.12) inset;
+  animation: glow-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0% { transform: translateY(0); box-shadow: 0 8px 30px rgba(179,157,219,0.12), 0 0 6px rgba(129,212,250,0.06) inset }
+  50% { transform: translateY(-3px); box-shadow: 0 18px 48px rgba(179,157,219,0.22), 0 0 18px rgba(129,212,250,0.12) inset }
+  100% { transform: translateY(0); box-shadow: 0 8px 30px rgba(179,157,219,0.12), 0 0 6px rgba(129,212,250,0.06) inset }
+}
+
+/* timer bar */
+.turn-timer { display:flex; align-items:center; gap:12px; margin: 12px 0 }
+.turn-timer .bar { height: 10px; background: rgba(0,0,0,0.06); border-radius: 6px; flex:1; overflow:hidden }
+.turn-timer .fill { height:100%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); transition: width .2s linear }
+.turn-timer .time { min-width:56px; text-align:right; font-weight:700 }
+
+/* Toasts */
+.toast-container { position: fixed; right: 18px; top: 18px; z-index: 9999; display:flex; flex-direction:column; gap:8px }
+.toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 14px; border-radius: 10px; font-weight:700; box-shadow: 0 8px 18px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-6px); animation: toast-in .28s forwards }
+@keyframes toast-in { to { opacity: 1; transform: translateY(0) } }
+
+/* player flash for penalty */
+.player.flash-penalty { animation: flash-penalty 1s ease-in-out }
+@keyframes flash-penalty { 0% { box-shadow: 0 0 0 rgba(255,0,0,0) } 10% { box-shadow: 0 0 18px rgba(255,0,0,0.6) } 50% { box-shadow: 0 0 10px rgba(255,0,0,0.24) } 100% { box-shadow: 0 0 0 rgba(255,0,0,0) } }
+
+/* hangmoney decrement pulse */
+.hangmoney.decrement { animation: hang-decrement 1s ease-in-out }
+@keyframes hang-decrement { 0% { transform: translateY(0); color: var(--accent-2) } 30% { transform: translateY(-6px); color: #c62828 } 100% { transform: translateY(0); color: var(--accent-2) } }
+
+/* ensure avatar background uses provided color gracefully */
+.player .avatar { color: #333; box-shadow: 0 6px 18px rgba(0,0,0,0.06); display:inline-flex; align-items:center; justify-content:center }
+
+/* small colored dot used in waiting lists */
+.waiting-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 2px 6px rgba(0,0,0,0.12) }
+
+/* small screens */
+@media (max-width:600px){ .player{ width: 100%; } .meta{ margin-left: 0; margin-top: 6px }}
+
+/* small inline error text */
+.small-error {
+  color: #c62828; /* Material red 800 */
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* Inline guess dialog used by PlayerCircle */
+.guess-dialog { display:flex; flex-direction:column; position: relative; margin-top: 8px; padding: 10px; background: white; border-radius: 10px; box-shadow: 0 8px 18px rgba(0,0,0,0.06); }
+.guess-dialog input { width: 200px }
+
+/* Bottom submit bar used during the 'submit' phase and later for power-ups */
+.submit-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  margin: 0 auto;
+  max-width: 980px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 14px;
+  z-index: 999;
+  background: linear-gradient(90deg, rgba(255,255,255,0.96), rgba(255,255,255,0.98));
+  box-shadow: 0 10px 30px rgba(99,79,130,0.08);
+}
+.submit-bar .submit-left { display:flex; align-items:flex-start; gap:12px }
+.submit-bar .submit-controls { display:flex; align-items:center; gap:8px }
+.submit-bar input { width: 220px }
+.submit-bar .notice { background: transparent; border: none; padding: 0 }
+
+@media (max-width:700px) {
+  .submit-bar { flex-direction: column; align-items: stretch; padding: 8px 12px }
+  .submit-bar .submit-controls { justify-content: flex-end }
+  .submit-bar input { width: 100% }
 }

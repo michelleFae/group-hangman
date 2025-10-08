@@ -172,3 +172,65 @@ exports.processGuess = functions.database
 
     return null
   })
+
+
+// Scheduled safety: every minute, advance any timed-out turns and apply penalty
+exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
+  console.log('advanceTimedTurns tick', new Date().toISOString())
+  const roomsSnap = await db.ref('/rooms').once('value')
+  const rooms = roomsSnap.val() || {}
+  const now = Date.now()
+
+  const promises = Object.keys(rooms).map(async roomId => {
+    const room = rooms[roomId]
+    try {
+      if (!room) return
+      if (room.phase !== 'playing') return
+      if (!room.timed || !room.turnTimeoutSeconds || !room.currentTurnStartedAt) return
+      const expireAt = (room.currentTurnStartedAt || 0) + (room.turnTimeoutSeconds * 1000)
+      if (expireAt > now) return // not expired yet
+
+      // run a transaction to advance turn atomically and deduct penalty
+      const roomRef = db.ref(`/rooms/${roomId}`)
+      await roomRef.transaction(curr => {
+        if (!curr) return curr
+        if (curr.phase !== 'playing') return curr
+        if (!curr.timed || !curr.turnTimeoutSeconds || !curr.currentTurnStartedAt) return curr
+        const exp = (curr.currentTurnStartedAt || 0) + (curr.turnTimeoutSeconds * 1000)
+        if (exp > Date.now()) return curr // already updated by someone else
+
+        const turnOrder = curr.turnOrder || []
+        if (!turnOrder || turnOrder.length === 0) return curr
+        const currentIndex = typeof curr.currentTurnIndex === 'number' ? curr.currentTurnIndex : 0
+        const timedOutPlayerId = turnOrder[currentIndex]
+
+        // advance index
+        const nextIndex = (currentIndex + 1) % turnOrder.length
+
+        // deduct penalty of 2 hangmoney from timed out player (min 0)
+        const playerNode = (curr.players && curr.players[timedOutPlayerId]) || {}
+        const prevHang = typeof playerNode.hangmoney === 'number' ? playerNode.hangmoney : 0
+        const newHang = Math.max(0, prevHang - 2)
+
+        // apply updates
+        if (!curr.players) curr.players = {}
+        if (!curr.players[timedOutPlayerId]) curr.players[timedOutPlayerId] = {}
+        curr.players[timedOutPlayerId].hangmoney = newHang
+        curr.currentTurnIndex = nextIndex
+        curr.currentTurnStartedAt = Date.now()
+
+        // optionally log timeout event
+        if (!curr.timeouts) curr.timeouts = {}
+        const tkey = `t_${Date.now()}`
+        curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now() }
+
+        return curr
+      })
+    } catch (e) {
+      console.error('advanceTimedTurns error for', roomId, e)
+    }
+  })
+
+  await Promise.all(promises)
+  return null
+})
