@@ -242,3 +242,57 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
   await Promise.all(promises)
   return null
 })
+
+
+// Scheduled cleanup: remove anonymous players that haven't been seen for 20 minutes
+exports.evictStalePlayers = functions.pubsub.schedule('every 5 minutes').onRun(async (context) => {
+  console.log('evictStalePlayers tick', new Date().toISOString())
+  const roomsSnap = await db.ref('/rooms').once('value')
+  const rooms = roomsSnap.val() || {}
+  const now = Date.now()
+  const TTL = 20 * 60 * 1000 // 20 minutes
+
+  const tasks = Object.keys(rooms).map(async roomId => {
+    const room = rooms[roomId]
+    if (!room || !room.players) return
+    const players = room.players
+    const updates = {}
+    let hasUpdates = false
+
+    Object.keys(players).forEach(pid => {
+      const p = players[pid]
+      // skip host
+      if (room.hostId && pid === room.hostId) return
+      // prefer to skip authenticated users: if there's a uid/auth marker, don't evict
+      // best-effort: many authenticated users will have an id that matches a Firebase UID
+      // and may have additional metadata; if the node contains a field like `authProvider` or `uid` we avoid deleting.
+      if (p && (p.uid || p.authProvider || p.isAuthenticated)) return
+
+      const last = (p && p.lastSeen) ? Number(p.lastSeen) : 0
+      if (!last || (now - last) > TTL) {
+        // mark for deletion
+        updates[`players/${pid}`] = null
+        hasUpdates = true
+        console.log(`Evicting stale player ${pid} from room ${roomId}`)
+      }
+    })
+
+    if (hasUpdates) {
+      try {
+        await db.ref(`/rooms/${roomId}`).update(updates)
+        // after applying deletions, check if any players remain; if none, remove the room
+        const postSnap = await db.ref(`/rooms/${roomId}/players`).once('value')
+        const postPlayers = postSnap.val() || {}
+        if (!postPlayers || Object.keys(postPlayers).length === 0) {
+          console.log(`Removing empty room ${roomId}`)
+          await db.ref(`/rooms/${roomId}`).remove()
+        }
+      } catch (e) {
+        console.error('Failed to evict stale players for', roomId, e)
+      }
+    }
+  })
+
+  await Promise.all(tasks)
+  return null
+})

@@ -1,0 +1,32 @@
+name: Evict stale players
+
+on:
+  schedule:
+    # every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  evict:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          cd ${{ github.workspace }}
+          npm install --no-audit --no-fund
+
+      - name: Run eviction script
+        env:
+          FIREBASE_ADMIN_SA: ${{ secrets.FIREBASE_ADMIN_SA }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          EVICT_TTL_MS: ${{ secrets.EVICT_TTL_MS }}
+        run: |
+          node scripts/evictStalePlayers.js

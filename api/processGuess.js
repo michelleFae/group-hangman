@@ -126,7 +126,8 @@ module.exports = async (req, res) => {
         let adjustedIndex = currentIndex
         const removedIndex = (room.turnOrder || []).indexOf(targetId)
         if (removedIndex !== -1 && removedIndex <= currentIndex) adjustedIndex = Math.max(0, adjustedIndex - 1)
-        updates[`currentTurnIndex`] = adjustedIndex
+  updates[`currentTurnIndex`] = adjustedIndex
+  updates[`currentTurnStartedAt`] = Date.now()
       } else {
         const prevWrongWords = (guesser.privateWrongWords && guesser.privateWrongWords[targetId]) ? guesser.privateWrongWords[targetId].slice() : []
         prevWrongWords.push(value)
@@ -141,6 +142,7 @@ module.exports = async (req, res) => {
       if (effectiveTurnOrder.length > 0) {
         const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
         updates[`currentTurnIndex`] = nextIndex
+        updates[`currentTurnStartedAt`] = Date.now()
       }
     }
 

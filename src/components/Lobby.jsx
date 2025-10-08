@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { db } from '../firebase'
+import { db, auth } from '../firebase'
 import { ref as dbRef, get as dbGet } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
 
@@ -32,18 +32,32 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
       const roomRef = dbRef(db, `rooms/${room}`)
       dbGet(roomRef).then(snap => {
         const val = snap.val()
-        if (val && val.open === false) {
-          // eslint-disable-next-line no-alert
+        // If the room is closed to new players, allow rejoin when we have a stored anonymous id
+        let storedAnon = null
+        try { storedAnon = window.localStorage && window.localStorage.getItem(`gh_anon_${room}`) } catch (e) { storedAnon = null }
+        if (val && val.open === false && !storedAnon) {
           setJoinError('This room has already started and is closed to new players.')
           return
         }
         // validate password inline instead of using a blocking alert
+        // If there is a password and it doesn't match, allow rejoin when we have a stored anon id
         if (val && val.password && val.password !== (password || '')) {
-          setJoinError('Password is incorrect. Please try again.')
+          if (!storedAnon) {
+            setJoinError('Password is incorrect. Please try again.')
+            return
+          }
+          // allow rejoin with stored anon id — caller will preserve server-side name
+          setJoinError('')
+          onJoin(room, '', '')
           return
         }
         setJoinError('')
-        onJoin(room, name, password) // Pass the password to onJoin
+        // If we have a stored anonymous id, prefer rejoin without prompting for name
+        if (storedAnon) {
+          onJoin(room, '', password)
+        } else {
+          onJoin(room, name, password) // Pass the password to onJoin
+        }
       }).catch(err => {
         // if reading fails, allow join attempt and let DB rules handle it
         // eslint-disable-next-line no-console
@@ -74,6 +88,64 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
       prompt('Copy this link', url)
     }
   }
+
+  // auto-join on refresh when a room param is present and we have a stored anonymous id
+  React.useEffect(() => {
+    if (!initialRoom) return
+    console.log('Lobby: auto-join effect mounted for', initialRoom)
+    const attempts = [0, 75, 500, 1500, 4000]
+    const timers = []
+
+    async function tryAutoJoin(attemptIdx) {
+      let stored = null
+      try { stored = window.localStorage && window.localStorage.getItem(`gh_anon_${initialRoom}`) } catch (e) { stored = null }
+
+      // check if current auth user is the host
+      let isHostAuth = false
+      try {
+        console.log('Lobby: tryAutoJoin checking auth state (attempt', attemptIdx, '). auth.currentUser=', auth && auth.currentUser)
+        if (auth && auth.currentUser && auth.currentUser.uid) {
+          const snap = await dbGet(dbRef(db, `rooms/${initialRoom}`))
+          const rv = snap.val() || {}
+          if (rv && rv.hostId && rv.hostId === auth.currentUser.uid) isHostAuth = true
+        }
+      } catch (e) {
+        isHostAuth = false
+      }
+
+      if (!stored && !isHostAuth) {
+        console.log('Lobby: tryAutoJoin aborting (no stored anon and not host)')
+        return false
+      }
+
+      console.log('Lobby: performing auto-join for', initialRoom, 'storedAnon?', !!stored, 'isHostAuth?', isHostAuth, 'attemptIdx=', attemptIdx)
+      const authName = isHostAuth && auth && auth.currentUser && auth.currentUser.displayName ? auth.currentUser.displayName : ''
+      try {
+        onJoin(initialRoom, authName || '', '')
+        return true
+      } catch (e) {
+        console.warn('Lobby auto-join failed', e)
+        return false
+      }
+    }
+
+    let succeeded = false
+    attempts.forEach((delay, idx) => {
+      console.log('Lobby: scheduling auto-join attempt', idx, 'in', delay, 'ms')
+      const t = setTimeout(async () => {
+        if (succeeded) return
+        try {
+          const ok = await tryAutoJoin(idx)
+          if (ok) succeeded = true
+        } catch (e) {
+          // ignore and let next attempt run
+        }
+      }, delay)
+      timers.push(t)
+    })
+
+    return () => timers.forEach(t => clearTimeout(t))
+  }, [initialRoom, onJoin])
 
   return (
     <div className="lobby">

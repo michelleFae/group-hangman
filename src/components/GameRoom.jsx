@@ -71,38 +71,45 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   // watch for timeout logs in state.timeouts to show toast and flash player
+  // dedupe timeouts per player to avoid duplicate toasts when both client and server
+  const processedTimeoutPlayersRef = useRef({})
   useEffect(() => {
     if (!state) return
     const timeouts = state.timeouts || {}
     const keys = Object.keys(timeouts)
     if (keys.length === 0) return
-    // determine new timeouts (use local recentPenalty map to filter)
+
     keys.forEach(k => {
       const e = timeouts[k]
       if (!e || !e.player) return
-      if (recentPenalty[k]) return // already handled
+
+  const player = e.player
+  const ts = e.ts || Date.now()
+  // try to resolve a display name from room state players list
+  const playerObj = (state.players || []).find(p => p.id === player)
+  const playerName = (playerObj && playerObj.name) ? playerObj.name : player
+
+      // If we've recently processed a timeout for this player, skip to avoid dupes
+      const last = processedTimeoutPlayersRef.current[player] || 0
+      if (Math.abs(ts - last) < 5000) return
+
+      // mark processed for this player (use the timeout's ts)
+      processedTimeoutPlayersRef.current[player] = ts
+
       // show toast
-      const toast = { id: k, text: `-2 hangmoney for ${e.player} (timed out)` }
+      const toastId = `${k}`
+  const toast = { id: toastId, text: `-2 hangmoney for ${playerName} (timed out)` }
       setToasts(t => [...t, toast])
       // auto-remove toast after 4s
-      setTimeout(() => setToasts(t => t.filter(x => x.id !== k)), 4000)
-      setRecentPenalty(r => ({ ...r, [k]: true }))
-      // set flag on player briefly by storing keyed flag (playerId -> true) with timeout
-      setTimeout(() => {
-        setRecentPenalty(r => {
-          const copy = { ...r }
-          delete copy[k]
-          return copy
-        })
-      }, 3000)
-      // Show a temporary pending deduction on the player's tile so users see immediate feedback even if DB
-      // update takes a moment or functions are slow/not deployed yet.
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
+
+      // set a short-lived visual marker for pending deduction
       if (e && typeof e.deducted === 'number') {
-        setPendingDeducts(prev => ({ ...prev, [e.player]: (prev[e.player] || 0) - e.deducted }))
+        setPendingDeducts(prev => ({ ...prev, [player]: (prev[player] || 0) - e.deducted }))
         setTimeout(() => {
           setPendingDeducts(prev => {
             const copy = { ...prev }
-            delete copy[e.player]
+            delete copy[player]
             return copy
           })
         }, 3500)
@@ -127,7 +134,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const modeBadge = (
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
       <div className="mode-badge card" style={{ padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-        <span style={{ fontSize: 16 }}>💸</span>
+  <span style={{ fontSize: 16 }}>{state && state.winnerByHangmoney ? '💸' : '🛡️'}</span>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
           <strong style={{ fontSize: 13 }}>{state && state.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
           <small style={{ color: '#666', fontSize: 12 }}>{state && state.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>

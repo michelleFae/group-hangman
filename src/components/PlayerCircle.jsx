@@ -162,7 +162,20 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                   <strong>Your correct guesses:</strong>
                   <ul style={{ margin: '6px 0 0 12px' }}>
                     {privateHits.map((h, idx) => (
-                      <li key={idx}>{h.type === 'letter' ? `Letter "${h.letter}" — ${h.count} occurrence(s)` : `Word "${h.word}"`}</li>
+                      <li key={idx} style={{ marginTop: 6 }}>
+                        {h.type === 'letter' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div>Letter "{h.letter}" — {h.count} occurrence(s)</div>
+                            <div className="private-hit-chips">
+                              {new Array(Math.max(1, Number(h.count) || 1)).fill(0).map((_, i) => (
+                                <span key={i} className="hit-chip">{h.letter}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>Word "{h.word}"</div>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 </div>
