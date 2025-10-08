@@ -135,7 +135,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           // also allow rejoin when the authenticated uid corresponds to a player node in the room
           if (!isHostAuth && rv && rv.players && rv.players[auth.currentUser.uid]) {
             console.log('Lobby: auto-join allowed because auth UID matches a player node in the room')
-            return true // signal to outer attempt loop to perform onJoin via below
+            isHostAuth = true // treat as allowed to auto-join, proceed below to call onJoin
           }
         }
       } catch (e) {
