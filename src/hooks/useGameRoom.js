@@ -151,6 +151,34 @@ export default function useGameRoom(roomId, playerName) {
       updates.timed = false
       updates.turnTimeoutSeconds = null
     }
+    // persist winner selection mode so all players see it
+    updates.winnerByHangmoney = !!(options && options.winnerByHangmoney)
+    // If host requested starter bonus, generate a random spec and attach to the room so clients can show the prompt
+    if (options && options.starterEnabled) {
+      // pick type 1,2,3
+      const types = ['letter','length','vowels']
+      const chosen = types[Math.floor(Math.random()*types.length)]
+      let spec = { enabled: true, type: chosen, bonusAmount: 10 }
+      if (chosen === 'letter') {
+        const letters = 'abcdefghijklmnopqrstuvwxyz'
+        const letter = letters[Math.floor(Math.random()*letters.length)]
+        spec.params = { letter }
+        spec.description = `Starter bonus: word must contain the letter '${letter.toUpperCase()}'`
+      } else if (chosen === 'length') {
+        // choose comparator and a number
+        const comp = Math.random() < 0.5 ? '>' : '<'
+        const n = Math.floor(3 + Math.random()*10) // between 3 and 12
+        spec.params = { comparator: comp, number: n }
+        spec.description = `Starter bonus: word must have ${comp}${n} letters`
+      } else if (chosen === 'vowels') {
+        const n = Math.floor(1 + Math.random()*4) // 1..4
+        spec.params = { vowels: n }
+        spec.description = `Starter bonus: word must contain exactly ${n} vowel${n===1? '': 's'}`
+      }
+      updates.starterBonus = spec
+    } else {
+      updates.starterBonus = { enabled: false }
+    }
     await update(roomRef, updates)
   }
 
@@ -179,14 +207,63 @@ export default function useGameRoom(roomId, playerName) {
       const roomRoot = rootSnap.val() || {}
       const turnTimeout = roomRoot.turnTimeoutSeconds || null
       const timed = !!roomRoot.timed
-      await update(roomRootRef, {
-        phase: 'playing',
-        turnOrder,
-        currentTurnIndex: 0,
-        currentTurnStartedAt: Date.now(),
-        turnTimeoutSeconds: turnTimeout,
-        timed
-      })
+
+      // If starter bonus enabled, evaluate each submitted word and award bonus hangmoney
+      const updates = {}
+      try {
+        const starter = roomRoot.starterBonus || { enabled: false }
+        if (starter && starter.enabled) {
+          const spec = starter
+          const matchesStarter = (w) => {
+            if (!w) return false
+            const s = (w||'').toString().toLowerCase()
+            if (spec.type === 'letter') {
+              const letter = (spec.params && spec.params.letter) || ''
+              return s.includes(letter)
+            }
+            if (spec.type === 'length') {
+              const comp = spec.params && spec.params.comparator
+              const num = spec.params && Number(spec.params.number)
+              if (!comp || !num) return false
+              if (comp === '>') return s.length > num
+              return s.length < num
+            }
+            if (spec.type === 'vowels') {
+              const need = Number((spec.params && spec.params.vowels) || 0)
+              const vowels = s.split('').filter(ch => 'aeiou'.includes(ch)).length
+              return vowels === need
+            }
+            return false
+          }
+
+          Object.keys(playersObj || {}).forEach(pid => {
+            const p = playersObj[pid]
+            const candidate = (p.word || '').toString().trim().toLowerCase()
+            if (candidate && matchesStarter(candidate)) {
+              const prev = typeof p.hangmoney === 'number' ? p.hangmoney : 0
+              updates[`players/${pid}/hangmoney`] = prev + (starter.bonusAmount || 10)
+              // mark awarded so it is clear
+              updates[`players/${pid}/starterBonusAwarded`] = true
+            } else {
+              updates[`players/${pid}/starterBonusAwarded`] = false
+            }
+          })
+        }
+      } catch (e) {
+        console.warn('Error evaluating starter bonus', e)
+      }
+
+      // set core playing state
+      updates['phase'] = 'playing'
+      updates['turnOrder'] = turnOrder
+      updates['currentTurnIndex'] = 0
+      updates['currentTurnStartedAt'] = Date.now()
+      updates['turnTimeoutSeconds'] = turnTimeout
+      updates['timed'] = timed
+
+      if (Object.keys(updates).length > 0) {
+        await update(roomRootRef, updates)
+      }
     }
   }
 

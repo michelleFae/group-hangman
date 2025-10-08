@@ -8,6 +8,11 @@
   --halo: rgba(255,171,171,0.28); /* Pulse halo color */
 }
 
+/* Full-page money theme when winner-by-hangmoney is selected */
+body.money-theme-body {
+  background: linear-gradient(180deg, #e8f5e9, #d0f0d6);
+}
+
 *{box-sizing:border-box}
 body {
   font-family: 'Baloo 2', 'Poppins', system-ui, sans-serif;
@@ -83,6 +88,23 @@ button[disabled] {
 .room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(179,157,219,0.12), rgba(129,212,250,0.08)); display:inline-block }
 
 .victory-screen { text-align:center; padding: 36px; border-radius: 16px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); color: white }
+/* Confetti pieces for victory */
+.victory-screen.confetti { position: relative; overflow: visible }
+.confetti-piece { position: absolute; top: -10px; border-radius: 3px; opacity: 0.95; animation: confetti-drop 1.6s ease-in forwards }
+@keyframes confetti-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(320px) rotate(360deg); opacity: 1 } }
+
+/* Sad screen for non-winners */
+.victory-screen.sad { background: linear-gradient(90deg, #8E1B1B, #A52828); color: #ffecec }
+.victory-screen.sad h1 { font-size: 36px }
+
+.standings ol { padding-left: 18px; margin: 8px 0 }
+.standings li { text-align: left }
+.standings strong { font-size: 15px }
+.standings li span { display:inline-block; width: 28px }
+
+/* Modal overlay for host confirmation */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index: 2000 }
+.modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px }
 
 .guessed-by-list li {
   display: flex;
@@ -98,7 +120,19 @@ button[disabled] {
 /* Hangxiety header */
 .hangxiety-header { text-align: center; margin-bottom: 20px }
 .hangxiety-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
-.hangxiety-title .bubble { display:inline-block; margin-left: 8px; transform-origin: 50% 50%; animation: bubble-bounce 1.6s cubic-bezier(.2,.9,.2,1) infinite }
+.hangxiety-title .bubble {
+  display:inline-block;
+  margin-left: 8px;
+  transform-origin: 50% 50%;
+  animation: bubble-bounce 1.6s cubic-bezier(.2,.9,.2,1) infinite;
+  /* Explicit visible color so emoji renders correctly (overrides parent's transparent color) */
+  color: var(--text);
+  font-size: 0.95em;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  /* subtle text shadow to help emoji stand out on gradients */
+  text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+}
 .hangxiety-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
 
 @keyframes bubble-bounce {
@@ -197,3 +231,20 @@ button[disabled] {
   .submit-bar .submit-controls { justify-content: flex-end }
   .submit-bar input { width: 100% }
 }
+
+/* Starter bonus badge shown during submit waiting */
+.starter-badge { display:inline-block; background: linear-gradient(90deg,#fff8e1,#fff3cd); color: #2e7d32; font-weight:700; margin-left:8px; padding: 2px 6px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 10px rgba(46,125,50,0.08) }
+
+/* Money theme: green background and subtle floating cash animation */
+.money-theme { background: linear-gradient(180deg,#e8f5e9,#d0f0d6); color: #0b3d0b }
+.money-theme .hangmoney { color: #1b5e20 }
+.money-anim { position: absolute; pointer-events: none }
+@keyframes cash-float { 0% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-16px) rotate(-8deg) } 100% { transform: translateY(0) rotate(0) } }
+.cash-piece { width: 18px; height: 10px; background: linear-gradient(90deg,#a5d6a7,#66bb6a); border-radius:3px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); animation: cash-float 2.2s ease-in-out infinite }
+
+/* header mode badge */
+.mode-badge { background: rgba(255,255,255,0.95); box-shadow: 0 8px 22px rgba(0,0,0,0.08); border-radius: 12px }
+
+/* adjust cash piece animation for confetti-like drop */
+.victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 1.6s ease-out forwards }
+@keyframes cash-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(260px) rotate(360deg); opacity: 1 } }

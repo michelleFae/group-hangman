@@ -150,18 +150,24 @@ module.exports = async (req, res) => {
     const freshPlayersSnap = await roomRef.child('players').once('value')
     const freshPlayers = freshPlayersSnap.val() || {}
     const alive = Object.values(freshPlayers).filter(p => !p.eliminated)
-    if (alive.length === 1) {
-        const winner = alive[0]
-        const gameOverUpdates = {
-            phase: 'ended',
-            winnerId: winner.id || null,
-            winnerName: winner.name || 'Unknown',
-            endedAt: Date.now()
-        }
-        await roomRef.update(gameOverUpdates)
-        console.log("Game over — winner:", winner.name)
+  if (alive.length === 1) {
+    let winner = alive[0]
+    // if the room prefers winner by hangmoney, pick the richest player among all players
+    if (room && room.winnerByHangmoney) {
+      const all = Object.values(freshPlayers)
+      all.sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+      winner = all[0] || winner
+    }
+    const gameOverUpdates = {
+      phase: 'ended',
+      winnerId: winner.id || null,
+      winnerName: winner.name || 'Unknown',
+      endedAt: Date.now()
+    }
+    await roomRef.update(gameOverUpdates)
+    console.log("Game over — winner:", winner.name)
 
-        return res.status(200).json({ ok: true })
+    return res.status(200).json({ ok: true })
   }
   } catch (err) {
     console.error('processGuess error', err)

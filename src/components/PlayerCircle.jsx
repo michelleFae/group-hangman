@@ -116,7 +116,11 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
     <div className={`player ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
       <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
       <div className="meta">
-        <div className="name">{player.name} {player.eliminated ? '(out)' : ''}</div>
+        <div className="name">{player.name} {player.eliminated ? '(out)' : ''}
+          {player.starterBonusAwarded && phase === 'submit' && (
+            <span className="starter-badge" title="Starter bonus awarded">+10</span>
+          )}
+        </div>
         {/* Show pending deduction visually while DB update appears; pendingDeduct is negative for a deduction */}
         <div className={`hangmoney ${animateHang ? 'decrement' : ''}`}>${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}</div>
         <div className="revealed">{revealed.join(' ')}</div>

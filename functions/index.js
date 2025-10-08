@@ -73,7 +73,7 @@ exports.processGuess = functions.database
 
     const isLetter = value.length === 1
 
-    if (isLetter) {
+      if (isLetter) {
       const letter = lc(value)
       const word = lc(target.word || '')
       if (!word) {
@@ -92,8 +92,9 @@ exports.processGuess = functions.database
         prevRevealed.push(letter)
         updates[`players/${targetId}/revealed`] = prevRevealed
 
+        // award 2 hangmoney per occurrence
         const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + 2
+        updates[`players/${from}/hangmoney`] = prevHang + (2 * count)
 
         // update guessedBy for owner visibility
         const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
@@ -110,6 +111,9 @@ exports.processGuess = functions.database
         if (!prevWrong.includes(letter)) {
           prevWrong.push(letter)
           updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+          // reward the target for a wrong guess against them
+          const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+          updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
         }
       }
     } else {
@@ -152,14 +156,18 @@ exports.processGuess = functions.database
         const prevWrongWords = (guesser.privateWrongWords && guesser.privateWrongWords[targetId]) ? guesser.privateWrongWords[targetId].slice() : []
         prevWrongWords.push(value)
         updates[`players/${from}/privateWrongWords/${targetId}`] = prevWrongWords
+        // reward the target for a wrong full-word guess
+        const prevTargetHang2 = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+        updates[`players/${targetId}/hangmoney`] = prevTargetHang2 + 2
       }
     }
 
-    // advance turn
-    const activeTurnOrder = room.turnOrder || []
+    // advance turn. If we modified turnOrder above (e.g., removed an eliminated player) prefer that.
+    const activeTurnOrder = updates.turnOrder || room.turnOrder || []
     if (activeTurnOrder.length > 0) {
       const nextIndex = (currentIndex + 1) % activeTurnOrder.length
       updates[`currentTurnIndex`] = nextIndex
+      updates[`currentTurnStartedAt`] = Date.now()
     }
 
     // write updates atomically at /rooms/{roomId}

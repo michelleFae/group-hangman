@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
 import { db } from '../firebase'
@@ -11,11 +11,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [submitted, setSubmitted] = useState(false)
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
+  const [starterEnabled, setStarterEnabled] = useState(false)
+  const [winnerByHangmoney, setWinnerByHangmoney] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
   const [toasts, setToasts] = useState([])
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
+  const [showConfirmReset, setShowConfirmReset] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
 
   useEffect(() => {
     joinRoom(password) // Pass the password to joinRoom
@@ -33,7 +37,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (!state) return
     setTimedMode(!!state.timed)
     setTurnSeconds(state.turnTimeoutSeconds || 30)
+    // sync winner-by-money mode from room state
+    setWinnerByHangmoney(!!state.winnerByHangmoney)
   }, [state && state.timed, state && state.turnTimeoutSeconds])
+
+  // toggle a body-level class so the background becomes green when money-mode is active
+  useEffect(() => {
+    try {
+      if (state && state.winnerByHangmoney) document.body.classList.add('money-theme-body')
+      else document.body.classList.remove('money-theme-body')
+    } catch (e) {}
+    return () => {}
+  }, [state && state.winnerByHangmoney])
 
   // write timing preview to room so all players (including non-hosts) can see before start
   async function updateRoomTiming(timed, seconds) {
@@ -42,6 +57,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       await dbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(300, Number(seconds) || 30)) : null })
     } catch (e) {
       console.warn('Could not update room timing preview', e)
+    }
+  }
+
+  // write winner mode to the room so all clients see it immediately
+  async function updateRoomWinnerMode(enabled) {
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      await dbUpdate(roomRef, { winnerByHangmoney: !!enabled })
+    } catch (e) {
+      console.warn('Could not update winner mode', e)
     }
   }
 
@@ -99,13 +124,128 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const currentTurnIndex = state.currentTurnIndex || 0
   const currentTurnId = (state.turnOrder || [])[currentTurnIndex]
 
-  if (state.phase === 'ended') {
-    return (
-      <div className="victory-screen">
-        <h1>🎉 {state.winnerName} Wins! 🎉</h1>
-        <p>All words guessed. Game over!</p>
-        <button onClick={() => window.location.reload()}>Play again</button>
+  const modeBadge = (
+    <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
+      <div className="mode-badge card" style={{ padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
+        <span style={{ fontSize: 16 }}>💸</span>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
+          <strong style={{ fontSize: 13 }}>{state && state.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
+          <small style={{ color: '#666', fontSize: 12 }}>{state && state.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
+        </div>
       </div>
+    </div>
+  )
+
+  if (state.phase === 'ended') {
+    const myName = playerName
+    const isWinner = state.winnerName === myName
+
+    // compute standings by hangmoney desc as a best-effort ranking
+    const standings = (state.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+
+    const confettiPieces = useMemo(() => {
+      if (!isWinner) return []
+      const colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
+      return new Array(48).fill(0).map(() => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 0.8,
+        size: 6 + Math.random() * 12,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotate: Math.random() * 360
+      }))
+    }, [isWinner, state.phase])
+
+    const cashPieces = useMemo(() => {
+      if (!state || !state.winnerByHangmoney) return []
+      return new Array(28).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, rotate: Math.random() * 360, top: -10 - (Math.random()*40) }))
+    }, [state && state.winnerByHangmoney])
+
+    return (
+      <>
+      {modeBadge}
+      <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
+        {isWinner && confettiPieces.map((c, i) => (
+          <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
+        ))}
+        {state && state.winnerByHangmoney && cashPieces.map((c, i) => (
+          <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
+        ))}
+
+        <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state.winnerName} Wins`}</h1>
+        <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
+
+        <div className="standings card" style={{ marginTop: 12 }}>
+          <h4>Final standings</h4>
+          <ol>
+            {standings.map((p, idx) => {
+              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
+              const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
+              return (
+                <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
+                    <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                  </div>
+                  <div style={{ fontWeight: 700 }}>${p.hangmoney || 0}{p.id === state.winnerId ? ' (winner)' : ''}</div>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          {isHost ? (
+            <>
+              <button onClick={() => setShowConfirmReset(true)}>Play again</button>
+              {showConfirmReset && (
+                <div className="modal-overlay">
+                  <div className="modal-dialog card">
+                    <h4>Reset room for a new round?</h4>
+                    <p>All submitted words and revealed letters will be cleared, and hangmoney will be reset to starting values for everyone. This action can only be performed by the host.</p>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                      <button onClick={() => setShowConfirmReset(false)}>Cancel</button>
+                      <button disabled={isResetting} onClick={async () => {
+                        if (isResetting) return
+                        setIsResetting(true)
+                        try {
+                          const roomRef = dbRef(db, `rooms/${roomId}`)
+                          const updates = {
+                            phase: 'lobby',
+                            open: true,
+                            winnerName: null,
+                            winnerId: null,
+                            turnOrder: null,
+                            currentTurnIndex: 0,
+                            currentTurnStartedAt: null,
+                            timeouts: null
+                          }
+                          // reset per-player submit state and hangmoney
+                          (state.players || []).forEach(p => {
+                            updates[`players/${p.id}/hasWord`] = false
+                            updates[`players/${p.id}/word`] = null
+                            updates[`players/${p.id}/revealed`] = []
+                            updates[`players/${p.id}/eliminated`] = false
+                            updates[`players/${p.id}/hangmoney`] = 2
+                          })
+                          await dbUpdate(roomRef, updates)
+                        } catch (e) {
+                          console.warn('Could not reset room for replay', e)
+                        } finally {
+                          setIsResetting(false)
+                          setShowConfirmReset(false)
+                        }
+                      }}>{isResetting ? 'Resetting…' : 'Confirm reset'}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: '#ddd' }}>Waiting for host to reset the room</div>
+          )}
+        </div>
+      </div>
+      </>
     )
   }
 
@@ -136,12 +276,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const msLeft = state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now()
       if (msLeft <= 0) {
         const roomRef = dbRef(db, `rooms/${roomId}`)
-        dbGet(roomRef).then(snap => {
+        dbGet(roomRef).then(async snap => {
           const r = snap.val() || {}
           const order = r.turnOrder || []
           if (!order || order.length === 0) return
           const nextIdx = ((r.currentTurnIndex || 0) + 1) % order.length
-          dbUpdate(roomRef, { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() })
+          // write an authoritative timeout entry for auditing and to notify other clients
+          const tkey = `t_${Date.now()}`
+          const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
+          updates[`timeouts/${tkey}`] = { player: order[r.currentTurnIndex || 0], deducted: 2, ts: Date.now() }
+          await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
     }, [tick, state, roomId])
@@ -169,7 +313,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   return (
-    <div className="game-room">
+    <div className={`game-room ${state && state.winnerByHangmoney ? 'money-theme' : ''}`}>
+      {modeBadge}
       {phase === 'lobby' && <h2>Room: {roomId}</h2>}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>
@@ -178,6 +323,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <>
                 <label style={{ marginRight: 12 }}>
                   <input type="checkbox" checked={timedMode} onChange={e => { setTimedMode(e.target.checked); updateRoomTiming(e.target.checked, turnSeconds) }} /> Timed mode
+                </label>
+                <label style={{ marginRight: 12 }} title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
+                  <input type="checkbox" checked={starterEnabled} onChange={e => setStarterEnabled(e.target.checked)} /> Starter bonus
+                </label>
+                <label style={{ marginRight: 12 }} title="Choose how the winner is determined: Last one standing (default) or player with most hangmoney. Visible to all players.">
+                  <input type="checkbox" checked={winnerByHangmoney} onChange={e => { setWinnerByHangmoney(e.target.checked); updateRoomWinnerMode(e.target.checked) }} /> Winner by money
                 </label>
                 {timedMode && (
                   <label>
@@ -196,7 +347,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           {isHost ? (
             <>
               <button
-                onClick={() => startGame(timedMode ? { timed: true, turnSeconds } : {})}
+                onClick={() => startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByHangmoney } : { starterEnabled, winnerByHangmoney })}
                 disabled={players.length < 2}
                 title={players.length < 2 ? 'Need at least 2 players to start' : ''}
                 className={players.length >= 2 ? 'start-ready' : ''}
@@ -325,6 +476,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           <div className="submit-bar card">
             <div className="submit-left">
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
+              {state.starterBonus && state.starterBonus.enabled && (
+                <div style={{ marginTop: 6, fontSize: 13, color: '#666' }} title={state.starterBonus.description}>
+                  Starter rule: <strong>{state.starterBonus.description}</strong>
+                </div>
+              )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>
                 <div className="progress-bar" style={{ width: `${(players.length ? (submittedCount / players.length) * 100 : 0)}%`, background: '#4caf50', height: 10, borderRadius: 6 }} />
                 <div style={{ marginTop: 6, fontSize: 13 }}>{submittedCount} / {players.length} submitted</div>
