@@ -175,6 +175,14 @@ button[disabled] {
 .toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 14px; border-radius: 10px; font-weight:700; box-shadow: 0 8px 18px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-6px); animation: toast-in .28s forwards }
 @keyframes toast-in { to { opacity: 1; transform: translateY(0) } }
 
+/* Multi-hit toast */
+.multi-hit-toast { position: relative; overflow: visible; }
+.multi-hit-toast .confetti-like { position: absolute; left: -8px; top: -24px; width: 12px; height: 12px; border-radius: 2px; animation: mh-fall 900ms ease-out forwards }
+.multi-hit-toast .confetti-like:nth-child(1) { left: 6px; background: #FFD54F; transform: rotate(12deg) }
+.multi-hit-toast .confetti-like:nth-child(2) { left: 34px; background: #FFABAB; transform: rotate(-6deg) }
+.multi-hit-toast .confetti-like:nth-child(3) { left: 60px; background: #81D4FA; transform: rotate(18deg) }
+
+@keyframes mh-fall { from { transform: translateY(-8px) rotate(0deg); opacity: 1 } to { transform: translateY(18px) rotate(45deg); opacity: 0 } }
 /* player flash for penalty */
 .player.flash-penalty { animation: flash-penalty 1s ease-in-out }
 @keyframes flash-penalty { 0% { box-shadow: 0 0 0 rgba(255,0,0,0) } 10% { box-shadow: 0 0 18px rgba(255,0,0,0.6) } 50% { box-shadow: 0 0 10px rgba(255,0,0,0.24) } 100% { box-shadow: 0 0 0 rgba(255,0,0,0) } }
@@ -234,6 +242,13 @@ button[disabled] {
 
 /* Starter bonus badge shown during submit waiting */
 .starter-badge { display:inline-block; background: linear-gradient(90deg,#fff8e1,#fff3cd); color: #2e7d32; font-weight:700; margin-left:8px; padding: 2px 6px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 10px rgba(46,125,50,0.08) }
+
+/* Name input required glow */
+.name-input.required-glow { box-shadow: 0 0 12px rgba(255, 200, 80, 0.9); border-radius: 8px; border: 1px solid rgba(255,200,80,0.9); padding: 8px }
+
+/* Join button glow/animation */
+.join-btn.join-glow { animation: pulse 1.6s infinite; box-shadow: 0 8px 24px rgba(255,120,80,0.18); }
+@keyframes pulse { 0% { transform: translateY(0) } 50% { transform: translateY(-3px) } 100% { transform: translateY(0) } }
 
 /* Money theme: green background and subtle floating cash animation */
 .money-theme { background: linear-gradient(180deg,#e8f5e9,#d0f0d6); color: #0b3d0b }

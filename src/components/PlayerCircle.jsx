@@ -166,11 +166,7 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                         {h.type === 'letter' ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div>Letter "{h.letter}" — {h.count} occurrence(s)</div>
-                            <div className="private-hit-chips">
-                              {new Array(Math.max(1, Number(h.count) || 1)).fill(0).map((_, i) => (
-                                <span key={i} className="hit-chip">{h.letter}</span>
-                              ))}
-                            </div>
+                            <div className="private-hit-count" style={{ background: '#c8f5c8', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>{h.count}x</div>
                           </div>
                         ) : (
                           <div>Word "{h.word}"</div>

@@ -83,18 +83,32 @@ module.exports = async (req, res) => {
       for (let ch of word) if (ch === letter) count++
 
       const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
-      const already = prevRevealed.includes(letter)
 
-      if (count > 0 && !already) {
-        prevRevealed.push(letter)
-        updates[`players/${targetId}/revealed`] = prevRevealed
+      if (count > 0) {
+        const existing = prevRevealed.filter(x => x === letter).length
+        const toAdd = Math.max(0, count - existing)
+        if (toAdd > 0) {
+          for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
+          updates[`players/${targetId}/revealed`] = prevRevealed
+        }
+
         const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + 2
+        updates[`players/${from}/hangmoney`] = prevHang + (2 * count)
         const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
         if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
         updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
+
         const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-        prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+        let merged = false
+        for (let i = 0; i < prevHits.length; i++) {
+          const h = prevHits[i]
+          if (h && h.type === 'letter' && h.letter === letter) {
+            prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+            merged = true
+            break
+          }
+        }
+        if (!merged) prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
         updates[`players/${from}/privateHits/${targetId}`] = prevHits
       } else {
         const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []

@@ -226,11 +226,13 @@ export default function useGameRoom(roomId, playerName) {
         const room = roomSnap.val() || {}
         console.log('useGameRoom: fetched room for autoRejoin', room)
         if (!mounted) return
-        if (room.phase === 'playing') {
-          // rejoin using stored anon id path in joinRoom
-          console.log('useGameRoom: attempting auto rejoin via joinRoom for', roomId)
-          try { await joinRoom(room.password || '') } catch (e) { console.warn('useGameRoom: joinRoom autoRejoin failed', e) }
-        }
+          // allow auto-rejoin for stored anon id or when current auth uid matches a player node
+          const uid = auth && auth.currentUser && auth.currentUser.uid
+          const hasAuthPlayer = uid && room.players && room.players[uid]
+          if (room.phase === 'playing' && (stored || hasAuthPlayer)) {
+            console.log('useGameRoom: attempting auto rejoin via joinRoom for', roomId, 'stored?', !!stored, 'hasAuthPlayer?', !!hasAuthPlayer)
+            try { await joinRoom(room.password || '') } catch (e) { console.warn('useGameRoom: joinRoom autoRejoin failed', e) }
+          }
       } catch (e) {
         console.warn('useGameRoom: autoRejoin encountered error', e)
       }
@@ -343,8 +345,37 @@ export default function useGameRoom(roomId, playerName) {
     }
     // stop heartbeat before removing node
     stopHeartbeat()
-    const pRef = dbRef(db, `rooms/${roomId}/players/${playerIdRef.current}`)
-    dbSet(pRef, null)
+    const pid = playerIdRef.current
+    const roomRef = dbRef(db, `rooms/${roomId}`)
+    ;(async () => {
+      try {
+        const snap = await get(roomRef)
+        const room = snap.val() || {}
+        const playersObj = room.players || {}
+        // if this player is the host, pick a replacement if one exists
+        if (room.hostId && room.hostId === pid) {
+          const other = Object.keys(playersObj).find(k => k !== pid)
+          if (other) {
+            // atomically remove player and set new host
+            const ups = {}
+            ups[`players/${pid}`] = null
+            ups['hostId'] = other
+            try { await update(roomRef, ups) } catch (e) { console.warn('Could not transfer host on leave', e) }
+            return
+          } else {
+            // no other players — remove room entirely
+            try { await dbSet(roomRef, null) } catch (e) { console.warn('Could not remove empty room on host leave', e) }
+            return
+          }
+        }
+        // not host, just remove node
+        const pRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
+        try { await dbSet(pRef, null) } catch (e) { console.warn('Could not remove player node on leave', e) }
+      } catch (e) {
+        // best-effort: attempt direct remove
+        try { const pRef = dbRef(db, `rooms/${roomId}/players/${playerIdRef.current}`); await dbSet(pRef, null) } catch (err) { console.warn('leaveRoom fallback remove failed', err) }
+      }
+    })()
   }
 
   async function sendGuess(targetId, payload) {

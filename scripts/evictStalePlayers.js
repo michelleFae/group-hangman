@@ -63,6 +63,19 @@ async function main() {
       if (!postPlayers || Object.keys(postPlayers).length === 0) {
         console.log(`Removing empty room ${roomId}`)
         await db.ref(`/rooms/${roomId}`).remove()
+      } else {
+        // if host was evicted, transfer to first remaining player
+        try {
+          const rootSnap = await db.ref(`/rooms/${roomId}`).once('value')
+          const root = rootSnap.val() || {}
+          if (root && root.hostId && !postPlayers[root.hostId]) {
+            const candidate = Object.keys(postPlayers)[0]
+            console.log(`Transferring host for room ${roomId} to ${candidate}`)
+            await db.ref(`/rooms/${roomId}`).update({ hostId: candidate })
+          }
+        } catch (e) {
+          console.warn('Host transfer check failed for', roomId, e)
+        }
       }
     }
   })

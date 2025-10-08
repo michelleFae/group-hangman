@@ -85,12 +85,15 @@ exports.processGuess = functions.database
       for (let ch of word) if (ch === letter) count++
 
       const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
-      const already = prevRevealed.includes(letter)
 
-      if (count > 0 && !already) {
-        // correct letter
-        prevRevealed.push(letter)
-        updates[`players/${targetId}/revealed`] = prevRevealed
+      if (count > 0) {
+        // compute how many of this letter are already recorded in revealed
+        const existing = prevRevealed.filter(x => x === letter).length
+        const toAdd = Math.max(0, count - existing)
+        if (toAdd > 0) {
+          for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
+          updates[`players/${targetId}/revealed`] = prevRevealed
+        }
 
         // award 2 hangmoney per occurrence
         const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
@@ -101,9 +104,18 @@ exports.processGuess = functions.database
         if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
         updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
 
-        // record private hit for guesser
+        // record or aggregate private hit for guesser: keep a single entry per letter and sum counts
         const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-        prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+        let merged = false
+        for (let i = 0; i < prevHits.length; i++) {
+          const h = prevHits[i]
+          if (h && h.type === 'letter' && h.letter === letter) {
+            prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+            merged = true
+            break
+          }
+        }
+        if (!merged) prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
         updates[`players/${from}/privateHits/${targetId}`] = prevHits
       } else {
         // wrong or already guessed
@@ -286,6 +298,15 @@ exports.evictStalePlayers = functions.pubsub.schedule('every 5 minutes').onRun(a
         if (!postPlayers || Object.keys(postPlayers).length === 0) {
           console.log(`Removing empty room ${roomId}`)
           await db.ref(`/rooms/${roomId}`).remove()
+        } else {
+          // if host was removed and current hostId is missing, pick a new host
+          const rootSnap = await db.ref(`/rooms/${roomId}`).once('value')
+          const root = rootSnap.val() || {}
+          if (root && root.hostId && !postPlayers[root.hostId]) {
+            const candidate = Object.keys(postPlayers)[0]
+            console.log(`Transferring host for room ${roomId} to ${candidate}`)
+            await db.ref(`/rooms/${roomId}`).update({ hostId: candidate })
+          }
         }
       } catch (e) {
         console.error('Failed to evict stale players for', roomId, e)

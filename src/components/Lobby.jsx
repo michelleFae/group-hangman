@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { db, auth } from '../firebase'
 import { ref as dbRef, get as dbGet } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -10,11 +10,26 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   const [joinError, setJoinError] = useState('')
   const [createdRoom, setCreatedRoom] = useState(null)
   const [toasts, setToasts] = useState([])
+  const [storedAnonForRoom, setStoredAnonForRoom] = useState(null)
+  const nameRef = useRef(null)
+  const ariaLiveRef = useRef(null)
+
+  useEffect(() => {
+    // autofocus name input on mount
+    try { if (nameRef.current) nameRef.current.focus() } catch (e) {}
+    // announce for screen readers
+    try { if (ariaLiveRef.current) ariaLiveRef.current.textContent = 'Welcome. Enter a display name to join or create a room.' } catch (e) {}
+  }, [])
 
   function handleCreate() {
     // We'll generate a short id client-side (can be improved)
     const id = Math.random().toString(36).slice(2, 8)
     setCreatedRoom(id)
+    // require name to create
+    if (!name || !name.toString().trim()) {
+      setJoinError('Please enter a display name to create a room')
+      return
+    }
     // In a real app we'd save the hashed password in Firebase
     onJoin(id, name, password)
     try {
@@ -35,6 +50,8 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         // If the room is closed to new players, allow rejoin when we have a stored anonymous id
         let storedAnon = null
         try { storedAnon = window.localStorage && window.localStorage.getItem(`gh_anon_${room}`) } catch (e) { storedAnon = null }
+        // persist storedAnon to state so UI can reflect it
+        setStoredAnonForRoom(storedAnon)
         if (val && val.open === false && !storedAnon) {
           setJoinError('This room has already started and is closed to new players.')
           return
@@ -52,9 +69,12 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           return
         }
         setJoinError('')
-        // If we have a stored anonymous id, prefer rejoin without prompting for name
+        // require name unless we have a stored anon id for this room
         if (storedAnon) {
           onJoin(room, '', password)
+        } else if (!name || !name.toString().trim()) {
+          setJoinError('Please enter a display name to join')
+          return
         } else {
           onJoin(room, name, password) // Pass the password to onJoin
         }
@@ -63,6 +83,10 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         // eslint-disable-next-line no-console
         console.warn('Could not read room state before joining:', err)
         setJoinError('')
+        if (!name || !name.toString().trim()) {
+          setJoinError('Please enter a display name to join')
+          return
+        }
         onJoin(room, name, password) // Pass the password to onJoin
       })
       return
@@ -108,6 +132,11 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           const snap = await dbGet(dbRef(db, `rooms/${initialRoom}`))
           const rv = snap.val() || {}
           if (rv && rv.hostId && rv.hostId === auth.currentUser.uid) isHostAuth = true
+          // also allow rejoin when the authenticated uid corresponds to a player node in the room
+          if (!isHostAuth && rv && rv.players && rv.players[auth.currentUser.uid]) {
+            console.log('Lobby: auto-join allowed because auth UID matches a player node in the room')
+            return true // signal to outer attempt loop to perform onJoin via below
+          }
         }
       } catch (e) {
         isHostAuth = false
@@ -158,7 +187,10 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         <h1 className="hangxiety-title">Hangxiety <span className="bubble">😅</span></h1>
         <p className="hangxiety-tag">A multiplayer word game that should come with a therapist.</p>
       </div>
-      <input placeholder="Your name" value={name} onChange={e => setName(e.target.value)} />
+  <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />
+
+      {/* ARIA live region for announcements */}
+      <div ref={ariaLiveRef} aria-live="polite" style={{ position: 'absolute', left: -9999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }} />
 
       <div className="card">
         <h3>Create room</h3>
@@ -180,9 +212,9 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
 
       <div className="card">
         <h3>Join room</h3>
-        <input placeholder="room id" value={room} onChange={e => setRoom(e.target.value)} />
+    <input placeholder="room id" value={room} onChange={e => { setRoom(e.target.value); setStoredAnonForRoom(window.localStorage && window.localStorage.getItem(`gh_anon_${e.target.value}`)) }} />
         <input placeholder="password (if required)" value={password} onChange={e => { setPassword(e.target.value); setJoinError('') }} />
-        <button onClick={handleJoin}>Join</button>
+    <button onClick={handleJoin} className={`join-btn ${room && room.toString().trim() ? 'join-glow' : ''}`} disabled={!(room && room.toString().trim() && (storedAnonForRoom || (name && name.toString().trim()))) }>Join</button>
   {joinError && <div className="small-error">{joinError}</div>}
       </div>
     </div>

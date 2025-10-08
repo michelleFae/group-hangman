@@ -16,6 +16,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
   const [toasts, setToasts] = useState([])
+  const multiHitSeenRef = useRef({})
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -73,8 +74,48 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // watch for timeout logs in state.timeouts to show toast and flash player
   // dedupe timeouts per player to avoid duplicate toasts when both client and server
   const processedTimeoutPlayersRef = useRef({})
+  const prevHostRef = useRef(null)
+
+  // Notify players when host changes
   useEffect(() => {
     if (!state) return
+    const prev = prevHostRef.current
+    const current = state.hostId
+    // initialize on first run
+    if (prev === null) {
+      prevHostRef.current = current
+      return
+    }
+    if (prev !== current) {
+      const newHostObj = (state.players || []).find(p => p.id === current) || {}
+      const newHostName = newHostObj.name || current || 'Unknown'
+      const toastId = `host_${Date.now()}`
+      const text = (current === myId) ? 'You are now the host' : `Host changed: ${newHostName}`
+      setToasts(t => [...t, { id: toastId, text }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
+      prevHostRef.current = current
+    }
+  }, [state && state.hostId])
+  useEffect(() => {
+    if (!state) return
+    // scan for privateHits where the current viewer (myId) has an entry with count >= 2
+    try {
+      const me = (state.players || []).find(p => p.id === myId) || {}
+      const privateHits = me.privateHits || {}
+      Object.keys(privateHits).forEach(targetId => {
+        const entries = privateHits[targetId] || []
+        entries.forEach(e => {
+          if (e && e.type === 'letter' && (Number(e.count) || 0) >= 2) {
+            const key = `${targetId}:${e.letter}:${e.count}`
+            if (!multiHitSeenRef.current[key]) {
+              multiHitSeenRef.current[key] = true
+              setToasts(t => [...t, { id: `mh_${Date.now()}`, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}` , multi: true }])
+              setTimeout(() => setToasts(t => t.filter(x => x.id !== `mh_${Date.now()}`)), 3500)
+            }
+          }
+        })
+      })
+    } catch (e) {}
     const timeouts = state.timeouts || {}
     const keys = Object.keys(timeouts)
     if (keys.length === 0) return
@@ -130,6 +171,28 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
   const currentTurnIndex = state.currentTurnIndex || 0
   const currentTurnId = (state.turnOrder || [])[currentTurnIndex]
+  // derive some end-of-game values and visual pieces at top-level so hooks are not called conditionally
+  const myName = playerName
+  const isWinner = state.winnerName === myName
+  // compute standings by hangmoney desc as a best-effort ranking
+  const standings = (state.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+
+  const confettiPieces = useMemo(() => {
+    if (!isWinner) return []
+    const colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
+    return new Array(48).fill(0).map(() => ({
+      left: Math.random() * 100,
+      delay: Math.random() * 0.8,
+      size: 6 + Math.random() * 12,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotate: Math.random() * 360
+    }))
+  }, [isWinner])
+
+  const cashPieces = useMemo(() => {
+    if (!state || !state.winnerByHangmoney) return []
+    return new Array(28).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, rotate: Math.random() * 360, top: -10 - (Math.random()*40) }))
+  }, [state && state.winnerByHangmoney])
 
   const modeBadge = (
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
@@ -453,7 +516,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} className="toast">{t.text}</div>
+          <div key={t.id} className={`toast ${t.multi ? 'multi-hit-toast' : ''}`}>
+            {t.multi && (
+              <>
+                <span className="confetti-like" />
+                <span className="confetti-like" />
+                <span className="confetti-like" />
+              </>
+            )}
+            {t.text}
+          </div>
         ))}
       </div>
 
