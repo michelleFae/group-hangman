@@ -93,8 +93,8 @@ button[disabled] {
 .victory-screen { text-align:center; padding: 36px; border-radius: 16px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); color: white }
 /* Confetti pieces for victory */
 .victory-screen.confetti { position: relative; overflow: visible }
-.confetti-piece { position: absolute; top: -10px; border-radius: 3px; opacity: 0.95; animation: confetti-drop 1.6s ease-in forwards }
-@keyframes confetti-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(320px) rotate(360deg); opacity: 1 } }
+.confetti-piece { position: absolute; top: -10px; border-radius: 3px; opacity: 0.95; animation: confetti-drop 3.4s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
+@keyframes confetti-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(100vh) rotate(720deg); opacity: 1 } }
 
 /* Sad screen for non-winners */
 .victory-screen.sad { background: linear-gradient(90deg, #8E1B1B, #A52828); color: #ffecec }
@@ -292,8 +292,8 @@ button[disabled] {
 .mode-badge { background: rgba(255,255,255,0.95); box-shadow: 0 8px 22px rgba(0,0,0,0.08); border-radius: 12px }
 
 /* adjust cash piece animation for confetti-like drop */
-.victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 1.6s ease-out forwards }
-@keyframes cash-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(260px) rotate(360deg); opacity: 1 } }
+.victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 3.0s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
+@keyframes cash-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(100vh) rotate(540deg); opacity: 1 } }
 
 /* private hit chips (repeat letters for occurrences) */
 .private-hit-chips { display:inline-flex; gap:6px; margin-left: 6px }
