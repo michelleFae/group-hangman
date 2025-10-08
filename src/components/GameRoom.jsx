@@ -391,198 +391,51 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   
 
-  // Component: per-player Play Again controls
+  // Component: host-only Play Again / Restart controls
   function PlayAgainControls({ isHost, myId, players }) {
     const [submitting, setSubmitting] = useState(false)
 
-    // robust updater: try modular dbUpdate, ref.update, or dynamic import fallback
-    async function safeUpdateRef(refOrPath, updates) {
-      // Diagnostics: record shapes so failures are easier to debug in different bundling environments
-      try {
-        // Avoid including raw function objects in logs (some browsers will attempt to inspect
-        // them and trigger errors by accessing caller/callee). Log booleans/types instead.
-        console.log('safeUpdateRef: diagnostics', {
-          typeof_dbUpdate: typeof dbUpdate,
-          dbUpdate_isFunction: typeof dbUpdate === 'function',
-          hasRefUpdateMethod: !!(refOrPath && typeof refOrPath.update === 'function')
-        })
-      } catch (ee) {}
-
-      // Strategy 1: dynamic import (most reliable across bundlers / mixed ESM/CJS)
-      try {
-        const mod = await import('firebase/database')
-        const updateFn = (mod && typeof mod.update === 'function') ? mod.update : (mod && mod.default && typeof mod.default.update === 'function') ? mod.default.update : null
-        if (typeof updateFn === 'function') {
-          return await updateFn(refOrPath, updates)
-        }
-      } catch (e) {
-        console.warn('safeUpdateRef: dynamic import update() failed', e)
-      }
-
-      // Strategy 2: instance ref.update (older namespaced SDKs sometimes expose this)
-      try {
-        if (refOrPath && typeof refOrPath.update === 'function') {
-          return await refOrPath.update(updates)
-        }
-      } catch (e) {
-        console.warn('safeUpdateRef: ref.update failed', e)
-      }
-
-      // Strategy 3: statically imported named update (may be a non-callable in some bundles)
-      try {
-        if (typeof dbUpdate === 'function') {
-          return await dbUpdate(refOrPath, updates)
-        } else {
-          console.warn('safeUpdateRef: static dbUpdate is not a function', { typeof_dbUpdate: typeof dbUpdate })
-        }
-      } catch (e) {
-        console.warn('safeUpdateRef: static dbUpdate threw', e)
-      }
-
-      throw new Error('No usable update() function available (dynamic import, ref.update, and static dbUpdate all failed)')
-    }
-
-    // Write per-player reset via REST-first PATCH (so only this player's node is reset)
-    async function optIn() {
-      if (!myId) return
+    // Host-only restart: reset per-player words, hangmoney, submission flags, clear wantsRematch, and set phase to 'waiting'
+    async function restartForAll() {
+      if (!isHost) return
       try {
         setSubmitting(true)
+        setIsResetting(true)
 
-        // First, mark this player as wanting a rematch (wantsRematch=true) and move them locally to lobby
-        const playerUpdates = { wantsRematch: true }
-        // Step A: try REST patch with auth token
-        let authToken = null
-        try {
-          if (window.__firebaseAuth && window.__firebaseAuth.currentUser && typeof window.__firebaseAuth.currentUser.getIdToken === 'function') {
-            authToken = await window.__firebaseAuth.currentUser.getIdToken()
-          }
-        } catch (eGetToken) {
-          console.warn('PlayAgain: could not getIdToken (continuing without token)', eGetToken)
-          authToken = null
-        }
-
-        try {
-          const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
-          if (!dbUrl) throw new Error('No database URL available for REST fallback')
-          const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}/players/${encodeURIComponent(myId)}.json${authToken ? `?auth=${authToken}` : ''}`
-          const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(playerUpdates) })
-          if (!res.ok) throw new Error('REST player patch failed: ' + res.status + ' ' + (await res.text()))
-        } catch (restErr) {
-          // Step B: SDK/update fallback
-          try {
-            const pRef = dbRef(db, `rooms/${roomId}/players/${myId}`)
-            await safeUpdateRef(pRef, playerUpdates)
-          } catch (sdkErr) {
-            // Provide richer diagnostics so the client logs show which path failed
-            try {
-              console.error('PlayAgain: REST player patch failed and SDK update failed', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))) })
-            } catch (ee) { console.error('PlayAgain: error while logging rematch failures', ee) }
-            // Final attempt: try a minimal REST write to the wantsRematch child specifically
-            try {
-              const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
-              if (dbUrl) {
-                const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
-                const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}/players/${encodeURIComponent(myId)}/wantsRematch.json${authToken ? `?auth=${authToken}` : ''}`
-                const r2 = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(true) })
-                if (r2.ok) {
-                  // success — proceed
-                } else {
-                  throw new Error('Minimal REST wantsRematch write failed: ' + r2.status + ' ' + (await r2.text()))
-                }
-              } else {
-                throw new Error('No dbUrl available for minimal REST fallback')
-              }
-            } catch (finalErr) {
-              try { console.error('PlayAgain: all attempts to set wantsRematch failed', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))), finalErr: (finalErr && (finalErr.stack || finalErr.message || String(finalErr))) }) } catch (ee) { console.error('PlayAgain: error logging final wantsRematch failure', ee) }
-              setToasts(t => [...t, { id: `rematch_fail_${Date.now()}`, text: 'Could not opt in for rematch (network/SDK error). Check console for details.' }])
-              return
-            }
-          }
-        }
-
-        // Now, reset all players' scores and submit state in the DB, but do NOT change room.phase
-        // Build updates for players subtree
-        const bulk = {}
+        const updates = { phase: 'waiting', open: true }
         ;(players || []).forEach(p => {
-          bulk[`players/${p.id}/hangmoney`] = 2
-          bulk[`players/${p.id}/hasWord`] = false
-          bulk[`players/${p.id}/word`] = null
-          bulk[`players/${p.id}/revealed`] = []
-          bulk[`players/${p.id}/eliminated`] = false
+          updates[`players/${p.id}/wantsRematch`] = null
+          updates[`players/${p.id}/hasWord`] = false
+          updates[`players/${p.id}/word`] = null
+          updates[`players/${p.id}/revealed`] = []
+          updates[`players/${p.id}/eliminated`] = false
+          updates[`players/${p.id}/hangmoney`] = 2
         })
 
-        // Try REST PATCH at room level for bulk player resets (skip if no-op)
-        if (Object.keys(bulk).length === 0) {
-          console.log('PlayAgain: bulk update is empty — skipping bulk REST/SDK update (no players)')
+        const ok = await attemptReset(updates)
+        if (ok) {
+          setToasts(t => [...t, { id: `rematch_host_ok_${Date.now()}`, text: 'Room restarted — waiting for players to rejoin.' }])
         } else {
-          try {
-            const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
-            if (!dbUrl) throw new Error('No database URL available for REST fallback')
-            const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
-            const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bulk) })
-            if (!res.ok) throw new Error('REST bulk player patch failed: ' + res.status + ' ' + (await res.text()))
-          } catch (restErr) {
-            // Fallback to SDK update for whole-room bulk update
-            try {
-              const roomRef = dbRef(db, `rooms/${roomId}`)
-              await safeUpdateRef(roomRef, bulk)
-            } catch (sdkErr) {
-              // Some SDK/update implementations choke on large multi-path objects in some bundles.
-              // As a safer fallback, try updating each player's node individually with simple objects.
-              const perErrors = []
-              for (let i = 0; i < (players || []).length; i++) {
-                const p = players[i]
-                try {
-                  const pRef = dbRef(db, `rooms/${roomId}/players/${p.id}`)
-                  const ups = { hangmoney: 2, hasWord: false, word: null, revealed: [], eliminated: false }
-                  await safeUpdateRef(pRef, ups)
-                } catch (perErr) {
-                  perErrors.push({ id: p.id, err: (perErr && (perErr.stack || perErr.message || String(perErr))) })
-                }
-              }
-              if (perErrors.length) {
-                try { console.error('PlayAgain: REST bulk player patch failed; SDK bulk update failed; per-player updates had errors', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))), perErrors }) } catch (ee) { console.error('PlayAgain: error logging per-player bulk failure', ee) }
-                setToasts(t => [...t, { id: `rematch_bulk_fail_${Date.now()}`, text: 'Could not reset scores for all players (network or SDK error). Check console for details.' }])
-              }
-              // Even if per-player updates partially failed, still move this player to lobby locally
-            }
-          }
+          setToasts(t => [...t, { id: `rematch_host_err_${Date.now()}`, text: 'Could not restart room for all players. Check console for details.' }])
         }
-
-        // reflect locally: show lobby view for this client (others remain on end screen)
-        setForcedLobbyView(true)
-        setToasts(t => [...t, { id: `rematch_ok_${Date.now()}`, text: 'Scores reset — you rejoined the lobby' }])
       } catch (e) {
-        try {
-          console.error('Could not set wantsRematch', e, {
-            dbUpdateType: typeof dbUpdate,
-            dbUpdateIsFunction: typeof dbUpdate === 'function',
-            hasRefUpdate: !!(dbRef && typeof dbRef === 'function'),
-            hasAuthCurrentUser: !!(window.__firebaseAuth && window.__firebaseAuth.currentUser),
-            getIdTokenFunc: window.__firebaseAuth && window.__firebaseAuth.currentUser ? typeof window.__firebaseAuth.currentUser.getIdToken : 'n/a'
-          })
-        } catch (ee) {
-          console.error('Logging error while handling rematch error', ee)
-        }
-        setToasts(t => [...t, { id: `rematch_err_${Date.now()}`, text: `Could not opt in for rematch: ${e && e.message ? e.message : String(e)}` }])
+        console.error('Host restart failed', e)
+        setToasts(t => [...t, { id: `rematch_host_err_${Date.now()}`, text: 'Could not restart room for all players. Check console for details.' }])
       } finally {
         setSubmitting(false)
+        setIsResetting(false)
       }
     }
 
-    // Show who has opted in
-    const opted = (players || []).filter(p => !!p.wantsRematch).map(p => p.name)
-
-    // If this client already forced to lobby, show a message instead
-    const meNode = (players || []).find(p => p.id === myId) || {}
-    if (forcedLobbyView || meNode.wantsRematch) {
-      return <div style={{ color: '#2e7d32' }}>You have rejoined the lobby — waiting for the host to start the next game.</div>
+    if (!isHost) {
+      // Non-hosts only see a passive message
+      return <div style={{ color: '#2e7d32' }}>Waiting for the host to restart the room.</div>
     }
 
     return (
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={optIn} disabled={submitting}>{submitting ? 'Saving…' : 'Play again'}</button>
-        <div style={{ fontSize: 13 }}>{opted.length} / {players.length} ready: {opted.join(', ')}</div>
+        <button onClick={restartForAll} disabled={submitting || isResetting}>{submitting || isResetting ? 'Restarting…' : 'Play again (restart)'} </button>
+        <div style={{ fontSize: 13 }}>{players.length} players</div>
       </div>
     )
   }
