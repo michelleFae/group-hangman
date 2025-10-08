@@ -176,6 +176,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // DO NOT auto-clear after a fixed timeout here — wait until DB reflects the change (see effect below)
       }
     })
+    // Show recent gain events (e.g., when someone gets +2 because another player's guess was wrong)
+    try {
+      (state.players || []).forEach(p => {
+        const lg = p.lastGain
+        if (lg && lg.amount && lg.ts) {
+          const key = `lg_${p.id}_${lg.ts}`
+          if (!multiHitSeenRef.current[key]) {
+            multiHitSeenRef.current[key] = true
+            const toastId = `lg_${Date.now()}`
+            setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
+            // schedule fade and removal
+            setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
+          }
+        }
+      })
+    } catch (e) {}
   }, [state])
 
   // clear pending deductions when we observe the DB has applied the hangmoney change
@@ -320,9 +337,35 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             updates[`players/${p.id}/eliminated`] = false
                             updates[`players/${p.id}/hangmoney`] = 2
                           })
-                          await dbUpdate(roomRef, updates)
+                          // debug: inspect dbUpdate and updates
+                          try {
+                            console.log('Reset: typeof dbUpdate =', typeof dbUpdate)
+                            console.log('Reset: updates preview', Object.keys(updates).slice(0,20))
+                          } catch (e) { console.warn('Reset: debug log failed', e) }
+                          try {
+                            if (typeof dbUpdate === 'function') {
+                              await dbUpdate(roomRef, updates)
+                            } else {
+                              // fallback: dynamically import update from firebase/database in case the static import failed
+                              try {
+                                const mod = await import('firebase/database')
+                                const fallbackUpdate = mod.update || mod.default?.update
+                                if (typeof fallbackUpdate === 'function') {
+                                  await fallbackUpdate(roomRef, updates)
+                                } else {
+                                  throw new Error('No update() function available from firebase/database')
+                                }
+                              } catch (impErr) {
+                                console.error('Reset: dynamic import fallback failed', impErr)
+                                throw impErr
+                              }
+                            }
+                          } catch (callErr) {
+                            console.error('Reset: db update call failed', callErr)
+                            throw callErr
+                          }
                         } catch (e) {
-                          console.warn('Could not reset room for replay', e)
+                          console.warn('Could not reset room for replay', e && e.stack ? e.stack : e)
                         } finally {
                           setIsResetting(false)
                           setShowConfirmReset(false)

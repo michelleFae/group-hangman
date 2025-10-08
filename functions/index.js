@@ -125,6 +125,8 @@ exports.processGuess = functions.database
             updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
             // reward the target for a wrong guess against them (delta)
             hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+            // write a visible recent gain event so the target client can show a toast
+            updates[`players/${targetId}/lastGain`] = { amount: 2, by: from, reason: 'wrongGuess', value: letter, ts: Date.now() }
           }
         }
         // update guessedBy for owner visibility (only add guesser once)
@@ -139,6 +141,7 @@ exports.processGuess = functions.database
           updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
           // reward the target for a wrong guess against them
           hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+          updates[`players/${targetId}/lastGain`] = { amount: 2, by: from, reason: 'wrongGuess', value: letter, ts: Date.now() }
         }
       }
     } else {
@@ -319,7 +322,16 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
   // optionally log timeout event and include the originating turn start timestamp (expiredTurnStartedAt)
   if (!curr.timeouts) curr.timeouts = {}
   const tkey = `t_${Date.now()}`
-  curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now(), turnStartedAt: expiredTurnStartedAt }
+        curr.timeouts[tkey] = { player: timedOutPlayerId, deducted: 2, ts: Date.now(), turnStartedAt: expiredTurnStartedAt }
+        // award +1 to the player who will now act (nextIndex)
+        const nextPlayerId = curr.turnOrder && curr.turnOrder[nextIndex]
+        if (nextPlayerId) {
+          if (!curr.players[nextPlayerId]) curr.players[nextPlayerId] = {}
+          const prev = typeof curr.players[nextPlayerId].hangmoney === 'number' ? curr.players[nextPlayerId].hangmoney : 0
+          curr.players[nextPlayerId].hangmoney = prev + 1
+          // mark a small visible gain so they see the +1 (optional)
+          curr.players[nextPlayerId].lastGain = { amount: 1, by: 'system', reason: 'turnStart', ts: Date.now() }
+        }
 
   console.log(`advanceTimedTurns: applied timeout room=${roomId} key=${tkey} player=${timedOutPlayerId} expiredTurnStartedAt=${expiredTurnStartedAt} newHang=${newHang}`)
 
@@ -341,7 +353,7 @@ exports.evictStalePlayers = functions.pubsub.schedule('every 5 minutes').onRun(a
   const roomsSnap = await db.ref('/rooms').once('value')
   const rooms = roomsSnap.val() || {}
   const now = Date.now()
-  const TTL = 20 * 60 * 1000 // 20 minutes
+  const TTL = 5 * 60 * 1000 // 5 minutes
 
   const tasks = Object.keys(rooms).map(async roomId => {
     const room = rooms[roomId]
@@ -355,16 +367,16 @@ exports.evictStalePlayers = functions.pubsub.schedule('every 5 minutes').onRun(a
       // skip host
       if (room.hostId && pid === room.hostId) return
       // prefer to skip authenticated users: if there's a uid/auth marker, don't evict
-      // best-effort: many authenticated users will have an id that matches a Firebase UID
-      // and may have additional metadata; if the node contains a field like `authProvider` or `uid` we avoid deleting.
       if (p && (p.uid || p.authProvider || p.isAuthenticated)) return
 
-      const last = (p && p.lastSeen) ? Number(p.lastSeen) : 0
-      if (!last || (now - last) > TTL) {
+      // prefer explicit leftAt timestamp (client marks leftAt when a player leaves)
+      // otherwise fall back to lastSeen
+      const stamp = (p && p.leftAt) ? Number(p.leftAt) : ((p && p.lastSeen) ? Number(p.lastSeen) : 0)
+      if (!stamp || (now - stamp) > TTL) {
         // mark for deletion
         updates[`players/${pid}`] = null
         hasUpdates = true
-        console.log(`Evicting stale player ${pid} from room ${roomId}`)
+        console.log(`Evicting stale player ${pid} from room ${roomId} (stamp=${stamp})`)
       }
     })
 
@@ -385,6 +397,28 @@ exports.evictStalePlayers = functions.pubsub.schedule('every 5 minutes').onRun(a
             const candidate = Object.keys(postPlayers)[0]
             console.log(`Transferring host for room ${roomId} to ${candidate}`)
             await db.ref(`/rooms/${roomId}`).update({ hostId: candidate })
+          }
+          try {
+            // check for single active player (not eliminated and present !== false)
+            const active = Object.keys(postPlayers).filter(pid => {
+              const p = postPlayers[pid]
+              if (!p) return false
+              if (p.eliminated) return false
+              // treat present===false as absent; undefined implies present
+              if (p.present === false) return false
+              return true
+            })
+            if (active.length === 1) {
+              const winnerId = active[0]
+              const winner = postPlayers[winnerId]
+              const winnerName = (winner && winner.name) ? winner.name : null
+              console.log(`Room ${roomId} has single active player ${winnerId}; ending game`)
+              const roomUpdates = { phase: 'ended', winnerId: winnerId }
+              if (winnerName) roomUpdates.winnerName = winnerName
+              await db.ref(`/rooms/${roomId}`).update(roomUpdates)
+            }
+          } catch (e) {
+            console.error('evictStalePlayers: failed to check/close room after eviction', roomId, e)
           }
         }
       } catch (e) {

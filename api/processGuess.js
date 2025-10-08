@@ -170,6 +170,12 @@ module.exports = async (req, res) => {
         const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
         updates[`currentTurnIndex`] = nextIndex
         updates[`currentTurnStartedAt`] = Date.now()
+        // award +1 hangmoney to the player whose turn just started
+        try {
+          const nextPlayer = effectiveTurnOrder[nextIndex]
+          const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].hangmoney === 'number') ? players[nextPlayer].hangmoney : 0
+          updates[`players/${nextPlayer}/hangmoney`] = prevNextHang + 1
+        } catch (e) {}
       }
     }
 

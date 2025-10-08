@@ -371,6 +371,15 @@ export default function useGameRoom(roomId, playerName) {
         const playersObj = room.players || {}
         // if this player is the host, pick a replacement if one exists
         if (room.hostId && room.hostId === pid) {
+          // If the game has ended, prefer to keep the room and host node so the host
+          // can refresh and see the same end screen. Only transfer or delete the room
+          // when the game is not in the 'ended' phase.
+          if (room.phase === 'ended') {
+            console.log('leaveRoom: host leaving during ended phase — preserving room and host node to allow refresh/rejoin')
+            // stop heartbeat but do not remove the host node or room
+            try { stopHeartbeat() } catch (e) {}
+            return
+          }
           const other = Object.keys(playersObj).find(k => k !== pid)
           if (other) {
             // atomically remove player and set new host
@@ -385,12 +394,16 @@ export default function useGameRoom(roomId, playerName) {
             return
           }
         }
-        // not host, just remove node
+        // not host: mark the player as left (don't remove immediately) so their avatar
+        // remains visible and guessable for a short grace period. Eviction will remove
+        // them after the configured TTL (server-side).
         const pRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
-        try { await dbSet(pRef, null) } catch (e) { console.warn('Could not remove player node on leave', e) }
+        try {
+          await update(pRef, { leftAt: Date.now(), lastSeen: Date.now(), present: false })
+        } catch (e) { console.warn('Could not mark player as left on leave', e) }
       } catch (e) {
         // best-effort: attempt direct remove
-        try { const pRef = dbRef(db, `rooms/${roomId}/players/${playerIdRef.current}`); await dbSet(pRef, null) } catch (err) { console.warn('leaveRoom fallback remove failed', err) }
+        try { const pRef = dbRef(db, `rooms/${roomId}/players/${playerIdRef.current}`); await update(pRef, { leftAt: Date.now(), lastSeen: Date.now(), present: false }) } catch (err) { console.warn('leaveRoom fallback mark-left failed', err) }
       }
     })()
   }
