@@ -477,37 +477,75 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             try {
               console.error('PlayAgain: REST player patch failed and SDK update failed', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))) })
             } catch (ee) { console.error('PlayAgain: error while logging rematch failures', ee) }
-            setToasts(t => [...t, { id: `rematch_fail_${Date.now()}`, text: 'Could not opt in for rematch (network or SDK error). Check console for details.' }])
-            return
+            // Final attempt: try a minimal REST write to the wantsRematch child specifically
+            try {
+              const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
+              if (dbUrl) {
+                const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
+                const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}/players/${encodeURIComponent(myId)}/wantsRematch.json${authToken ? `?auth=${authToken}` : ''}`
+                const r2 = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(true) })
+                if (r2.ok) {
+                  // success — proceed
+                } else {
+                  throw new Error('Minimal REST wantsRematch write failed: ' + r2.status + ' ' + (await r2.text()))
+                }
+              } else {
+                throw new Error('No dbUrl available for minimal REST fallback')
+              }
+            } catch (finalErr) {
+              try { console.error('PlayAgain: all attempts to set wantsRematch failed', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))), finalErr: (finalErr && (finalErr.stack || finalErr.message || String(finalErr))) }) } catch (ee) { console.error('PlayAgain: error logging final wantsRematch failure', ee) }
+              setToasts(t => [...t, { id: `rematch_fail_${Date.now()}`, text: 'Could not opt in for rematch (network/SDK error). Check console for details.' }])
+              return
+            }
           }
         }
 
         // Now, reset all players' scores and submit state in the DB, but do NOT change room.phase
         // Build updates for players subtree
         const bulk = {}
-        (players || []).forEach(p => {
+        ;(players || []).forEach(p => {
           bulk[`players/${p.id}/hangmoney`] = 2
           bulk[`players/${p.id}/hasWord`] = false
           bulk[`players/${p.id}/word`] = null
           bulk[`players/${p.id}/revealed`] = []
           bulk[`players/${p.id}/eliminated`] = false
         })
-        // Try REST PATCH at room level for bulk player resets
-        try {
-          const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
-          if (!dbUrl) throw new Error('No database URL available for REST fallback')
-          const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
-          const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bulk) })
-          if (!res.ok) throw new Error('REST bulk player patch failed: ' + res.status + ' ' + (await res.text()))
-        } catch (restErr) {
-          // Fallback to SDK update for whole-room bulk update
+
+        // Try REST PATCH at room level for bulk player resets (skip if no-op)
+        if (Object.keys(bulk).length === 0) {
+          console.log('PlayAgain: bulk update is empty — skipping bulk REST/SDK update (no players)')
+        } else {
           try {
-            const roomRef = dbRef(db, `rooms/${roomId}`)
-            await safeUpdateRef(roomRef, bulk)
-          } catch (sdkErr) {
-            try { console.error('PlayAgain: REST bulk player patch failed and SDK bulk update failed', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))) }) } catch (ee) { console.error('PlayAgain: error logging bulk failure', ee) }
-            setToasts(t => [...t, { id: `rematch_bulk_fail_${Date.now()}`, text: 'Could not reset scores for all players (network or SDK error). Check console for details.' }])
-            // Even if bulk reset fails, still move this player to lobby locally
+            const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
+            if (!dbUrl) throw new Error('No database URL available for REST fallback')
+            const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
+            const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bulk) })
+            if (!res.ok) throw new Error('REST bulk player patch failed: ' + res.status + ' ' + (await res.text()))
+          } catch (restErr) {
+            // Fallback to SDK update for whole-room bulk update
+            try {
+              const roomRef = dbRef(db, `rooms/${roomId}`)
+              await safeUpdateRef(roomRef, bulk)
+            } catch (sdkErr) {
+              // Some SDK/update implementations choke on large multi-path objects in some bundles.
+              // As a safer fallback, try updating each player's node individually with simple objects.
+              const perErrors = []
+              for (let i = 0; i < (players || []).length; i++) {
+                const p = players[i]
+                try {
+                  const pRef = dbRef(db, `rooms/${roomId}/players/${p.id}`)
+                  const ups = { hangmoney: 2, hasWord: false, word: null, revealed: [], eliminated: false }
+                  await safeUpdateRef(pRef, ups)
+                } catch (perErr) {
+                  perErrors.push({ id: p.id, err: (perErr && (perErr.stack || perErr.message || String(perErr))) })
+                }
+              }
+              if (perErrors.length) {
+                try { console.error('PlayAgain: REST bulk player patch failed; SDK bulk update failed; per-player updates had errors', { restErr: (restErr && (restErr.stack || restErr.message || String(restErr))), sdkErr: (sdkErr && (sdkErr.stack || sdkErr.message || String(sdkErr))), perErrors }) } catch (ee) { console.error('PlayAgain: error logging per-player bulk failure', ee) }
+                setToasts(t => [...t, { id: `rematch_bulk_fail_${Date.now()}`, text: 'Could not reset scores for all players (network or SDK error). Check console for details.' }])
+              }
+              // Even if per-player updates partially failed, still move this player to lobby locally
+            }
           }
         }
 
@@ -681,7 +719,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
   // If the game has ended, render only the victory screen. This return comes after all hooks
   // and derived values so it won't upset hook ordering.
-  if (phase === 'ended') {
+  if ( phase === 'ended') { // true) {
     return (
       <>
         {modeBadge}
