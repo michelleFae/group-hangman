@@ -87,29 +87,42 @@ module.exports = async (req, res) => {
       if (count > 0) {
         const existing = prevRevealed.filter(x => x === letter).length
         const toAdd = Math.max(0, count - existing)
+
         if (toAdd > 0) {
+          // reveal newly found occurrences only and award for those
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
+
+          const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+          updates[`players/${from}/hangmoney`] = prevHang + (2 * toAdd)
+
+          const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+          let merged = false
+          for (let i = 0; i < prevHits.length; i++) {
+            const h = prevHits[i]
+            if (h && h.type === 'letter' && h.letter === letter) {
+              prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
+              merged = true
+              break
+            }
+          }
+          if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
+          updates[`players/${from}/privateHits/${targetId}`] = prevHits
+        } else {
+          // letter was already fully revealed — treat this as a wrong guess
+          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+          if (!prevWrong.includes(letter)) {
+            prevWrong.push(letter)
+            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+            // reward the target for a wrong guess against them
+            const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+            updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+          }
         }
 
-        const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + (2 * count)
         const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
         if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
         updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
-
-        const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-        let merged = false
-        for (let i = 0; i < prevHits.length; i++) {
-          const h = prevHits[i]
-          if (h && h.type === 'letter' && h.letter === letter) {
-            prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
-            merged = true
-            break
-          }
-        }
-        if (!merged) prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
-        updates[`players/${from}/privateHits/${targetId}`] = prevHits
       } else {
         const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
         if (!prevWrong.includes(letter)) {

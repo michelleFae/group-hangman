@@ -93,26 +93,18 @@ exports.processGuess = functions.database
       const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
 
       if (count > 0) {
-        // If the letter has already been revealed at all, treat further guesses as wrong
-        const alreadyRevealed = prevRevealed.includes(letter)
-        if (alreadyRevealed) {
-          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
-          if (!prevWrong.includes(letter)) {
-            prevWrong.push(letter)
-            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them (as a delta)
-            hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
-          }
-        } else {
-          // reveal all occurrences and award for each occurrence
-          const toAdd = count
+        const existing = prevRevealed.filter(x => x === letter).length
+        const toAdd = Math.max(0, count - existing)
+
+        if (toAdd > 0) {
+          // reveal newly found occurrences only
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
 
-          // award 2 hangmoney per newly revealed occurrence
-          hangIncrement = 2 * toAdd
+          // award 2 hangmoney per newly revealed occurrence (as a delta)
+          hangDeltas[from] = (hangDeltas[from] || 0) + (2 * toAdd)
 
-          // record or aggregate private hit for guesser: keep a single entry per letter and sum counts
+          // record or aggregate private hit for guesser
           const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
           let merged = false
           for (let i = 0; i < prevHits.length; i++) {
@@ -125,7 +117,20 @@ exports.processGuess = functions.database
           }
           if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
           updates[`players/${from}/privateHits/${targetId}`] = prevHits
+        } else {
+          // letter was already fully revealed — treat this as a wrong guess
+          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+          if (!prevWrong.includes(letter)) {
+            prevWrong.push(letter)
+            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+            // reward the target for a wrong guess against them (delta)
+            hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+          }
         }
+        // update guessedBy for owner visibility (only add guesser once)
+        const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
+        if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
+        updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
       } else {
         // letter not in word: wrong guess
         const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
@@ -133,15 +138,9 @@ exports.processGuess = functions.database
           prevWrong.push(letter)
           updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
           // reward the target for a wrong guess against them
-          const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
-          updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+          hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
         }
       }
-
-        // update guessedBy for owner visibility (only add guesser once)
-        const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
-        if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
-        updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
     } else {
       const guessWord = lc(value)
       const targetWord = lc(target.word || '')
