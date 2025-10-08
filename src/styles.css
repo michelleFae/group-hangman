@@ -105,6 +105,23 @@ button[disabled] {
 .standings strong { font-size: 15px }
 .standings li span { display:inline-block; width: 28px }
 
+/* Improve contrast for final standings on sad victory screen */
+.victory-screen.sad .standings {
+  background: rgba(255,255,255,0.08); /* subtle card behind the standings */
+  padding: 12px;
+  border-radius: 10px;
+  display: inline-block;
+}
+.victory-screen.sad .standings h4 {
+  color: #fff; /* ensure heading is visible */
+}
+.victory-screen.sad .standings li {
+  color: #fff; /* white text for list items */
+}
+.victory-screen.sad .standings li span {
+  color: #fff;
+}
+
 /* Modal overlay for host confirmation */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index: 2000 }
 .modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: rgba(255,255,255,0.98); }

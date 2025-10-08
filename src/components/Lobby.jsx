@@ -132,7 +132,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           const snap = await dbGet(dbRef(db, `rooms/${initialRoom}`))
           const rv = snap.val() || {}
           if (rv && rv.hostId && rv.hostId === auth.currentUser.uid) isHostAuth = true
-          // also allow rejoin when the authenticated uid corresponds to a player node in the room
+          // also allow rejoin when the Fauthenticated uid corresponds to a player node in the room
           if (!isHostAuth && rv && rv.players && rv.players[auth.currentUser.uid]) {
             console.log('Lobby: auto-join allowed because auth UID matches a player node in the room')
             isHostAuth = true // treat as allowed to auto-join, proceed below to call onJoin
