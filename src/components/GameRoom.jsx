@@ -158,8 +158,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     })
   }, [state])
 
-  if (!state) return <div>Loading room...</div>
-
   const phase = state.phase || 'lobby'
   const hostId = state.hostId
   const players = state.players || []
