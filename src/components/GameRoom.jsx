@@ -410,6 +410,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
           updates[`players/${p.id}/hangmoney`] = 2
+          // Clear viewer-specific guess tracking so old guesses don't persist
+          updates[`players/${p.id}/privateHits`] = null
+          updates[`players/${p.id}/privateWrong`] = null
+          updates[`players/${p.id}/privateWrongWords`] = null
         })
 
         const ok = await attemptReset(updates)
