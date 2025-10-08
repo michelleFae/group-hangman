@@ -158,22 +158,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     })
   }, [state])
 
-  const phase = state.phase || 'lobby'
-  const hostId = state.hostId
-  const players = state.players || []
+  const phase = state?.phase || 'lobby'
+  const hostId = state?.hostId
+  const players = state?.players || []
   const playerIdToName = {}
   players.forEach(p => { playerIdToName[p.id] = p.name })
   const submittedCount = players.filter(p => p.hasWord).length
 
   const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
-  const currentTurnIndex = state.currentTurnIndex || 0
-  const currentTurnId = (state.turnOrder || [])[currentTurnIndex]
+  const currentTurnIndex = state?.currentTurnIndex || 0
+  const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
   // derive some end-of-game values and visual pieces at top-level so hooks are not called conditionally
   const myName = playerName
-  const isWinner = state.winnerName === myName
+  const isWinner = state?.winnerName === myName
   // compute standings by hangmoney desc as a best-effort ranking
-  const standings = (state.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+  const standings = (state?.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
 
   const confettiPieces = useMemo(() => {
     if (!isWinner) return []
