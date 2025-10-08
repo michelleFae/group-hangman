@@ -199,7 +199,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           setPassword(e.target.value)
           console.log('Password updated to:', e.target.value)
         }} />
-        <button onClick={handleCreate} disabled={!!(room && room.toString().trim())}>Create</button>
+        <button onClick={handleCreate} disabled={!!(room && room.toString().trim()) || !(name && name.toString().trim())}>Create</button>
 
         {createdRoom && (
           <div className="share">

@@ -9,6 +9,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId } = useGameRoom(roomId, playerName)
   const [word, setWord] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [wordError, setWordError] = useState('')
+  const [isCheckingDictionary, setIsCheckingDictionary] = useState(false)
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
   const [starterEnabled, setStarterEnabled] = useState(false)
@@ -76,6 +78,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const processedTimeoutPlayersRef = useRef({})
   // also dedupe by timeout key so the same timeout entry doesn't re-trigger repeatedly
   const processedTimeoutKeysRef = useRef({})
+  // track previous hangmoney values so we can show gain toasts when anyone receives points
+  const prevHangRef = useRef({})
   // track expected hangmoney values after a pending deduction so the UI can wait for DB confirmation
   const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
@@ -191,6 +195,26 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
           }
         }
+      })
+    } catch (e) {}
+
+    // Show a generic fading toast for any positive hangmoney deltas (covers cases where server
+    // updated hangmoney directly without writing lastGain). Use prevHangRef to avoid showing
+    // toasts on initial load.
+    try {
+      (state.players || []).forEach(p => {
+        const pid = p.id
+        const prev = typeof prevHangRef.current[pid] === 'number' ? prevHangRef.current[pid] : null
+        const nowVal = typeof p.hangmoney === 'number' ? p.hangmoney : 0
+        if (prev !== null && nowVal > prev) {
+          const delta = nowVal - prev
+          const toastId = `gain_${pid}_${Date.now()}`
+          setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
+          setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
+        }
+        // record current for next comparison
+        prevHangRef.current[pid] = nowVal
       })
     } catch (e) {}
   }, [state])
@@ -346,17 +370,34 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             if (typeof dbUpdate === 'function') {
                               await dbUpdate(roomRef, updates)
                             } else {
-                              // fallback: dynamically import update from firebase/database in case the static import failed
+                              // fallback: try dynamic import and multiple strategies
                               try {
                                 const mod = await import('firebase/database')
-                                const fallbackUpdate = mod.update || mod.default?.update
-                                if (typeof fallbackUpdate === 'function') {
-                                  await fallbackUpdate(roomRef, updates)
+                                console.log('Reset: dynamic import returned keys:', Object.keys(mod || {}))
+                                if (typeof mod.update === 'function') {
+                                  await mod.update(roomRef, updates)
+                                } else if (mod.default && typeof mod.default.update === 'function') {
+                                  await mod.default.update(roomRef, updates)
+                                } else if (roomRef && typeof roomRef.update === 'function') {
+                                  // compat-style ref.update
+                                  await roomRef.update(updates)
                                 } else {
-                                  throw new Error('No update() function available from firebase/database')
+                                  // Last resort: try REST PATCH to the realtime DB using an ID token if available
+                                  try {
+                                    const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
+                                    // determine DB URL: prefer runtime-injected global, otherwise try to infer from window.location or env var
+                                    const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
+                                    if (!dbUrl) throw new Error('No database URL available for REST fallback')
+                                    const url = `${dbUrl.replace(/\/$/, '')}/rooms/${encodeURIComponent(roomId)}.json${authToken ? `?auth=${authToken}` : ''}`
+                                    const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) })
+                                    if (!res.ok) throw new Error('REST fallback failed: ' + res.status + ' ' + (await res.text()))
+                                  } catch (restErr) {
+                                    console.error('Reset: REST fallback failed', restErr)
+                                    throw restErr
+                                  }
                                 }
                               } catch (impErr) {
-                                console.error('Reset: dynamic import fallback failed', impErr)
+                                console.error('Reset: dynamic import/fallbacks failed', impErr)
                                 throw impErr
                               }
                             }
@@ -477,21 +518,36 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   async function handleSubmitWord() {
     const candidate = (word || '').toString().trim()
+    // client-side safety checks (length and characters)
     if (!candidate) {
-      alert('Please enter a word')
+      setWordError('Please enter a word')
+      return
+    }
+    if (candidate.length === 1) {
+      setWordError('Please pick a word that is at least 2 letters long.')
       return
     }
     if (!/^[a-zA-Z]+$/.test(candidate)) {
-      alert('Words may only contain letters. No spaces or punctuation.')
+      setWordError('Words may only contain letters. No spaces or punctuation.')
       return
     }
+    setWordError('')
+    // perform dictionary check (may be slow) and show a small spinner state
+    setIsCheckingDictionary(true)
     const ok = await isEnglishWord(candidate)
+    setIsCheckingDictionary(false)
     if (!ok) {
-      alert('That doesn\'t look like an English word. Please pick another.')
+      setWordError("That doesn't look like an English word. Please pick another.")
       return
     }
-    await submitWord(candidate)
-    setSubmitted(true)
+    // call submitWord and only mark submitted when it succeeds
+    try {
+      const success = await submitWord(candidate)
+      if (success) setSubmitted(true)
+      else setWordError('Submission rejected by server')
+    } catch (e) {
+      setWordError('Submission failed — please try again')
+    }
   }
 
   return (

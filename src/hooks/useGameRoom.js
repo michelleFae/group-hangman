@@ -210,6 +210,11 @@ export default function useGameRoom(roomId, playerName) {
     }
 
     const newPlayerRef = dbPush(playersRef)
+    // ensure we have a display name before creating an anonymous player
+    if (!playerName || !playerName.toString().trim()) {
+      console.warn('joinRoom aborted: display name required to create anonymous player')
+      return
+    }
     playerIdRef.current = newPlayerRef.key
     // pick color and set player using the pushed key
     pickColorAndSetPlayer(newPlayerRef.key).then(chosen => {
@@ -305,6 +310,11 @@ export default function useGameRoom(roomId, playerName) {
     }
   const playerRef = dbRef(db, `rooms/${roomId}/players/${uid}`)
   const stored = (word || '').toString().trim().toLowerCase()
+  // disallow one-letter words (extra safeguard server-side)
+  if (stored.length === 1) {
+    console.warn('submitWord rejected: single-letter words are not allowed')
+    return false
+  }
   // Use update() so we don't overwrite existing fields like color or private lists
   await update(playerRef, { hasWord: true, word: stored, name: playerName })
     const playersSnap = await get(dbRef(db, `rooms/${roomId}/players`))
@@ -352,6 +362,7 @@ export default function useGameRoom(roomId, playerName) {
     } catch (e) {
       console.warn('submitWord post-processing failed', e)
     }
+    return true
   }
 
   function leaveRoom() {
