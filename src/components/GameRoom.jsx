@@ -594,6 +594,43 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
   }, [state?.phase])
 
+  // If we're the host and everyone has opted into rematch (wantsRematch=true), perform a room reset.
+  const resetAttemptRef = useRef(0)
+  useEffect(() => {
+    if (!state) return
+    if (!isHost) return
+    if (state.phase !== 'ended') return
+    const playersArr = state.players || []
+    if (playersArr.length === 0) return
+    const allReady = playersArr.every(p => !!p.wantsRematch)
+    if (!allReady) return
+    // debounce: avoid running multiple times within a short window
+    const now = Date.now()
+    if (now - (resetAttemptRef.current || 0) < 3000) return
+    resetAttemptRef.current = now
+    ;(async () => {
+      try {
+        setIsResetting(true)
+        // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
+        const updates = { phase: 'lobby', open: true }
+        playersArr.forEach(p => {
+          updates[`players/${p.id}/wantsRematch`] = null
+          updates[`players/${p.id}/hasWord`] = false
+          updates[`players/${p.id}/word`] = null
+          updates[`players/${p.id}/revealed`] = []
+          updates[`players/${p.id}/eliminated`] = false
+          // preserve hangmoney if you want; here we leave it as-is so clients control their own reset
+        })
+        const ok = await attemptReset(updates)
+        if (!ok) console.warn('Host reset attempted but failed; players may still be opted in')
+      } catch (e) {
+        console.error('Host attempted rematch reset failed', e)
+      } finally {
+        setIsResetting(false)
+      }
+    })()
+  }, [state?.phase, state?.players, isHost])
+
   async function isEnglishWord(w) {
     const candidate = (w || '').toString().trim().toLowerCase()
     if (!/^[a-z]+$/.test(candidate)) return false
