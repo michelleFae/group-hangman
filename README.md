@@ -2,37 +2,26 @@ Group Hangman - real-time multiplayer hangman
 
 Overview
 --
-This repo contains a starter for "Group Hangman": a realtime, password-protected room game where each player sets a secret word and others guess.
+This repo is a realtime, password-protected Group Hangman game built with React + Vite and Firebase Realtime Database. It includes two ways to run the authoritative guess processor:
+
+- A Vercel-friendly serverless HTTP handler at `api/processGuess.js` (recommended for easy deployment on Vercel).
+- A reference Firebase Cloud Functions implementation under `functions/` (optional; useful if you prefer Firebase functions or scheduled jobs).
 
 Stack
 --
 - React + Vite (frontend)
-- Firebase Realtime Database (realtime, no custom server)
-- Vercel (free hosting for front-end)
+- Firebase Realtime Database (realtime state)
+- Vercel (recommended hosting for frontend + serverless API)
 
-Quick start
+Quick start (local)
 --
 1. Install dependencies:
 
    npm install
 
-2. Add Firebase config: open `src/firebase.js` and paste your project's config.
-    You must include either `databaseURL` or `projectId` in the config for the Realtime Database to work.
-    Example `firebaseConfig` (replace values):
+2. Add Firebase config: open `src/firebase.js` and paste your project's client config. Ensure it includes `databaseURL` or `projectId` for Realtime Database access.
 
-    {
-       apiKey: 'ABC...',
-       authDomain: 'your-project.firebaseapp.com',
-       databaseURL: 'https://your-project-default-rtdb.firebaseio.com',
-       projectId: 'your-project',
-       // ...other fields
-    }
-
-    If you don't add the config the app will still load in local mode but realtime features will be disabled until you paste the values and restart the dev server.
-
-Environment (.env) setup (recommended)
---
-Create a file named `.env.local` in the project root and add your Firebase config as Vite env vars (they must start with VITE_):
+3. (optional) Create `.env.local` with Vite-friendly env vars (prefix with VITE_):
 
 ```
 VITE_FIREBASE_API_KEY=your_api_key
@@ -44,36 +33,101 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 ```
 
-After creating `.env.local`, restart the dev server so Vite picks up the new env variables.
+4. Run dev server:
 
-3. Run dev server:
-
-   npm run dev
-
-Deploy to Vercel
---
-1. Create a Vercel account (free) and connect your GitHub repo.
-2. Set environment variables if needed (none required for frontend-only with public Firebase).
-3. Deploy the main branch.
-
-Notes and next steps
---
-- The code includes a minimal Firebase hook `useGameRoom.js` that writes to `rooms/{roomId}`. It is a scaffold — you must implement server-side rules, authentication, and proper transaction logic in the database rules console.
-- Validate words using a dictionary API or a client-side word list before accepting them.
-- Password protection should store only a hash of the password in the DB (use bcrypt on a server). For a serverless approach you can derive a room key client-side from the password with a KDF (e.g. PBKDF2) and write only the derived key.
-
-Server-side guess processing (recommended)
---
-This repo includes a Firebase Cloud Function that processes guess queue entries authoritatively so clients cannot cheat. The function lives in `functions/index.js` and listens to `rooms/{roomId}/queue/{pushId}`. To deploy:
-
-1) Install functions dependencies and deploy:
-
-```bash
-cd functions
-npm install
-firebase deploy --only functions:processGuess
+```powershell
+npm run dev
 ```
 
-2) Update your Realtime Database rules so clients cannot write to `players/*/revealed`, `players/*/hangmoney`, `players/*/eliminated`, or `rooms/*/turnOrder` directly. Let the Cloud Function be the authoritative updater for those fields.
+Open http://localhost:5173 and test the app.
 
-If you'd like, I can add a recommended `database.rules.json` snippet tuned for this function — tell me if you want that and I'll add it next.
+Note on authoritative processing
+--
+Client guesses are either (A) sent to a serverless API (`/api/processGuess`) when `VITE_USE_SERVERLESS` is set to `1`/`true`, or (B) pushed into the Realtime DB queue `rooms/{roomId}/queue` (fallback). In the latter case you need a consumer to process the queue (either the Cloud Function in `functions/` or a worker you run). Without a consumer, queued guesses won't be processed.
+
+Deploying to Vercel (serverless)
+--
+This repo is ready to deploy to Vercel. The serverless handler `api/processGuess.js` is compatible with Vercel Functions and will be deployed alongside the frontend automatically.
+
+Environment variables to set in Vercel (Project Settings > Environment Variables):
+
+- FIREBASE_SERVICE_ACCOUNT (required for serverless handler)
+  - The JSON service account credentials for a Firebase service account that has Database Admin privileges. You may paste the raw JSON or a base64-encoded JSON string.
+- FIREBASE_DATABASE_URL (required for serverless handler)
+  - Example: `https://your-project-id.firebaseio.com`
+- VITE_USE_SERVERLESS (client-side toggle)
+  - Set to `1` or `true` to make the client call `/api/processGuess` instead of pushing into the DB queue.
+
+Steps to deploy:
+1. Import this repository into Vercel (or connect via GitHub).
+2. Add the three environment variables above in the Project > Environment Variables panel.
+3. Set Build Command: `npm run build` and Output Directory: `dist`.
+4. Deploy (Vercel will publish the frontend and the serverless function at `/api/processGuess`).
+
+Local serverless testing with Vercel CLI
+--
+You can test the serverless function locally with the Vercel CLI:
+
+```powershell
+# install vercel CLI if necessary
+npm i -g vercel
+# run the project locally with serverless functions
+vercel dev
+```
+
+Ensure your environment variables (FIREBASE_SERVICE_ACCOUNT, FIREBASE_DATABASE_URL, VITE_USE_SERVERLESS) are available to `vercel dev` (via shell env or a local env file).
+
+Firebase emulator (optional)
+--
+If you prefer to run things locally without deploying to Vercel, use the Firebase emulator to test database and functions behaviour.
+
+```powershell
+npm i -g firebase-tools
+firebase login
+firebase init emulators
+firebase emulators:start --only database,functions
+```
+
+Notes: the emulator lets you run the Cloud Functions reference in `functions/index.js` without enabling Blaze in your Firebase project.
+
+Environment variables (summary)
+--
+- FIREBASE_SERVICE_ACCOUNT: JSON or base64 JSON of a service account with Database Admin privileges (required by `api/processGuess.js`).
+- FIREBASE_DATABASE_URL: Realtime Database URL (required by `api/processGuess.js`).
+- VITE_USE_SERVERLESS: `1` or `true` to enable serverless processing from the client.
+
+How guesses are processed (overview)
+--
+There are two supported approaches in this repo:
+
+1. Serverless HTTP handler (recommended for Vercel) — `api/processGuess.js`:
+   - Verifies the caller's Firebase ID token using Admin SDK.
+   - Validates turn order, processes letter/word guesses, applies hangmoney changes, reveals letters, marks eliminations, and advances the turn.
+
+2. Firebase Cloud Function / queue consumer — `functions/index.js`:
+   - Reference implementation that consumes the DB queue and can also run scheduled jobs for timed turns and eviction of stale anonymous players.
+   - Useful if you prefer Firebase-native execution or need scheduled background jobs. Some scheduled features may require Blaze.
+
+Frontend notes and behavior
+--
+- Anonymous players: an anonymous player id is stored in localStorage under `gh_anon_<roomId>` so a refresh will reattach the same player node if present server-side.
+- Pending timeout penalties: frontend displays temporary pending -2 deductions when timeouts are observed; the UI clears the pending marker only after the DB reflects the deduction.
+- Starter bonus: the host can enable a starter bonus when starting the game; the client awards and displays the starter bonus as part of the submit/start flow.
+
+Security & rules
+--
+You should lock down your Realtime Database rules so clients cannot directly modify authoritative game fields (hangmoney, eliminated, revealed, turnOrder, etc.). Use the serverless handler or Cloud Function as the only trusted writer for those fields.
+
+Troubleshooting & tips
+--
+- If the client keeps pushing to the DB queue but nothing happens, verify you have either deployed the serverless function (and set `VITE_USE_SERVERLESS=true`) or deployed/started a queue consumer (Cloud Function or worker).
+- For Vercel deployments make sure `FIREBASE_SERVICE_ACCOUNT` is present and correctly formatted (JSON vs base64). If the serverless function logs "Missing FIREBASE_SERVICE_ACCOUNT", check that variable.
+- If anonymous rejoin fails after refresh, check localStorage for `gh_anon_<roomId>` and confirm the corresponding player node still exists in the DB.
+
+Contributing
+--
+Contributions welcome. Open an issue or PR with a clear description of the change.
+
+License
+--
+MIT
