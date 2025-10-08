@@ -399,9 +399,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     async function safeUpdateRef(refOrPath, updates) {
       // Diagnostics: record shapes so failures are easier to debug in different bundling environments
       try {
+        // Avoid including raw function objects in logs (some browsers will attempt to inspect
+        // them and trigger errors by accessing caller/callee). Log booleans/types instead.
         console.log('safeUpdateRef: diagnostics', {
           typeof_dbUpdate: typeof dbUpdate,
-          dbUpdate_value: dbUpdate,
+          dbUpdate_isFunction: typeof dbUpdate === 'function',
           hasRefUpdateMethod: !!(refOrPath && typeof refOrPath.update === 'function')
         })
       } catch (ee) {}
@@ -431,7 +433,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (typeof dbUpdate === 'function') {
           return await dbUpdate(refOrPath, updates)
         } else {
-          console.warn('safeUpdateRef: static dbUpdate is not a function', { typeof_dbUpdate: typeof dbUpdate, dbUpdate_val: dbUpdate })
+          console.warn('safeUpdateRef: static dbUpdate is not a function', { typeof_dbUpdate: typeof dbUpdate })
         }
       } catch (e) {
         console.warn('safeUpdateRef: static dbUpdate threw', e)
@@ -516,7 +518,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           console.error('Could not set wantsRematch', e, {
             dbUpdateType: typeof dbUpdate,
-            dbUpdateValue: dbUpdate,
+            dbUpdateIsFunction: typeof dbUpdate === 'function',
             hasRefUpdate: !!(dbRef && typeof dbRef === 'function'),
             hasAuthCurrentUser: !!(window.__firebaseAuth && window.__firebaseAuth.currentUser),
             getIdTokenFunc: window.__firebaseAuth && window.__firebaseAuth.currentUser ? typeof window.__firebaseAuth.currentUser.getIdToken : 'n/a'
