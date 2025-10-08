@@ -69,7 +69,8 @@ exports.processGuess = functions.database
       return null
     }
 
-    const updates = {}
+  const updates = {}
+  const hangDeltas = {}
     const isLetter = value.length === 1
 
   // baseline: give a small reward for taking a turn; may be overridden for correct actions
@@ -101,7 +102,7 @@ exports.processGuess = functions.database
         }
 
         // award 2 hangmoney per newly revealed occurrence only (replace baseline)
-        if (toAdd > 0) {
+          if (toAdd > 0) {
           hangIncrement = 2 * toAdd
 
           // record or aggregate private hit for guesser: keep a single entry per letter and sum counts
@@ -117,27 +118,30 @@ exports.processGuess = functions.database
           }
           if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
           updates[`players/${from}/privateHits/${targetId}`] = prevHits
+        } else {
+          // letter exists in the word but has already been fully revealed -> treat as a wrong guess
+          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+            if (!prevWrong.includes(letter)) {
+            prevWrong.push(letter)
+            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+            // reward the target for a wrong guess against them (as a delta)
+            hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+          }
         }
+
         // update guessedBy for owner visibility (only add guesser once)
         const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
         if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
         updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
   } else {
-        // wrong or already guessed
-        // if the letter was already fully revealed (existing >= count) do nothing
-        const existing = prevRevealed.filter(x => x === letter).length
-        if (existing >= count) {
-          // already fully guessed earlier; no points, no private wrong recorded
-        } else {
-          // wrong guess (letter not in word)
-          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
-          if (!prevWrong.includes(letter)) {
-            prevWrong.push(letter)
-            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them
-            const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
-            updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
-          }
+        // letter not in word: wrong guess
+        const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+        if (!prevWrong.includes(letter)) {
+          prevWrong.push(letter)
+          updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+          // reward the target for a wrong guess against them
+          const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+          updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
         }
       }
     } else {
@@ -153,8 +157,8 @@ exports.processGuess = functions.database
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
 
-        const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + 5
+  // correct word: award +5 as a delta
+  hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
         // mark eliminated and add guessedBy for word
         updates[`players/${targetId}/eliminated`] = true
@@ -163,7 +167,7 @@ exports.processGuess = functions.database
         updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy
 
         // record private hit for guesser
-        const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+  const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
         prevHits.push({ type: 'word', word: guessWord, ts: Date.now() })
         updates[`players/${from}/privateHits/${targetId}`] = prevHits
 
@@ -181,8 +185,8 @@ exports.processGuess = functions.database
         prevWrongWords.push(value)
         updates[`players/${from}/privateWrongWords/${targetId}`] = prevWrongWords
         // reward the target for a wrong full-word guess
-        const prevTargetHang2 = typeof target.hangmoney === 'number' ? target.hangmoney : 0
-        updates[`players/${targetId}/hangmoney`] = prevTargetHang2 + 2
+        // reward the target for a wrong full-word guess (delta)
+        hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
       }
     }
 
@@ -194,14 +198,42 @@ exports.processGuess = functions.database
       updates[`currentTurnStartedAt`] = Date.now()
     }
 
-    // apply hangmoney increment for the guesser if not already set by another branch (e.g., correct-word)
-    if (typeof updates[`players/${from}/hangmoney`] === 'undefined') {
-      updates[`players/${from}/hangmoney`] = prevHang + hangIncrement
+    // if we still have the baseline hangIncrement for the guesser, apply it as a delta
+    if ((hangDeltas[from] || 0) === 0 && hangIncrement) {
+      hangDeltas[from] = (hangDeltas[from] || 0) + hangIncrement
     }
 
-    // write updates atomically at /rooms/{roomId}
-    if (Object.keys(updates).length > 0) {
-      await roomRef.update(updates)
+    // write updates and hangDeltas atomically in a transaction to avoid races with timeouts
+    if (Object.keys(updates).length > 0 || Object.keys(hangDeltas).length > 0) {
+      await roomRef.transaction(curr => {
+        if (!curr) return curr
+        // apply path-based updates (keys like 'players/<id>/revealed' or 'turnOrder')
+        Object.keys(updates).forEach(path => {
+          try {
+            const parts = path.split('/')
+            let node = curr
+            for (let i = 0; i < parts.length - 1; i++) {
+              const p = parts[i]
+              if (!node[p]) node[p] = {}
+              node = node[p]
+            }
+            const last = parts[parts.length - 1]
+            node[last] = updates[path]
+          } catch (e) {
+            // ignore path set errors
+          }
+        })
+
+        // apply hangDeltas safely
+        if (!curr.players) curr.players = {}
+        Object.keys(hangDeltas).forEach(pid => {
+          if (!curr.players[pid]) curr.players[pid] = {}
+          const prev = typeof curr.players[pid].hangmoney === 'number' ? curr.players[pid].hangmoney : 0
+          curr.players[pid].hangmoney = Math.max(0, prev + (hangDeltas[pid] || 0))
+        })
+
+        return curr
+      })
     }
 
     // remove processed queue item
