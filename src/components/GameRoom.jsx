@@ -475,18 +475,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: 'Reveal a random letter for both players.' },
-    { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.' },
-    { id: 'letter_scope', name: 'Letter Scope', price: 5, desc: 'Find out how many letters the word has.' },
-    { id: 'one_random', name: 'One Random Letter', price: 5, desc: 'Reveal one random letter.' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 5, desc: "Use your guessed letters to try someone's word." },
+    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word." },
+    { id: 'vowel_vision', name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.' },
+    { id: 'letter_scope', name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.' },
+    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter.' },
+    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "Use your guessed letters to try someone's word." },
     { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word.' },
     { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
     { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word (datamuse).' },
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning (datamuse).' },
-    { id: 'all_letter_reveal', name: 'All Letter Reveal', price: 16, desc: 'Reveal all letters in shuffled order.' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 25, desc: 'Reveal the entire word instantly.' }
+    { id: 'all_letter_reveal', name: 'All The Letters', price: 16, desc: 'Reveal all letters in shuffled order.' },
+    { id: 'full_reveal', name: 'Full Reveal', price: 25, desc: 'Reveal the entire word instantly, in order.' }
   ]
 
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
@@ -759,6 +759,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
           updates[`players/${p.id}/privateWrongWords`] = null
+          // Clear any power-up results and markers (private reveals, tracked powerups, and no-score flags)
+          updates[`players/${p.id}/privatePowerReveals`] = null
+          updates[`players/${p.id}/privatePowerUps`] = null
+          updates[`players/${p.id}/noScoreReveals`] = null
         })
 
         const ok = await attemptReset(updates)
@@ -821,6 +825,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
+          // Clear power-up state as part of rematch reset so old results don't persist
+          updates[`players/${p.id}/privatePowerReveals`] = null
+          updates[`players/${p.id}/privatePowerUps`] = null
+          updates[`players/${p.id}/noScoreReveals`] = null
           // preserve hangmoney if you want; here we leave it as-is so clients control their own reset
         })
         const ok = await attemptReset(updates)

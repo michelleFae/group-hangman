@@ -230,9 +230,9 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                         <li key={idx} style={{ marginTop: 6 }}>
                           {r.powerId === 'letter_for_letter' ? (
                             res && res.letterFromTarget ? (
-                              <div>Target letter revealed: <strong>{res.letterFromTarget}</strong></div>
+                              <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
                             ) : res && res.letterFromBuyer ? (
-                              <div>A letter of your word was revealed to the buyer: <strong>{res.letterFromBuyer}</strong></div>
+                              <div>Used letter for letter. You can guess this letter:<strong>{res.letterFromBuyer}</strong></div>
                             ) : (
                               <div>{r.powerId}: {JSON.stringify(res)}</div>
                             )
