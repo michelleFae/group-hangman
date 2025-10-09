@@ -230,84 +230,74 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
   }, [state?.hostId])
   useEffect(() => {
-    if (!state) return
+    const players = state?.players || []
+    const timeouts = state?.timeouts || {}
+
     // scan for privateHits where the current viewer (myId) has an entry with count >= 2
     try {
-      const me = (state.players || []).find(p => p.id === myId) || {}
+      const me = players.find(p => p.id === myId) || {}
       const privateHits = me.privateHits || {}
       Object.keys(privateHits).forEach(targetId => {
         const entries = privateHits[targetId] || []
         entries.forEach(e => {
           if (e && e.type === 'letter' && (Number(e.count) || 0) >= 2) {
             const key = `${targetId}:${e.letter}:${e.count}`
-          if (!multiHitSeenRef.current[key]) {
+            if (!multiHitSeenRef.current[key]) {
               multiHitSeenRef.current[key] = true
               const toastId = `mh_${Date.now()}`
-              setToasts(t => [...t, { id: toastId, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}` , multi: true }])
-              // remove this multi-hit toast after 7 seconds
-                // after 7s, mark toast as removing so CSS fade-out can run
-                setTimeout(() => {
-                  setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x))
-                }, 7000)
-                // actually remove the toast after 8s (allow ~1s for fade animation)
-                setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
+              setToasts(t => [...t, { id: toastId, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}`, multi: true }])
+              setTimeout(() => {
+                setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x))
+              }, 7000)
+              setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
             }
           }
         })
       })
     } catch (e) {}
-    const timeouts = state.timeouts || {}
-    const keys = Object.keys(timeouts)
-    if (keys.length === 0) return
 
-    keys.forEach(k => {
-      const e = timeouts[k]
-      if (!e || !e.player) return
-
-  const player = e.player
-  const ts = e.ts || Date.now()
-  // try to resolve a display name from room state players list
-  const playerObj = (state.players || []).find(p => p.id === player)
-  const playerName = (playerObj && playerObj.name) ? playerObj.name : player
-
-  // If we've recently processed a timeout for this player, skip to avoid dupes.
-  // Prefer comparing the originating turnStartedAt when present so a single timed-out turn only yields one penalty.
-  const seen = processedTimeoutPlayersRef.current[player] || {}
-  const seenTurn = seen.turnStartedAt
-  if (e.turnStartedAt && seenTurn && e.turnStartedAt === seenTurn) return
-  // fallback: skip if we've processed a timeout with very similar ts recently
-  const last = seen.ts || 0
-  if (!e.turnStartedAt && Math.abs(ts - last) < 5000) return
-
-  // mark processed for this player (store both ts and turnStartedAt when available)
-  processedTimeoutPlayersRef.current[player] = { ts, turnStartedAt: e.turnStartedAt || null }
-
-    // don't re-show the same timeout entry's toast repeatedly
-    if (processedTimeoutKeysRef.current[k]) return
-    processedTimeoutKeysRef.current[k] = true
-
-    // show toast
-    const toastId = `${k}`
-  const toast = { id: toastId, text: `-2 hangmoney for ${playerName} (timed out)` }
-    setToasts(t => [...t, toast])
-      // auto-remove toast after 4s
-      setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
-
-      // set a visual marker for pending deduction and record the expected hangmoney
-      if (e && typeof e.deducted === 'number') {
-        // compute current hangmoney for this player from the in-memory state if possible
-        const playerObj = (state.players || []).find(p => p.id === player) || {}
-        const currentHang = Number(playerObj.hangmoney) || 0
-        const expectedAfter = currentHang - e.deducted
-        expectedHangRef.current[player] = expectedAfter
-        // store the negative delta for UI display (e.g. -2)
-        setPendingDeducts(prev => ({ ...prev, [player]: (prev[player] || 0) - e.deducted }))
-        // DO NOT auto-clear after a fixed timeout here — wait until DB reflects the change (see effect below)
-      }
-    })
-    // Show recent gain events (e.g., when someone gets +2 because another player's guess was wrong)
+    // handle timeouts
     try {
-      (state.players || []).forEach(p => {
+      const keys = Object.keys(timeouts)
+      keys.forEach(k => {
+        const e = timeouts[k]
+        if (!e || !e.player) return
+
+        const playerIdTimed = e.player
+        const ts = e.ts || Date.now()
+        const playerObj = players.find(p => p.id === playerIdTimed)
+        const playerName = (playerObj && playerObj.name) ? playerObj.name : playerIdTimed
+
+        // dedupe per-player, prefer turnStartedAt when present
+        const seen = processedTimeoutPlayersRef.current[playerIdTimed] || {}
+        const seenTurn = seen.turnStartedAt
+        if (e.turnStartedAt && seenTurn && e.turnStartedAt === seenTurn) return
+        const last = seen.ts || 0
+        if (!e.turnStartedAt && Math.abs(ts - last) < 5000) return
+        processedTimeoutPlayersRef.current[playerIdTimed] = { ts, turnStartedAt: e.turnStartedAt || null }
+
+        // don't re-show the same timeout entry's toast repeatedly
+        if (processedTimeoutKeysRef.current[k]) return
+        processedTimeoutKeysRef.current[k] = true
+
+        const toastId = `${k}`
+        setToasts(t => [...t, { id: toastId, text: `-2 hangmoney for ${playerName} (timed out)` }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
+
+        // pending deduction UI + expected hangmoney
+        if (e && typeof e.deducted === 'number') {
+          const playerNow = players.find(p => p.id === playerIdTimed) || {}
+          const currentHang = Number(playerNow.hangmoney) || 0
+          const expectedAfter = currentHang - e.deducted
+          expectedHangRef.current[playerIdTimed] = expectedAfter
+          setPendingDeducts(prev => ({ ...prev, [playerIdTimed]: (prev[playerIdTimed] || 0) - e.deducted }))
+        }
+      })
+    } catch (e) {}
+
+    // recent gain events (lastGain) — show once per (player,ts)
+    try {
+      players.forEach(p => {
         const lg = p.lastGain
         if (lg && lg.amount && lg.ts) {
           const key = `lg_${p.id}_${lg.ts}`
@@ -315,7 +305,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             multiHitSeenRef.current[key] = true
             const toastId = `lg_${Date.now()}`
             setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
-            // schedule fade and removal
             setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
           }
@@ -323,11 +312,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       })
     } catch (e) {}
 
-    // Show a generic fading toast for any positive hangmoney deltas (covers cases where server
-    // updated hangmoney directly without writing lastGain). Use prevHangRef to avoid showing
-    // toasts on initial load.
+    // generic positive hangmoney deltas (uses prevHangRef to avoid initial-load noise)
     try {
-      (state.players || []).forEach(p => {
+      players.forEach(p => {
         const pid = p.id
         const prev = typeof prevHangRef.current[pid] === 'number' ? prevHangRef.current[pid] : null
         const nowVal = typeof p.hangmoney === 'number' ? p.hangmoney : 0
@@ -338,11 +325,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
           setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
         }
-        // record current for next comparison
         prevHangRef.current[pid] = nowVal
       })
     } catch (e) {}
-  }, [state])
+  }, [state?.players, state?.timeouts, myId])
 
   // clear pending deductions when we observe the DB has applied the hangmoney change
   useEffect(() => {
