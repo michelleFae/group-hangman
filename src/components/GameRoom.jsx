@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
+import useUserActivation from '../hooks/useUserActivation'
 import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -24,6 +25,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showConfirmReset, setShowConfirmReset] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [forcedLobbyView, setForcedLobbyView] = useState(false)
+  // ensure audio/vibration unlock on first user gesture
+  useUserActivation({ onActivated: () => {
+    try {
+      const id = `activated_${Date.now()}`
+      setToasts(t => [...t, { id, text: 'Input unlocked: audio and vibration enabled' }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000)
+    } catch (e) {}
+  } })
 
   useEffect(() => {
     joinRoom(password) // Pass the password to joinRoom
