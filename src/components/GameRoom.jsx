@@ -351,6 +351,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
   const currentTurnIndex = state?.currentTurnIndex || 0
   const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
+  // whether the viewer is the current turn player
+  const isMyTurnNow = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myId
   // derive some end-of-game values and visual pieces at top-level so hooks are not called conditionally
   // derive viewer name from server state if available (covers refresh cases)
   const myNode = (state?.players || []).find(p => p.id === myId) || {}
@@ -977,6 +979,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     try {
       if (powerUpOpen) document.body.classList.add('modal-open')
       else document.body.classList.remove('modal-open')
+      // prevent background scrolling while modal is open so modal scrolling is smooth
+      try { document.body.style.overflow = powerUpOpen ? 'hidden' : '' } catch (e) {}
     } catch (e) {}
     return () => { try { document.body.classList.remove('modal-open') } catch (e) {} }
   }, [powerUpOpen])
@@ -988,16 +992,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const myHang = Number(me.hangmoney) || 0
   const isLobby = phase === 'lobby'
     return (
-      <div className="modal-overlay shop-modal" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
-        <div className="modal-dialog card no-anim shop-modal-dialog" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className={`modal-overlay shop-modal ${powerUpOpen ? 'open' : 'closed'}`} role="dialog" aria-modal="true">
+        <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
+          <div className="shop-modal-header">
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <strong style={{ color: '#fff', fontSize: 16 }}>Power-ups for {targetName}</strong>
-              <small style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>Use these to influence the round</small>
+              <strong>Power-ups for {targetName}</strong>
+              <small>Use these to influence the round</small>
             </div>
-            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#fff' }}>✖</button>
+            <button className="shop-modal-close" onClick={onClose}>✖</button>
           </div>
-          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="powerup-list">
             {(POWER_UPS || []).map(p => {
               // compute effective price for display (show surge applied if it affects buyer)
               let displayPrice = p.price
@@ -1011,25 +1015,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               } catch (e) { }
 
               return (
-                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 8, background: 'rgba(0,0,0,0.03)' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#222' }}>{p.name} <small style={{ color: '#444', marginLeft: 8 }}>{p.desc}</small></div>
-                    <div style={{ fontSize: 13, color: '#333' }}>{displayPrice} 🪙{displayPrice !== p.price ? <small style={{ marginLeft: 8, color: '#b33' }}>(+ surge)</small> : null}</div>
+                <div key={p.id} className="powerup-row">
+                  <div className="powerup-meta">
+                    <div className="title">{p.name} <small className="desc">{p.desc}</small></div>
+                    <div className="powerup-price">{displayPrice} 🪙{displayPrice !== p.price ? <small className="surge">(+ surge)</small> : null}</div>
                   </div>
-                  <div>
+                  <div className="powerup-actions">
                     {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} disabled={isLobby} />
+                        <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : p.id === 'double_down' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} disabled={isLobby} />
-                        <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
-                    ) : (
-                      <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      ) : (
+                      <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                     )}
                   </div>
                 </div>
@@ -1344,6 +1348,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   return (
     <div className={`game-room ${state && state.winnerByHangmoney ? 'money-theme' : ''}`}>
       {modeBadge}
+      <div className="app-content" style={powerUpOpen ? { pointerEvents: 'none', userSelect: 'none' } : undefined}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
       {phase === 'lobby' && <h2>Room: {roomId}</h2>}
       {phase === 'lobby' && (
@@ -1410,7 +1415,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         </div>
       )}
 
-      <div className="circle">
+  <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
         {players.length === 0 && <div>No players yet — wait for others to join.</div>}
         <div className="turn-indicator">Current turn: {players.find(p => p.id === currentTurnId)?.name || '—'}</div>
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
@@ -1502,8 +1507,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         ))}
       </div>
 
-      {/* Power-up modal rendered when requested */}
-      {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
+  </div>{/* end app-content */}
+  {/* Power-up modal rendered when requested */}
+  {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
