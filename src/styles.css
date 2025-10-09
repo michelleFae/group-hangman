@@ -127,6 +127,9 @@ button[disabled] {
 .modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: rgba(255,255,255,0.98); }
 .modal-dialog button { color: inherit; }
 
+/* Prevent settings modal card from moving on hover (override the generic .card:hover) */
+.settings-modal .card, .settings-modal .card:hover { transform: none !important; box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important }
+
 .guessed-by-list li {
   display: flex;
   flex-wrap: wrap; /* allow wrapping but keep inline alignment */

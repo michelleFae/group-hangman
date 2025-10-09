@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false }) {
+export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false, showPowerUpButton = false, onOpenPowerUps = null }) {
   // accept starterApplied prop to control when starter badge is visible
   const starterApplied = arguments[0] && arguments[0].starterApplied
   const revealed = player.revealed || []
@@ -158,6 +158,12 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
             <div>
               <>
                 <button disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Locked'}</button>
+                {/* power-up button visible when parent allows it (e.g. it's your turn) */}
+                {showPowerUpButton && onOpenPowerUps && !player.eliminated && (
+                  <button title="Open power-ups" onClick={() => onOpenPowerUps(player.id)} style={{ marginLeft: 8 }}>
+                    ⚡ Power-up
+                  </button>
+                )}
                 {showGuessDialog && (
                   <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
                     <input placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
