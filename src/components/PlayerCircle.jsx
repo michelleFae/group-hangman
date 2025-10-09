@@ -59,6 +59,14 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
     return <span key={idx} style={{ color: '#999', marginRight: 4 }}>_</span>
   }) : null
 
+  // Show revealed letters preserving duplicates: render one slot per character in the owner's word
+  // This ensures power-ups that populate `player.revealed` with unique letters still display duplicates
+  const revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
+    const lower = (ch || '').toLowerCase()
+    if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
+    return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
+  })
+
   // derive halo color (semi-transparent) from player.color
   const avatarColor = player.color || '#FFD1D1'
   // Convert hex to rgba with 0.28 alpha
@@ -152,7 +160,7 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
             ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
           </span>
         </div>
-        <div className="revealed">{revealed.join(' ')}</div>
+  <div className="revealed">{(ownerWord && ownerWord.length > 0) ? revealedPositions : revealed.join(' ')}</div>
       </div>
       <div className="actions">
         {/* Controls first for non-self viewers, then hidden word below (so Locked appears above hidden) */}

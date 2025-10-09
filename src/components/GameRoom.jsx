@@ -477,7 +477,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!" },
     { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.' },
     { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.' },
-  { id: 'related_roast', name: 'Related Word', price: 5, desc: 'Get a related word.' },
+  { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.' },
     { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.' },
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.' },
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.' },
@@ -543,8 +543,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           if (!letter) resultPayload = { message: `Letter peek: no letter at position ${pos}`, pos }
           else resultPayload = { message: `Letter peek: '${letter}' at position ${pos}`, letter, pos }
         }
-      } else if (powerId === 'related_roast') {
-        // Related Roast: use Datamuse rel_trg (related target words) and return a short roast word
+      } else if (powerId === 'related_word') {
+        // Related word: use Datamuse rel_trg (related target words) and return a short word word
         try {
           const q = encodeURIComponent(targetWord || '')
           const url = `https://api.datamuse.com/words?rel_trg=${q}&max=6`
@@ -553,11 +553,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const list = await res.json()
             const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
             const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
-            if (candidate) resultPayload = { message: `Related roast: '${candidate}'` }
-            else resultPayload = { message: 'Related roast: no result' }
-          } else resultPayload = { message: 'Related roast: no result' }
+            if (candidate) resultPayload = { message: `Related word: '${candidate}'` }
+            else resultPayload = { message: 'Related word: no result' }
+          } else resultPayload = { message: 'Related word: no result' }
         } catch (e) {
-          resultPayload = { message: 'Related roast: no result' }
+          resultPayload = { message: 'Related word: no result' }
         }
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
@@ -603,15 +603,60 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // fallback to empty
               resultPayload = { suggestions: [] }
             }
-          } else {
-            const url = `https://api.datamuse.com/words?ml=${q}&max=6`
-            const res = await fetch(url)
-            if (res && res.ok) {
-              const list = await res.json()
-              const words = (Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []).slice(0,6)
-              resultPayload = { suggestions: words }
             } else {
-              resultPayload = { suggestions: [] }
+            // what_do_you_mean: fetch a single English definition (dictionaryapi.dev). Do NOT include the word itself in the response.
+            try {
+              const raw = (targetWord || '').toString().trim()
+              if (!raw) {
+                resultPayload = { message: "I don't know the definition." }
+              } else {
+                const dictUrl = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(raw)}`
+                try {
+                  const dres = await fetch(dictUrl)
+                  if (dres && dres.ok) {
+                    const ddata = await dres.json()
+                    // extract the first sensible definition string from the response
+                    let def = null
+                    if (Array.isArray(ddata) && ddata.length > 0) {
+                      for (const entry of ddata) {
+                        if (!entry || !entry.meanings) continue
+                        for (const meaning of entry.meanings || []) {
+                          if (!meaning || !Array.isArray(meaning.definitions)) continue
+                          for (const d of meaning.definitions) {
+                            if (d && d.definition && typeof d.definition === 'string' && d.definition.trim().length > 0) {
+                              def = d.definition.trim()
+                              break
+                            }
+                          }
+                          if (def) break
+                        }
+                        if (def) break
+                      }
+                    }
+                    if (def) {
+                      // remove exact occurrences of the target word (case-insensitive), replace with a neutral token
+                      try {
+                        const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                        const re = new RegExp(`\\b${escaped}\\b`, 'ig')
+                        const safe = def.replace(re, 'the word')
+                        // keep message concise: single sentence if possible
+                        const oneSentence = safe.split(/[\.\!\?]\s/)[0]
+                        resultPayload = { message: oneSentence || safe }
+                      } catch (e) {
+                        resultPayload = { message: def }
+                      }
+                    } else {
+                      resultPayload = { message: "I don't know the definition." }
+                    }
+                  } else {
+                    resultPayload = { message: "I don't know the definition." }
+                  }
+                } catch (e) {
+                  resultPayload = { message: "I don't know the definition." }
+                }
+              }
+            } catch (e) {
+              resultPayload = { message: "I don't know the definition." }
             }
           }
         } catch (e) {
@@ -770,7 +815,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } catch (e) {}
     }, 0)
     return () => clearTimeout(t)
-  }, [powerUpOpen, powerUpTarget, powerUpChoiceValue])
+  }, [powerUpOpen, powerUpTarget])
 
   // When the power-up modal is open, add a body-level class to pause site animations
   useEffect(() => {
@@ -802,12 +847,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 </div>
                 <div>
                   {p.id === 'letter_peek' ? (
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
-                        <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        {/* stable button width and no transition to avoid layout shift when label changes */}
+                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : (
-                    <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                    <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                   )}
                 </div>
               </div>
