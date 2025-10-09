@@ -393,6 +393,13 @@ body.my-turn-body .player {
   50% { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(179,157,219,0.12) }
   100% { transform: translateY(0); box-shadow: 0 12px 28px rgba(179,157,219,0.06) }
 }
+/* Highlight the circle when it's the viewer's turn */
+.circle.my-turn {
+  background: #fff176; /* bright yellow */
+  transition: background-color 220ms ease, box-shadow 220ms ease;
+  box-shadow: 0 8px 20px rgba(255,241,118,0.18);
+  border-radius: 12px;
+}
 /* Shop modal: strongly isolate from body-level transitions (prevent flicker) */
 .shop-modal {
   /* keep overlay color stable and avoid inheriting transitions */
@@ -416,3 +423,71 @@ body.my-turn-body .player .avatar { color: #111 !important; box-shadow: 0 6px 18
 
 /* Submit bar and other controls should remain prominent */
 body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important }
+
+/* Power-up shop header and list styling */
+.shop-modal .shop-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 94%;
+  max-height: 80vh; /* contain modal to viewport */
+  padding: 0; /* header and body supply padding */
+  overflow: hidden;
+}
+
+.shop-modal-header {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+.shop-modal-header small { color: rgba(255,255,255,0.9); font-weight: 400; font-size: 12px; display:block }
+.shop-modal-close { background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; padding: 6px 8px; border-radius: 8px }
+.shop-modal-close:hover, .shop-modal-close:focus { transform: none !important; }
+
+.powerup-list {
+  padding: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(80vh - 64px);
+}
+
+.powerup-row {
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,252,0.98));
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+
+/* Self-targeted power-ups (e.g., word_freeze, double_down, hang_shield, etc.) */
+.powerup-row.self-powerup {
+  background: linear-gradient(180deg, #fff8e6, #fff3e0); /* warm cream */
+  border: 1px solid rgba(255,160,0,0.08);
+}
+
+.powerup-meta { flex: 1; min-width: 0; padding-right: 12px }
+.powerup-meta .title { font-weight: 700; display: block }
+.powerup-meta .desc { display: block; color: var(--muted); font-size: 13px; margin-top: 6px }
+.powerup-actions { display: flex; align-items: center; gap: 8px }
+.powerup-buy { min-width: 72px; }
+.powerup-buy:hover, .powerup-buy:focus { transform: none !important; }
+
+/* Ensure buttons inside the shop modal do not trigger card hover transforms */
+.shop-modal .card:hover, .shop-modal .card { transform: none !important; box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important }
+.powerup-input { width: 96px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06) }
+
+/* ensure the header stands out when my-turn-body is active */
+body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background: linear-gradient(90deg, #b39ddb, #81d4fa) }

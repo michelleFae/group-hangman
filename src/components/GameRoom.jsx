@@ -43,10 +43,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }, [password])
 
   // local tick to refresh timers on screen
+  // Pause the tick when the power-up modal is open to avoid frequent re-renders that
+  // can interfere with modal scroll position.
   useEffect(() => {
+    if (powerUpOpen) return undefined
     const id = setInterval(() => setTick(t => t + 1), 300)
     return () => clearInterval(id)
-  }, [])
+  }, [powerUpOpen])
 
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
@@ -492,30 +495,33 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word." },
-    { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.' },
-    { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.' },
-    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!" },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.' },
-    { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.' },
-  { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.' },
-    { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.' },
-    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.' },
-    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.' },
-    { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.' }
+    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word.", powerupType: 'singleOpponentPowerup' },
+    { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
+    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!', powerupType: 'singleOpponentPowerup' },
+    { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
+    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
+  { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.', powerupType: 'singleOpponentPowerup' },
+    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
+    { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' }
   ]
 
   // add self-targeted powerups (available when target is yourself)
   POWER_UPS.push(
-    { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.' },
-    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some hangmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.' },
-    { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.' },
-    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.' },
-    { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word — you get the credit. Letters are revealed publicly and are no-score.' },
-    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.' }
+    { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
+    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some hangmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
+    { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
+    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.', powerupType: 'selfPowerup' },
+    { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
+    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' }
   )
+
+  // Ensure the UI shows power-ups ordered by price (ascending)
+  try { POWER_UPS.sort((a,b) => (Number(a.price) || 0) - (Number(b.price) || 0)) } catch (e) {}
 
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
   async function purchasePowerUp(powerId, opts = {}) {
@@ -623,7 +629,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const idx = Math.floor(Math.random() * available.length)
           indices.push(available.splice(idx,1)[0])
         }
-        resultPayload = { roll, indices }
+        // convert indices to the actual letters so payload exposes letters instead of numeric indices
+        const revealedLetters = indices.map(i => (targetWord[i] || '').toLowerCase()).filter(Boolean)
+        resultPayload = { roll, letters: revealedLetters }
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
         // also reveal all letters publicly (but shuffled order is kept in private payload)
@@ -815,7 +823,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`players/${p.id}/revealed`] = newRevealed
             updates[`players/${p.id}/noScoreReveals/${ch}`] = true
             // record what was revealed so buyer's privatePowerReveals can show a summary
-            revealedMap[p.id] = ch
+            // include the player's display name so UI can show names instead of ids
+            revealedMap[p.id] = { letter: ch, name: p.name || p.id }
           })
           resultPayload = { revealed: revealedMap }
         } catch (e) {
@@ -835,7 +844,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const winnerNode = (state.players || []).find(x => x.id === best.id) || {}
             const prev = Number(winnerNode.hangmoney) || 0
             updates[`players/${best.id}/hangmoney`] = prev + 10
-            resultPayload = { winner: best.id, amount: 10 }
+            // include a human-readable message so viewers see the winner's name rather than an id
+            const winnerName = playerIdToName && playerIdToName[best.id] ? playerIdToName[best.id] : best.id
+            resultPayload = { winner: best.id, amount: 10, message: `${winnerName} awarded +10 hangmoney for longest word` }
             // mark that this powerup was used so it can't be reused (client-side best-effort)
             updates[`usedLongestWordBonus/${myId}`] = true
           } else {
@@ -876,10 +887,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
 
       // For some reveal types we should also update the target's revealed array so letters are visible to both
-      if (resultPayload && resultPayload.indices && Array.isArray(resultPayload.indices)) {
+      if (resultPayload && resultPayload.letters && Array.isArray(resultPayload.letters)) {
         // add those letters to target's revealed set
         const existing = targetNode.revealed || []
-        const toAdd = resultPayload.indices.map(i => (targetWord[i] || '').toLowerCase()).filter(Boolean)
+        const toAdd = resultPayload.letters.map(ch => (ch || '').toLowerCase()).filter(Boolean)
         const newRevealed = Array.from(new Set([...(existing || []), ...toAdd]))
         updates[`players/${powerUpTarget}/revealed`] = newRevealed
         // ensure buyer also sees these via their privateHits? keep the private reveal in privatePowerReveals
@@ -926,7 +937,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       await dbUpdate(roomRef, updates)
       // add a dismissible success toast for power-up application
       const pupToastId = `pup_ok_${Date.now()}`
-      setToasts(t => [...t, { id: pupToastId, text: `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}` }])
+      // For longest_word_bonus, show the winner's display name; otherwise show the target
+      const pupText = (powerId === 'longest_word_bonus' && resultPayload && resultPayload.winner)
+        ? `${pu.name}: ${playerIdToName[resultPayload.winner] || resultPayload.winner} +${resultPayload.amount}`
+        : `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}`
+      setToasts(t => [...t, { id: pupToastId, text: pupText }])
       // schedule fade + removal after a short interval
       setTimeout(() => {
         setToasts(t => t.map(x => x.id === pupToastId ? { ...x, removing: true } : x))
@@ -958,12 +973,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const el = powerUpChoiceRef.current
         if (el && typeof el.focus === 'function') {
           // prefer preventing scroll when focusing so modal doesn't jump
+          // Only call focus once and prefer the options object when supported.
           try {
             el.focus({ preventScroll: true })
           } catch (e) {
-            try { el.focus() } catch (ee) {}
+            // If options not supported, attempt to set selection without calling focus again
+            try {
+              const len = (el.value || '').length
+              if (typeof el.setSelectionRange === 'function') el.setSelectionRange(len, len)
+            } catch (ee) {}
           }
-          // move caret to end where possible
+          // move caret to end where possible (no extra focus call)
           try {
             const len = (el.value || '').length
             if (typeof el.setSelectionRange === 'function') el.setSelectionRange(len, len)
@@ -1015,7 +1035,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               } catch (e) { }
 
               return (
-                <div key={p.id} className="powerup-row">
+                <div key={p.id} className={`powerup-row ${(p.powerupType === 'selfPowerup' && powerUpTarget === myId) ? 'self-powerup' : ''}`}>
                   <div className="powerup-meta">
                     <div className="title">{p.name} <small className="desc">{p.desc}</small></div>
                     <div className="powerup-price">{displayPrice} 🪙{displayPrice !== p.price ? <small className="surge">(+ surge)</small> : null}</div>
@@ -1340,7 +1360,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div style={{ marginBottom: 8 }}>
               <PlayAgainControls isHost={isHost} myId={myId} players={players} />
             </div>
-            <div style={{ color: '#ddd' }}>If everyone clicks Play again, the room will reset automatically.</div>
+            <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
           </div>
         </div>
       </>
@@ -1624,7 +1644,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <div style={{ marginBottom: 8 }}>
                 <PlayAgainControls isHost={isHost} myId={myId} players={players} />
               </div>
-              <div style={{ color: '#ddd' }}>If everyone clicks Play again, the room will reset automatically.</div>
+              <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
             </div>
           </div>
           </>

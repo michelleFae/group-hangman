@@ -61,6 +61,13 @@ export default function useGameRoom(roomId, playerName) {
     }
   }, [roomId])
 
+  function getStartMoneyFromRoom(roomVal) {
+    try {
+      if (roomVal && typeof roomVal.startingHangmoney === 'number') return Math.max(0, Number(roomVal.startingHangmoney))
+    } catch (e) {}
+    return 2
+  }
+
   function stopHeartbeat() {
     try {
       if (heartbeatRef.current) {
@@ -87,9 +94,11 @@ export default function useGameRoom(roomId, playerName) {
     console.log('joinRoom called with password:', password)
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
+      // local fallback: use configured starting hangmoney if available in state
+      const startLocal = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : 2
       setState(prev => ({
         ...prev,
-        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, hangmoney: 2, revealed: [] }]
+        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, hangmoney: startLocal, revealed: [] }]
       }))
       return
     }
@@ -114,7 +123,8 @@ export default function useGameRoom(roomId, playerName) {
       }
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
-      await dbSet(pRef, { id: pKey, name: playerName, hangmoney: 2, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
+      const startMoney = getStartMoneyFromRoom(roomVal)
+      await dbSet(pRef, { id: pKey, name: playerName, hangmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }
 
@@ -342,7 +352,9 @@ export default function useGameRoom(roomId, playerName) {
           const pSnap = await get(playerRef)
           const pVal = pSnap.val() || {}
           if (!pVal.starterBonusAwarded) {
-            const prev = typeof pVal.hangmoney === 'number' ? pVal.hangmoney : 0
+            const prev = (typeof pVal.hangmoney === 'number')
+              ? pVal.hangmoney
+              : ((roomRoot && typeof roomRoot.startingHangmoney === 'number') ? Number(roomRoot.startingHangmoney) : 2)
             const ups = {}
             ups[`players/${uid}/hangmoney`] = prev + 10
             ups[`players/${uid}/starterBonusAwarded`] = true
