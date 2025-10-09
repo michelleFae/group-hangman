@@ -18,6 +18,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [winnerByHangmoney, setWinnerByHangmoney] = useState(false)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
   const [minWordSize, setMinWordSize] = useState(2)
+  const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
   const [startingHangmoney, setStartingHangmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
@@ -53,17 +54,39 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
-    if (!state) return
-    setTimedMode(!!state?.timed)
-    setTurnSeconds(state?.turnTimeoutSeconds || 30)
-    // sync winner-by-money mode from room state
-    setWinnerByHangmoney(!!state?.winnerByHangmoney)
-    setStarterEnabled(!!state?.starterBonus?.enabled)
-    setPowerUpsEnabled(!!state?.powerUpsEnabled)
-    setMinWordSize(typeof state?.minWordSize === 'number' ? Math.max(2, Math.min(10, state.minWordSize)) : 2)
-    // sync starting hangmoney (host-configurable)
-    setStartingHangmoney(typeof state?.startingHangmoney === 'number' ? Math.max(0, Number(state.startingHangmoney)) : 2)
-  }, [state])
+    if (state?.timed !== undefined) setTimedMode(!!state.timed);
+    if (state?.turnTimeoutSeconds !== undefined) setTurnSeconds(state.turnTimeoutSeconds || 30);
+    setWinnerByHangmoney(!!state?.winnerByHangmoney);
+    setStarterEnabled(!!state?.starterBonus?.enabled);
+    setPowerUpsEnabled(!!state?.powerUpsEnabled);
+
+    // ✅ update min word size only if that specific field changes
+    const syncedMin = typeof state?.minWordSize === 'number'
+      ? Math.max(2, Math.min(10, state.minWordSize))
+      : 2;
+
+    setMinWordSize(prev => {
+      if (prev !== syncedMin) {
+        setMinWordSizeInput(String(syncedMin));
+        return syncedMin;
+      }
+      return prev;
+    });
+
+    // ✅ same for starting hangmoney
+    if (typeof state?.startingHangmoney === 'number') {
+      setStartingHangmoney(Math.max(0, Number(state.startingHangmoney)));
+    }
+
+  }, [
+    state?.timed,
+    state?.turnTimeoutSeconds,
+    state?.winnerByHangmoney,
+    state?.starterBonus?.enabled,
+    state?.powerUpsEnabled,
+    state?.minWordSize,
+    state?.startingHangmoney
+  ]);
 
   // toggle a body-level class so the background becomes green when money-mode is active
   useEffect(() => {
@@ -481,7 +504,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
-                <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={minWordSize} onChange={e => { const v = Math.max(2, Math.min(10, Number(e.target.value || 2))); setMinWordSize(v); updateRoomSettings({ minWordSize: v }) }} style={{ width: 80, marginLeft: 8 }} />
+                <input
+                  id="minWordSize"
+                  name="minWordSize"
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={minWordSizeInput}
+                  onChange={e => setMinWordSizeInput(e.target.value)}
+                  onBlur={() => {
+                    // parse and persist a clamped numeric value when the user finishes editing
+                    const parsed = Number(minWordSizeInput)
+                    const v = Number.isFinite(parsed) ? Math.max(2, Math.min(10, parsed)) : 2
+                    setMinWordSize(v)
+                    setMinWordSizeInput(String(v))
+                    updateRoomSettings({ minWordSize: v })
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  style={{ width: 80, marginLeft: 8 }}
+                />
               </label>
               <label htmlFor="startingHangmoney" title="Starting hangmoney for each player when the room is reset">
                 Starting hangmoney:

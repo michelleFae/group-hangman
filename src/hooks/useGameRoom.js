@@ -474,7 +474,13 @@ export default function useGameRoom(roomId, playerName) {
     }
 
     const qRef = dbRef(db, `rooms/${roomId}/queue`)
-    await dbPush(qRef, { from: playerIdRef.current, target: targetId, payload, ts: Date.now() })
+    await dbPush(qRef, {
+      from: playerIdRef.current,
+      fromName: playerName || 'Unknown',
+      target: targetId,
+      payload,
+      ts: Date.now(),
+    })
   }
 
   return { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId: () => playerIdRef.current }
