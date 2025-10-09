@@ -127,11 +127,35 @@ button[disabled] {
 .modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: rgba(255,255,255,0.98); max-height: 90vh; overflow: auto }
 .modal-dialog button { color: inherit; }
 
+/* subtle entrance animation for modal dialogs: fade in and slight lift (not on hover) */
+@keyframes modal-entrance {
+  0% { opacity: 0; transform: translateY(8px) scale(0.995); box-shadow: 0 4px 10px rgba(0,0,0,0.06) }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.002); box-shadow: 0 10px 30px rgba(0,0,0,0.08) }
+  100% { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 6px 18px rgba(0,0,0,0.08) }
+}
+.modal-dialog { animation: modal-entrance 260ms cubic-bezier(.2,.9,.2,1) both }
+
 /* Prevent settings modal card from moving on hover (override the generic .card:hover) */
 .settings-modal .card, .settings-modal .card:hover { transform: none !important; box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important }
 
 /* make settings modal inputs easier to click: avoid floating transform on focus within settings modal */
 .settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(63,81,181,0.06) !important }
+
+/* Prevent modal dialogs (including the power-up shop) from floating on hover */
+.modal-overlay .modal-dialog.card,
+.modal-dialog.card,
+.modal-overlay .modal-dialog.card:hover,
+.modal-dialog.card:hover {
+  transform: none !important;
+  box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important;
+}
+
+/* Avoid focus-induced transform for inputs inside modal dialogs (prevents modal shift when focusing fields) */
+.modal-dialog input:focus,
+.modal-dialog textarea:focus {
+  transform: none !important;
+  box-shadow: 0 6px 18px rgba(63,81,181,0.06) !important;
+}
 
 .guessed-by-list li {
   display: flex;
