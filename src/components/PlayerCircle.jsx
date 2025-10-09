@@ -24,6 +24,8 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   const viewerPrivate = player._viewer || {}
   const privateWrong = (viewerPrivate.privateWrong && viewerPrivate.privateWrong[player.id]) || []
   const privateHits = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
+  const privatePowerRevealsObj = viewerPrivate.privatePowerReveals || {}
+  const privatePowerRevealsList = Object.values(privatePowerRevealsObj[player.id] || {})
 
   // prepare display of owner's word with revealed letters colored red if viewer is the owner
   const ownerWord = player.word || ''
@@ -214,6 +216,33 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
               {privateWrong.length > 0 && (
                 <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
                   <strong>Wrong letters:</strong> {privateWrong.join(', ')}
+                </div>
+              )}
+
+              {/* show private power-up reveals (only visible to the viewer) */}
+              {privatePowerRevealsList.length > 0 && (
+                <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
+                  <strong>Power-up results:</strong>
+                  <ul style={{ margin: '6px 0 0 12px' }}>
+                    {privatePowerRevealsList.map((r, idx) => {
+                      const res = r && r.result
+                      return (
+                        <li key={idx} style={{ marginTop: 6 }}>
+                          {r.powerId === 'letter_for_letter' ? (
+                            res && res.letterFromTarget ? (
+                              <div>Target letter revealed: <strong>{res.letterFromTarget}</strong></div>
+                            ) : res && res.letterFromBuyer ? (
+                              <div>A letter of your word was revealed to the buyer: <strong>{res.letterFromBuyer}</strong></div>
+                            ) : (
+                              <div>{r.powerId}: {JSON.stringify(res)}</div>
+                            )
+                          ) : (
+                            <div>{r.powerId}: {JSON.stringify(res)}</div>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </div>
               )}
             </div>

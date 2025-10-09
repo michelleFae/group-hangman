@@ -597,25 +597,49 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           resultPayload = { found: [], attempted: [] }
         }
       } else if (powerId === 'letter_for_letter') {
-        // reveal one random letter to both players
-        const letters = (targetWord || '').split('')
-        const l = letters.length > 0 ? letters[Math.floor(Math.random() * letters.length)] : null
-        resultPayload = { letter: l }
-        if (l) {
-          const lower = l.toLowerCase()
-          const occ = (targetWord || '').toLowerCase().split('').filter(ch => ch === lower).length
+        // reveal one random letter from the target's word publicly (no-score),
+        // AND privately reveal one random letter from the buyer's own word to the target.
+        const targetLetters = (targetWord || '').split('')
+        const tletter = targetLetters.length > 0 ? targetLetters[Math.floor(Math.random() * targetLetters.length)] : null
+        // prepare asymmetric payloads
+        let buyerResultPayload = null // what buyer (myId) will see about the target
+        let targetResultPayload = null // what target will see about the buyer
+        if (tletter) {
+          const lower = tletter.toLowerCase()
           const existing = targetNode.revealed || []
-          // add the letter to revealed publicly (ensure letter is present at least once)
-          const newRevealedSet = Array.from(new Set([...(existing || []), lower]))
-          updates[`players/${powerUpTarget}/revealed`] = newRevealedSet
+          // add the letter to target's revealed publicly
+          updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), lower]))
           // mark this letter as a no-score reveal so guesses won't award points for it
           updates[`players/${powerUpTarget}/noScoreReveals/${lower}`] = true
+          // buyer sees the target letter
+          buyerResultPayload = { letterFromTarget: tletter }
         }
+        // compute a random letter from buyer's own word to reveal privately to the target
+        try {
+          const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
+          const buyerWord = buyerNode.word || ''
+          const bLetters = (buyerWord || '').split('')
+          const bletter = bLetters.length > 0 ? bLetters[Math.floor(Math.random() * bLetters.length)] : null
+          if (bletter) targetResultPayload = { letterFromBuyer: bletter }
+        } catch (e) {
+          // ignore
+        }
+        // assign a combined resultPayload for the generic 'data' in case it's used elsewhere
+        resultPayload = { targetReveal: buyerResultPayload, buyerReveal: targetResultPayload }
       }
 
-      data.result = resultPayload
-      updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = data
-      updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = data
+      // For the special asymmetric case (letter_for_letter) write different payloads to each recipient
+      if (powerId === 'letter_for_letter') {
+        const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+        const buyerData = { ...base, result: (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null }
+        const targetData = { ...base, result: (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null }
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+      } else {
+        data.result = resultPayload
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = data
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = data
+      }
 
       // For some reveal types we should also update the target's revealed array so letters are visible to both
       if (resultPayload && resultPayload.indices && Array.isArray(resultPayload.indices)) {
@@ -633,6 +657,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const add = (resultPayload.last || '').toLowerCase()
         if (add) updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
       }
+
+      // Also advance the turn immediately after a power-up is applied (end the buyer's turn)
+      try {
+        // determine effective turn order (prefer any turnOrder we already modified)
+        const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (state.turnOrder || [])
+        const currentIndexLocal = typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex : 0
+        if (effectiveTurnOrder && effectiveTurnOrder.length > 0) {
+          const nextIndex = (currentIndexLocal + 1) % effectiveTurnOrder.length
+          updates[`currentTurnIndex`] = nextIndex
+          updates[`currentTurnStartedAt`] = Date.now()
+          try {
+            const nextPlayer = effectiveTurnOrder[nextIndex]
+            const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
+            const prevNextHang = (typeof nextNode.hangmoney === 'number') ? nextNode.hangmoney : 0
+            updates[`players/${nextPlayer}/hangmoney`] = prevNextHang + 1
+          } catch (e) {}
+        }
+      } catch (e) {}
 
       // Finally perform the update
       await dbUpdate(roomRef, updates)
