@@ -363,6 +363,36 @@ body.my-turn-body .player {
   color: #111 !important;
   box-shadow: 0 12px 30px rgba(0,0,0,0.06) !important;
 }
+
+/* Highlight the viewer's own player tile so it's easy to spot */
+.player-self {
+  border: 2px solid var(--accent-2);
+  box-shadow: 0 12px 28px rgba(129,212,250,0.12), 0 0 26px rgba(129,212,250,0.04) inset;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(249,252,255,0.98));
+}
+.player-self .avatar { box-shadow: 0 8px 22px rgba(129,212,250,0.12); transform: scale(1.02); }
+.player-self .name { font-weight: 800 }
+
+/* Highlight for the player whose turn it is */
+.player-turn {
+  border: 2px solid var(--accent);
+  box-shadow: 0 14px 36px rgba(179,157,219,0.14), 0 0 26px rgba(179,157,219,0.04) inset;
+  position: relative;
+  animation: player-turn-pulse 1.6s ease-in-out infinite;
+}
+.player-turn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(179,157,219,0.06);
+  pointer-events: none;
+}
+@keyframes player-turn-pulse {
+  0% { transform: translateY(0); box-shadow: 0 12px 28px rgba(179,157,219,0.06) }
+  50% { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(179,157,219,0.12) }
+  100% { transform: translateY(0); box-shadow: 0 12px 28px rgba(179,157,219,0.06) }
+}
 /* Shop modal: strongly isolate from body-level transitions (prevent flicker) */
 .shop-modal {
   /* keep overlay color stable and avoid inheriting transitions */

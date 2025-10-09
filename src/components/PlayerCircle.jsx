@@ -25,7 +25,14 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   const privateWrong = (viewerPrivate.privateWrong && viewerPrivate.privateWrong[player.id]) || []
   const privateHits = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
   const privatePowerRevealsObj = viewerPrivate.privatePowerReveals || {}
-  const privatePowerRevealsList = Object.values(privatePowerRevealsObj[player.id] || {})
+  // collect all private power-up reveals the viewer has stored, then filter those relevant to this player
+  const _allPrivateReveals = []
+  Object.values(privatePowerRevealsObj || {}).forEach(bucket => {
+    Object.values(bucket || {}).forEach(r => { if (r) _allPrivateReveals.push(r) })
+  })
+  // show reveals that target this player (r.to === player.id). This covers cases where
+  // the buyer stored under targetId (buyer view) and where the target stored under buyerId (target view).
+  const privatePowerRevealsList = _allPrivateReveals.filter(r => r && (r.to === player.id))
 
   // prepare display of owner's word with revealed letters colored red if viewer is the owner
   const ownerWord = player.word || ''
@@ -129,8 +136,9 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
     lastDisplayedRef.current = displayed
   }, [player.hangmoney, pendingDeduct])
 
+  const isTurn = currentTurnId && currentTurnId === player.id
   return (
-    <div className={`player ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
+    <div className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
       <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
       <div className="meta">
         <div className="name">{player.name} {player.eliminated ? '(out)' : ''}
@@ -228,7 +236,9 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                       const res = r && r.result
                       return (
                         <li key={idx} style={{ marginTop: 6 }}>
-                          {r.powerId === 'letter_for_letter' ? (
+                          {res && res.message ? (
+                            <div>{res.message}</div>
+                          ) : r.powerId === 'letter_for_letter' ? (
                             res && res.letterFromTarget ? (
                               <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
                             ) : res && res.letterFromBuyer ? (

@@ -32,14 +32,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showConfirmReset, setShowConfirmReset] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [forcedLobbyView, setForcedLobbyView] = useState(false)
-  // ensure audio/vibration unlock on first user gesture
-  useUserActivation({ onActivated: () => {
-    try {
-      const id = `activated_${Date.now()}`
-      setToasts(t => [...t, { id, text: 'Input unlocked: audio and vibration enabled' }])
-      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000)
-    } catch (e) {}
-  } })
+  // ensure audio/vibration unlock on first user gesture (no UI toast)
+  useUserActivation()
 
   useEffect(() => {
     joinRoom(password) // Pass the password to joinRoom
@@ -478,15 +472,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word." },
     { id: 'vowel_vision', name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.' },
     { id: 'letter_scope', name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.' },
-    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter.' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "Use your guessed letters to try someone's word." },
+    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed!' },
+    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word." },
     { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word.' },
     { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
-    { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word (datamuse).' },
+    { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word.' },
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
-    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning (datamuse).' },
-    { id: 'all_letter_reveal', name: 'All The Letters', price: 16, desc: 'Reveal all letters in shuffled order.' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 25, desc: 'Reveal the entire word instantly, in order.' }
+    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning.' },
+    { id: 'all_letter_reveal', name: 'All The Letters', price: 20, desc: 'Reveal all letters in shuffled order.' },
+    { id: 'full_reveal', name: 'Full Reveal', price: 26, desc: 'Reveal the entire word instantly, in order.' }
   ]
 
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
@@ -585,23 +579,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           resultPayload = { suggestions: [] }
         }
       } else if (powerId === 'mind_leech') {
-        // Mind leech: use buyer's known guessed letters (privateHits + privateWrong) to simulate guesses
+        // Mind leech: use letters others have guessed for the buyer's own word
+        // (buyerNode.guessedBy keys) to simulate those same guesses against the target's word.
         try {
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
-          const hitsMap = buyerNode.privateHits || {}
-          const wrongMap = buyerNode.privateWrong || {}
-          // collect letters the buyer has guessed (both hits and wrongs)
-          const guessedLetters = new Set()
-          Object.values(hitsMap || {}).forEach(arr => (arr || []).forEach(e => { if (e && e.type === 'letter' && e.letter) guessedLetters.add(e.letter.toLowerCase()) }))
-          Object.values(wrongMap || {}).forEach(arr => (arr || []).forEach(e => { if (typeof e === 'string') guessedLetters.add(e.toLowerCase()) }))
-          // now compute which of those letters are present in the target word and counts
+          const guessedBy = buyerNode.guessedBy || {}
+          // keys in guessedBy map are letters (or '__word'); ignore '__word'
+          const attemptedLetters = Object.keys(guessedBy || {}).filter(k => k && k !== '__word').map(k => k.toLowerCase())
+          // de-dupe
+          const attemptedSet = new Set(attemptedLetters)
           const letters = (targetWord || '').toLowerCase().split('')
           const found = []
-          guessedLetters.forEach(l => {
+          attemptedSet.forEach(l => {
             const count = letters.filter(ch => ch === l).length
             if (count > 0) found.push({ letter: l, count })
           })
-          resultPayload = { found, attempted: Array.from(guessedLetters) }
+          resultPayload = { found, attempted: Array.from(attemptedSet) }
         } catch (e) {
           resultPayload = { found: [], attempted: [] }
         }
@@ -637,11 +630,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         resultPayload = { targetReveal: buyerResultPayload, buyerReveal: targetResultPayload }
       }
 
-      // For the special asymmetric case (letter_for_letter) write different payloads to each recipient
+      // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
       if (powerId === 'letter_for_letter') {
         const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
         const buyerData = { ...base, result: (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null }
         const targetData = { ...base, result: (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null }
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+      } else if (powerId === 'vowel_vision') {
+        // Include a human-readable message for buyer and target, visible only to them
+        const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
+        const buyerName = playerIdToName[myId] || myId
+        const targetName = playerIdToName[powerUpTarget] || powerUpTarget
+        const msg = `${buyerName} used Vowel Vision on ${targetName} to see that there are ${vowels} vowel${vowels === 1 ? '' : 's'}`
+        const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+        const buyerData = { ...base, result: { vowels, message: msg } }
+        const targetData = { ...base, result: { vowels, message: msg } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else {
@@ -687,7 +691,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       // Finally perform the update
       await dbUpdate(roomRef, updates)
-      setToasts(t => [...t, { id: `pup_ok_${Date.now()}`, text: `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}` }])
+      // add a dismissible success toast for power-up application
+      const pupToastId = `pup_ok_${Date.now()}`
+      setToasts(t => [...t, { id: pupToastId, text: `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}` }])
+      // schedule fade + removal after a short interval
+      setTimeout(() => {
+        setToasts(t => t.map(x => x.id === pupToastId ? { ...x, removing: true } : x))
+      }, 3200)
+      setTimeout(() => {
+        setToasts(t => t.filter(x => x.id !== pupToastId))
+      }, 4200)
       setPowerUpOpen(false)
     } catch (e) {
       console.error('Power-up purchase failed', e)
