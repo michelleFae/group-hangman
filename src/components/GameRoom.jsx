@@ -471,17 +471,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Power-up definitions
   const POWER_UPS = [
     { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word." },
-    { id: 'vowel_vision', name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.' },
-    { id: 'letter_scope', name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.' },
-    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!" },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word. You can guess this letter to get points next turn, if it is not already revealed!' },
-    { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
-    { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word.' },
-    { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
-    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning.' },
-    { id: 'all_letter_reveal', name: 'All The Letters', price: 20, desc: 'Reveal all letters in shuffled order.' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 26, desc: 'Reveal the entire word instantly, in order.' }
+    { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.' },
+    { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.' },
+    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!' },
+    { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!" },
+    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.' },
+    { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.' },
+  { id: 'related_roast', name: 'Related Word', price: 5, desc: 'Get a related word.' },
+    { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.' },
+    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.' },
+    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.' },
+    { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.' },
+    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.' }
   ]
 
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
@@ -534,8 +535,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } else resultPayload = { letter: null }
       } else if (powerId === 'letter_peek') {
         const pos = Number(opts.pos) || 0
-        if (!pos || pos < 1) resultPayload = { error: 'invalid_pos' }
-        else resultPayload = { letter: (targetWord && targetWord[pos-1]) ? targetWord[pos-1] : null, pos }
+        // human-readable short messages; explicitly report no letter at position when invalid
+        if (!pos || pos < 1) {
+          resultPayload = { message: `Letter peek: no letter at position ${opts.pos || pos}`, pos }
+        } else {
+          const letter = (targetWord && targetWord[pos-1]) ? targetWord[pos-1] : null
+          if (!letter) resultPayload = { message: `Letter peek: no letter at position ${pos}`, pos }
+          else resultPayload = { message: `Letter peek: '${letter}' at position ${pos}`, letter, pos }
+        }
+      } else if (powerId === 'related_roast') {
+        // Related Roast: use Datamuse rel_trg (related target words) and return a short roast word
+        try {
+          const q = encodeURIComponent(targetWord || '')
+          const url = `https://api.datamuse.com/words?rel_trg=${q}&max=6`
+          const res = await fetch(url)
+          if (res && res.ok) {
+            const list = await res.json()
+            const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
+            const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
+            if (candidate) resultPayload = { message: `Related roast: '${candidate}'` }
+            else resultPayload = { message: 'Related roast: no result' }
+          } else resultPayload = { message: 'Related roast: no result' }
+        } catch (e) {
+          resultPayload = { message: 'Related roast: no result' }
+        }
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
         const letters = (targetWord || '').split('')
@@ -566,15 +589,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const q = encodeURIComponent(targetWord || '')
           if (powerId === 'sound_check') {
-            const url = `https://api.datamuse.com/words?rel_rhy=${q}&max=6`
-            const res = await fetch(url)
-            if (res && res.ok) {
-              const list = await res.json()
-              const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
-              // pick the first rhyme that's not identical (case-insensitive)
-              const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
-              resultPayload = { suggestions: candidate ? [candidate] : [] }
-            } else {
+            // use RhymeBrain for rhymes; return a single rhyme that's not identical
+            try {
+              const url = `https://rhymebrain.com/talk?function=getRhymes&word=${q}`
+              const res2 = await fetch(url)
+              if (res2 && res2.ok) {
+                const list2 = await res2.json()
+                const words2 = Array.isArray(list2) ? list2.map(i => i.word).filter(Boolean) : []
+                const candidate = words2.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
+                resultPayload = { suggestions: candidate ? [candidate] : [] }
+              } else resultPayload = { suggestions: [] }
+            } catch (e) {
+              // fallback to empty
               resultPayload = { suggestions: [] }
             }
           } else {
@@ -646,8 +672,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
       if (powerId === 'letter_for_letter') {
         const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-        const buyerData = { ...base, result: (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null }
-        const targetData = { ...base, result: (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null }
+        // create short human-readable messages so the viewer sees concise info
+        const buyerResult = (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null
+        const targetResult = (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null
+        const buyerMsg = buyerResult && buyerResult.letterFromTarget ? { message: `Letter revealed from ${playerIdToName[powerUpTarget] || powerUpTarget}: '${buyerResult.letterFromTarget}'`, letterFromTarget: buyerResult.letterFromTarget } : null
+        const targetMsg = targetResult && targetResult.letterFromBuyer ? { message: `Letter revealed from ${playerIdToName[myId] || myId}: '${targetResult.letterFromBuyer}'`, letterFromBuyer: targetResult.letterFromBuyer } : null
+        const buyerData = { ...base, result: buyerMsg }
+        const targetData = { ...base, result: targetMsg }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'vowel_vision') {
@@ -741,6 +772,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => clearTimeout(t)
   }, [powerUpOpen, powerUpTarget, powerUpChoiceValue])
 
+  // When the power-up modal is open, add a body-level class to pause site animations
+  useEffect(() => {
+    try {
+      if (powerUpOpen) document.body.classList.add('modal-open')
+      else document.body.classList.remove('modal-open')
+    } catch (e) {}
+    return () => { try { document.body.classList.remove('modal-open') } catch (e) {} }
+  }, [powerUpOpen])
+
   function PowerUpModal({ open, targetId, onClose }) {
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
@@ -811,9 +851,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
         const ok = await attemptReset(updates)
         if (ok) {
-          setToasts(t => [...t, { id: `rematch_host_ok_${Date.now()}`, text: 'Room restarted — waiting for players to rejoin.' }])
+          const idOk = `rematch_host_ok_${Date.now()}`
+          setToasts(t => [...t, { id: idOk, text: 'Room restarted — waiting for players to rejoin.' }])
+          // auto-dismiss: fade then remove after short delay
+          setTimeout(() => { setToasts(t => t.map(x => x.id === idOk ? { ...x, removing: true } : x)) }, 3200)
+          setTimeout(() => { setToasts(t => t.filter(x => x.id !== idOk)) }, 4200)
         } else {
-          setToasts(t => [...t, { id: `rematch_host_err_${Date.now()}`, text: 'Could not restart room for all players. Check console for details.' }])
+          const idErr = `rematch_host_err_${Date.now()}`
+          setToasts(t => [...t, { id: idErr, text: 'Could not restart room for all players. Check console for details.' }])
+          setTimeout(() => { setToasts(t => t.map(x => x.id === idErr ? { ...x, removing: true } : x)) }, 4200)
+          setTimeout(() => { setToasts(t => t.filter(x => x.id !== idErr)) }, 5200)
         }
       } catch (e) {
         console.error('Host restart failed', e)
