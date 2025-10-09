@@ -209,6 +209,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
 
+  // viewer id (derived from hook or firebase auth) — declare early to avoid TDZ in effects
+  const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+
   // Notify players when host changes
   useEffect(() => {
   if (!state) return
@@ -328,7 +331,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         prevHangRef.current[pid] = nowVal
       })
     } catch (e) {}
-  }, [state?.players, state?.timeouts, myId])
+  }, [state?.players, state?.timeouts])
 
   // clear pending deductions when we observe the DB has applied the hangmoney change
   useEffect(() => {
@@ -360,7 +363,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const submittedCount = players.filter(p => p.hasWord).length
 
   const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
-  const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
   const currentTurnIndex = state?.currentTurnIndex || 0
   const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
   // whether the viewer is the current turn player
@@ -470,7 +472,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           </div>
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label htmlFor="timedMode">
-              <input id="timedMode" name="timedMode" type="checkbox" checked={timedMode} onClick={e => { e.stopPropagation(); const nv = !timedMode; setTimedMode(nv); updateRoomTiming(nv, turnSeconds); updateRoomSettings({ timed: !!nv, turnTimeoutSeconds: nv ? turnSeconds : null }) }} /> Timed game
+              <input id="timedMode" name="timedMode" type="checkbox" checked={timedMode} onChange={e => { const nv = e.target.checked; setTimedMode(nv); updateRoomTiming(nv, turnSeconds); updateRoomSettings({ timed: !!nv, turnTimeoutSeconds: nv ? turnSeconds : null }) }} /> Timed game
             </label>
             {timedMode && (
               <label htmlFor="turnSeconds">
@@ -479,13 +481,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               </label>
             )}
             <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
-              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onClick={e => { e.stopPropagation(); const nv = !starterEnabled; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
+              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
             </label>
             <label htmlFor="winnerByHangmoney" title="Choose how the winner is determined: Last one standing, or player with most hangmoney.">
-              <input id="winnerByHangmoney" name="winnerByHangmoney" type="checkbox" checked={winnerByHangmoney} onClick={e => { e.stopPropagation(); const nv = !winnerByHangmoney; setWinnerByHangmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByHangmoney: !!nv }) }} /> Winner by money
+              <input id="winnerByHangmoney" name="winnerByHangmoney" type="checkbox" checked={winnerByHangmoney} onChange={e => { const nv = e.target.checked; setWinnerByHangmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByHangmoney: !!nv }) }} /> Winner by money
             </label>
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
-              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onClick={e => { e.stopPropagation(); const nv = !powerUpsEnabled; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
+              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
               <div style={{ fontSize: 12, color: '#666' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
             </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
