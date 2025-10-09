@@ -18,6 +18,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [winnerByHangmoney, setWinnerByHangmoney] = useState(false)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
   const [minWordSize, setMinWordSize] = useState(2)
+  const [startingHangmoney, setStartingHangmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
@@ -57,6 +58,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     setStarterEnabled(!!state?.starterBonus?.enabled)
     setPowerUpsEnabled(!!state?.powerUpsEnabled)
     setMinWordSize(typeof state?.minWordSize === 'number' ? Math.max(2, Math.min(10, state.minWordSize)) : 2)
+    // sync starting hangmoney (host-configurable)
+    setStartingHangmoney(typeof state?.startingHangmoney === 'number' ? Math.max(0, Number(state.startingHangmoney)) : 2)
   }, [state?.timed, state?.turnTimeoutSeconds])
 
   // toggle a body-level class so the background becomes green when money-mode is active
@@ -474,6 +477,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
                 <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={minWordSize} onChange={e => { const v = Math.max(2, Math.min(10, Number(e.target.value || 2))); setMinWordSize(v); updateRoomSettings({ minWordSize: v }) }} style={{ width: 80, marginLeft: 8 }} />
+              </label>
+              <label htmlFor="startingHangmoney" title="Starting hangmoney for each player when the room is reset">
+                Starting hangmoney:
+                <input id="startingHangmoney" name="startingHangmoney" type="number" min={0} max={999} value={startingHangmoney} onChange={e => { const v = Math.max(0, Number(e.target.value || 0)); setStartingHangmoney(v); updateRoomSettings({ startingHangmoney: v }) }} style={{ width: 80, marginLeft: 8 }} disabled={!isHost} />
               </label>
           </div>
         </div>
@@ -935,22 +942,35 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   // Keep the letter_peek input focused while the power-up modal is open so typing isn't interrupted
+  const prevPowerUpOpenRef = useRef(false)
   useEffect(() => {
-    if (!powerUpOpen) return
+    // only autofocus when the modal transitions from closed -> open to avoid repeated scroll resets
+    if (!powerUpOpen || prevPowerUpOpenRef.current) {
+      prevPowerUpOpenRef.current = powerUpOpen
+      return
+    }
+    prevPowerUpOpenRef.current = true
     // small next-tick focus to ensure the input exists in the DOM
     const t = setTimeout(() => {
       try {
         const el = powerUpChoiceRef.current
         if (el && typeof el.focus === 'function') {
-          el.focus()
-          // move caret to end
-          const len = (el.value || '').length
-          if (typeof el.setSelectionRange === 'function') el.setSelectionRange(len, len)
+          // prefer preventing scroll when focusing so modal doesn't jump
+          try {
+            el.focus({ preventScroll: true })
+          } catch (e) {
+            try { el.focus() } catch (ee) {}
+          }
+          // move caret to end where possible
+          try {
+            const len = (el.value || '').length
+            if (typeof el.setSelectionRange === 'function') el.setSelectionRange(len, len)
+          } catch (e) {}
         }
       } catch (e) {}
     }, 0)
     return () => clearTimeout(t)
-  }, [powerUpOpen, powerUpTarget])
+  }, [powerUpOpen])
 
   // When the power-up modal is open, add a body-level class to pause site animations
   useEffect(() => {
@@ -971,8 +991,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       <div className="modal-overlay shop-modal" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
         <div className="modal-dialog card no-anim shop-modal-dialog" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Power-ups for {targetName}</strong>
-            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <strong style={{ color: '#fff', fontSize: 16 }}>Power-ups for {targetName}</strong>
+              <small style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>Use these to influence the round</small>
+            </div>
+            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#fff' }}>✖</button>
           </div>
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {(POWER_UPS || []).map(p => {
@@ -1038,7 +1061,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          updates[`players/${p.id}/hangmoney`] = 2
+          // use configured startingHangmoney (fallback to 2)
+          updates[`players/${p.id}/hangmoney`] = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : startingHangmoney || 2
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -1109,6 +1133,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
+  const startMoney = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
@@ -1116,11 +1141,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
+          updates[`players/${p.id}/hangmoney`] = startMoney
           // Clear power-up state as part of rematch reset so old results don't persist
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
           updates[`players/${p.id}/noScoreReveals`] = null
-          // preserve hangmoney if you want; here we leave it as-is so clients control their own reset
         })
         const ok = await attemptReset(updates)
         if (!ok) console.warn('Host reset attempted but failed; players may still be opted in')
@@ -1326,21 +1351,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           <div style={{ marginBottom: 8 }}>
             {isHost ? (
               <>
-                <label style={{ marginRight: 12 }}>
-                  <input id="timedMode_view" name="timedMode_view" type="checkbox" checked={timedMode} onChange={e => { setTimedMode(e.target.checked); updateRoomTiming(e.target.checked, turnSeconds) }} /> Timed mode
-                </label>
-                <label style={{ marginRight: 12 }} title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
-                  <input id="starterEnabled_view" name="starterEnabled_view" type="checkbox" checked={starterEnabled} onChange={e => setStarterEnabled(e.target.checked)} /> Starter bonus
-                </label>
-                <label style={{ marginRight: 12 }} title="Choose how the winner is determined: Last one standing (default) or player with most hangmoney. Visible to all players.">
-                  <input id="winnerByHangmoney_view" name="winnerByHangmoney_view" type="checkbox" checked={winnerByHangmoney} onChange={e => { setWinnerByHangmoney(e.target.checked); updateRoomWinnerMode(e.target.checked) }} /> Winner by money
-                </label>
-                {timedMode && (
-                  <label>
-                    Seconds per turn:
-                    <input id="turnSeconds_view" name="turnSeconds_view" type="number" min={10} max={300} value={turnSeconds} onChange={e => { setTurnSeconds(Math.max(10, Math.min(300, Number(e.target.value || 30)))); updateRoomTiming(timedMode, Math.max(10, Math.min(300, Number(e.target.value || 30)))) }} style={{ width: 80, marginLeft: 8 }} />
-                  </label>
-                )}
               </>
               ) : (
               <div style={{ color: '#555' }}>
