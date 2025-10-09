@@ -405,6 +405,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <strong style={{ fontSize: 13 }}>{state?.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
             <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
           </div>
+          {/* show a rocket badge when power-ups are enabled and visible to all players in the lobby */}
+          {state?.powerUpsEnabled && phase === 'lobby' && (
+            <div title="Power-ups are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="powerup-rocket" style={{ fontSize: 18 }}>🚀</span>
+              <small style={{ color: '#666', fontSize: 12 }}>Power-ups</small>
+            </div>
+          )}
           {isHost && phase === 'lobby' && (
             <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
           )}
@@ -427,16 +434,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   function SettingsModal({ open, onClose }) {
     if (!open) return null
+    // local state to avoid DB updates on every keystroke which can cause focus loss
+    const [localMin, setLocalMin] = useState(String(minWordSize || 2))
+    React.useEffect(() => { setLocalMin(String(minWordSize || 2)) }, [open])
+
+    function commitMinValue(valStr) {
+      const v = Math.max(2, Math.min(10, Number(valStr || 2)))
+      setMinWordSize(v)
+      updateRoomSettings({ minWordSize: v })
+      setLocalMin(String(v))
+    }
+
     return (
       <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }}>
         <div className="card" style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
-            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
+            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }} aria-label="Close settings">✖</button>
           </div>
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label htmlFor="timedMode">
-              <input id="timedMode" name="timedMode" type="checkbox" checked={timedMode} onChange={e => { setTimedMode(e.target.checked); updateRoomTiming(e.target.checked, turnSeconds); updateRoomSettings({ timed: !!e.target.checked, turnTimeoutSeconds: e.target.checked ? turnSeconds : null }) }} /> Timed game
+              <input id="timedMode" name="timedMode" type="checkbox" checked={timedMode} onClick={e => { e.stopPropagation(); const nv = !timedMode; setTimedMode(nv); updateRoomTiming(nv, turnSeconds); updateRoomSettings({ timed: !!nv, turnTimeoutSeconds: nv ? turnSeconds : null }) }} /> Timed game
             </label>
             {timedMode && (
               <label htmlFor="turnSeconds">
@@ -445,18 +463,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               </label>
             )}
             <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
-              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { setStarterEnabled(e.target.checked); updateRoomSettings({ starterBonus: { enabled: !!e.target.checked, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
+              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onClick={e => { e.stopPropagation(); const nv = !starterEnabled; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
             </label>
             <label htmlFor="winnerByHangmoney" title="Choose how the winner is determined: Last one standing, or player with most hangmoney.">
-              <input id="winnerByHangmoney" name="winnerByHangmoney" type="checkbox" checked={winnerByHangmoney} onChange={e => { setWinnerByHangmoney(e.target.checked); updateRoomWinnerMode(e.target.checked); updateRoomSettings({ winnerByHangmoney: !!e.target.checked }) }} /> Winner by money
+              <input id="winnerByHangmoney" name="winnerByHangmoney" type="checkbox" checked={winnerByHangmoney} onClick={e => { e.stopPropagation(); const nv = !winnerByHangmoney; setWinnerByHangmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByHangmoney: !!nv }) }} /> Winner by money
             </label>
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
-              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { setPowerUpsEnabled(e.target.checked); updateRoomSettings({ powerUpsEnabled: !!e.target.checked }) }} /> Power-ups
+              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onClick={e => { e.stopPropagation(); const nv = !powerUpsEnabled; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
               <div style={{ fontSize: 12, color: '#666' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
             </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
-                <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={minWordSize} onChange={e => { const v = Math.max(2, Math.min(10, Number(e.target.value || 2))); setMinWordSize(v); updateRoomSettings({ minWordSize: v }) }} style={{ width: 80, marginLeft: 8 }} />
+                <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={localMin} onChange={e => setLocalMin(e.target.value)} onBlur={e => commitMinValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur(); commitMinValue(e.target.value) } }} style={{ width: 80, marginLeft: 8 }} />
               </label>
           </div>
         </div>
@@ -709,11 +727,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 </div>
                 <div>
                   {p.id === 'letter_peek' ? (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
-                      <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
-                    </div>
-                  ) : (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
+                        <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      </div>
+                    ) : (
                     <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                   )}
                 </div>
@@ -1011,18 +1029,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             {isHost ? (
               <>
                 <label style={{ marginRight: 12 }}>
-                  <input type="checkbox" checked={timedMode} onChange={e => { setTimedMode(e.target.checked); updateRoomTiming(e.target.checked, turnSeconds) }} /> Timed mode
+                  <input id="timedMode_view" name="timedMode_view" type="checkbox" checked={timedMode} onChange={e => { setTimedMode(e.target.checked); updateRoomTiming(e.target.checked, turnSeconds) }} /> Timed mode
                 </label>
                 <label style={{ marginRight: 12 }} title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
-                  <input type="checkbox" checked={starterEnabled} onChange={e => setStarterEnabled(e.target.checked)} /> Starter bonus
+                  <input id="starterEnabled_view" name="starterEnabled_view" type="checkbox" checked={starterEnabled} onChange={e => setStarterEnabled(e.target.checked)} /> Starter bonus
                 </label>
                 <label style={{ marginRight: 12 }} title="Choose how the winner is determined: Last one standing (default) or player with most hangmoney. Visible to all players.">
-                  <input type="checkbox" checked={winnerByHangmoney} onChange={e => { setWinnerByHangmoney(e.target.checked); updateRoomWinnerMode(e.target.checked) }} /> Winner by money
+                  <input id="winnerByHangmoney_view" name="winnerByHangmoney_view" type="checkbox" checked={winnerByHangmoney} onChange={e => { setWinnerByHangmoney(e.target.checked); updateRoomWinnerMode(e.target.checked) }} /> Winner by money
                 </label>
                 {timedMode && (
                   <label>
                     Seconds per turn:
-                    <input type="number" min={10} max={300} value={turnSeconds} onChange={e => { setTurnSeconds(Math.max(10, Math.min(300, Number(e.target.value || 30)))); updateRoomTiming(timedMode, Math.max(10, Math.min(300, Number(e.target.value || 30)))) }} style={{ width: 80, marginLeft: 8 }} />
+                    <input id="turnSeconds_view" name="turnSeconds_view" type="number" min={10} max={300} value={turnSeconds} onChange={e => { setTurnSeconds(Math.max(10, Math.min(300, Number(e.target.value || 30)))); updateRoomTiming(timedMode, Math.max(10, Math.min(300, Number(e.target.value || 30)))) }} style={{ width: 80, marginLeft: 8 }} />
                   </label>
                 )}
               </>
@@ -1066,7 +1084,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   u.searchParams.set('room', roomId)
                   return (
                     <>
-                      <input readOnly value={u.toString()} style={{ width: 360 }} />
+                      <input id="share_link" name="share_link" readOnly value={u.toString()} style={{ width: 360 }} />
                   <button onClick={async () => { await navigator.clipboard.writeText(u.toString()); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy</button>
                     </>
                   )
@@ -1074,7 +1092,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   const fallback = window.location.origin + '?room=' + roomId
                   return (
                     <>
-                      <input readOnly value={fallback} style={{ width: 360 }} />
+                      <input id="share_link_fallback" name="share_link_fallback" readOnly value={fallback} style={{ width: 360 }} />
                       <button onClick={async () => { await navigator.clipboard.writeText(fallback); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy</button>
                     </>
                   )
@@ -1148,7 +1166,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           canGuess={phase === 'playing' && myId === currentTurnId && p.id !== myId}
                           onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
-                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); const tid = `pup_open_${Date.now()}`; setToasts(t => [...t, { id: tid, text: `Opening power-ups for ${playerIdToName[targetId] || targetId}` }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 2500) }}
+                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue('') }}
                           playerIdToName={playerIdToName}
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                           starterApplied={!!state?.starterBonus?.applied}
@@ -1220,7 +1238,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div className="submit-controls">
               {!myHasSubmitted ? (
                 <>
-                  <input placeholder="your word" value={word} onChange={e => { setWord(e.target.value); setWordError('') }} />
+                  <input id="submit_word" name="submit_word" placeholder="your word" value={word} onChange={e => { setWord(e.target.value); setWordError('') }} />
                   <button onClick={handleSubmitWord} disabled={isCheckingDictionary || localInvalid}>{isCheckingDictionary ? 'Checking…' : 'Submit'}</button>
                   {/* inline helper / error */}
                   {(wordError || (!isCheckingDictionary && localInvalid && candidateInput)) && (

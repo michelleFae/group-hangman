@@ -141,6 +141,10 @@ button[disabled] {
 /* make settings modal inputs easier to click: avoid floating transform on focus within settings modal */
 .settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(63,81,181,0.06) !important }
 
+/* Ensure controls in the settings modal (including the close button) are visible against light background */
+.settings-modal button { color: #333; background: transparent; border: none; font-size: 16px; cursor: pointer }
+.settings-modal button:hover { color: #111 }
+
 /* Prevent modal dialogs (including the power-up shop) from floating on hover */
 .modal-overlay .modal-dialog.card,
 .modal-dialog.card,
@@ -320,6 +324,9 @@ button[disabled] {
 
 /* header mode badge */
 .mode-badge { background: rgba(255,255,255,0.95); box-shadow: 0 8px 22px rgba(0,0,0,0.08); border-radius: 12px }
+
+/* small rocket badge used to indicate power-ups are enabled in the room */
+.powerup-rocket { display: inline-block; padding: 4px 6px; border-radius: 8px; background: linear-gradient(90deg,#fff7e6,#fff3e0); box-shadow: 0 6px 14px rgba(255,160,0,0.06) }
 
 /* adjust cash piece animation for confetti-like drop */
 .victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 3.0s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }

@@ -173,7 +173,7 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                 )}
                 {showGuessDialog && (
                   <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
-                    <input placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
+                    <input id={`guess_for_${player.id}`} name={`guess_for_${player.id}`} placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                       <button onClick={() => {
                         const val = (guessValue || '').trim()
