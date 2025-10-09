@@ -434,16 +434,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   function SettingsModal({ open, onClose }) {
     if (!open) return null
-    // local state to avoid DB updates on every keystroke which can cause focus loss
-    const [localMin, setLocalMin] = useState(String(minWordSize || 2))
-    React.useEffect(() => { setLocalMin(String(minWordSize || 2)) }, [open])
-
-    function commitMinValue(valStr) {
-      const v = Math.max(2, Math.min(10, Number(valStr || 2)))
-      setMinWordSize(v)
-      updateRoomSettings({ minWordSize: v })
-      setLocalMin(String(v))
-    }
+    // immediate update: write minWordSize on change to avoid spinner revert issues
 
     return (
       <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }}>
@@ -474,7 +465,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
-                <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={localMin} onChange={e => setLocalMin(e.target.value)} onBlur={e => commitMinValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.target.blur(); commitMinValue(e.target.value) } }} style={{ width: 80, marginLeft: 8 }} />
+                <input id="minWordSize" name="minWordSize" type="number" min={2} max={10} value={minWordSize} onChange={e => { const v = Math.max(2, Math.min(10, Number(e.target.value || 2))); setMinWordSize(v); updateRoomSettings({ minWordSize: v }) }} style={{ width: 80, marginLeft: 8 }} />
               </label>
           </div>
         </div>
@@ -712,8 +703,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.hangmoney) || 0
     return (
-      <div className="modal-overlay" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
-        <div className="modal-dialog card" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
+      <div className="modal-overlay shop-modal" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
+        <div className="modal-dialog card no-anim shop-modal-dialog" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Power-ups for {targetName}</strong>
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
