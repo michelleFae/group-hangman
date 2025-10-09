@@ -405,7 +405,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <strong style={{ fontSize: 13 }}>{state?.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
             <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
           </div>
-          {isHost && (
+          {isHost && phase === 'lobby' && (
             <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
           )}
         </div>
@@ -546,8 +546,56 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         resultPayload = { roll, indices }
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
+        // also reveal all letters publicly (but shuffled order is kept in private payload)
+        const existingAll = targetNode.revealed || []
+        const allLetters = Array.from(new Set(((targetWord || '').toLowerCase().split('').filter(Boolean))))
+        updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existingAll || []), ...allLetters]))
       } else if (powerId === 'full_reveal') {
         resultPayload = { full: targetWord }
+        // reveal whole word publicly
+        const existingFull = targetNode.revealed || []
+        const allLettersFull = Array.from(new Set(((targetWord || '').toLowerCase().split('').filter(Boolean))))
+        updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existingFull || []), ...allLettersFull]))
+      } else if (powerId === 'sound_check' || powerId === 'what_do_you_mean') {
+        // Try to query Datamuse for similar-sounding words or similar-meaning words respectively.
+        try {
+          const query = encodeURIComponent(targetWord || '')
+          const url = powerId === 'sound_check'
+            ? `https://api.datamuse.com/words?sl=${query}&max=6`
+            : `https://api.datamuse.com/words?ml=${query}&max=6`
+          const res = await fetch(url)
+          if (res && res.ok) {
+            const list = await res.json()
+            // map to simple words array
+            const words = (Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []).slice(0,6)
+            resultPayload = { suggestions: words }
+          } else {
+            resultPayload = { suggestions: [] }
+          }
+        } catch (e) {
+          resultPayload = { suggestions: [] }
+        }
+      } else if (powerId === 'mind_leech') {
+        // Mind leech: use buyer's known guessed letters (privateHits + privateWrong) to simulate guesses
+        try {
+          const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
+          const hitsMap = buyerNode.privateHits || {}
+          const wrongMap = buyerNode.privateWrong || {}
+          // collect letters the buyer has guessed (both hits and wrongs)
+          const guessedLetters = new Set()
+          Object.values(hitsMap || {}).forEach(arr => (arr || []).forEach(e => { if (e && e.type === 'letter' && e.letter) guessedLetters.add(e.letter.toLowerCase()) }))
+          Object.values(wrongMap || {}).forEach(arr => (arr || []).forEach(e => { if (typeof e === 'string') guessedLetters.add(e.toLowerCase()) }))
+          // now compute which of those letters are present in the target word and counts
+          const letters = (targetWord || '').toLowerCase().split('')
+          const found = []
+          guessedLetters.forEach(l => {
+            const count = letters.filter(ch => ch === l).length
+            if (count > 0) found.push({ letter: l, count })
+          })
+          resultPayload = { found, attempted: Array.from(guessedLetters) }
+        } catch (e) {
+          resultPayload = { found: [], attempted: [] }
+        }
       } else if (powerId === 'letter_for_letter') {
         // reveal one random letter to both players
         const letters = (targetWord || '').split('')
@@ -594,8 +642,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.hangmoney) || 0
     return (
-      <div className="modal-overlay" role="dialog" aria-modal="true">
-        <div className="modal-dialog card">
+      <div className="modal-overlay" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
+        <div className="modal-dialog card" style={{ maxWidth: 720, width: 'min(92%,720px)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Power-ups for {targetName}</strong>
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
@@ -903,7 +951,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   return (
     <div className={`game-room ${state && state.winnerByHangmoney ? 'money-theme' : ''}`}>
       {modeBadge}
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+  {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
       {phase === 'lobby' && <h2>Room: {roomId}</h2>}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>
@@ -1024,6 +1072,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const playerWithViewer = { ...p, _viewer: viewerPrivate }
 
           const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
+          // determine why the power-up button should be disabled (if anything)
+          const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
+          let pupReason = null
+          if (!powerUpsEnabled) pupReason = 'Power-ups are disabled'
+          else if (p.id === myId) pupReason = 'Cannot target yourself'
+          else if (p.eliminated) pupReason = 'Player is eliminated'
+          else if (myId !== currentTurnId) pupReason = 'Not your turn'
+          else {
+            const me = (state?.players || []).find(x => x.id === myId) || {}
+            const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
+            const myHang = Number(me.hangmoney) || 0
+            if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
+          }
+
           return (
             <PlayerCircle key={p.id}
                           player={playerWithViewer}
@@ -1034,13 +1096,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           canGuess={phase === 'playing' && myId === currentTurnId && p.id !== myId}
                           onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
-                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue('') }}
+                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); const tid = `pup_open_${Date.now()}`; setToasts(t => [...t, { id: tid, text: `Opening power-ups for ${playerIdToName[targetId] || targetId}` }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 2500) }}
                           playerIdToName={playerIdToName}
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                           starterApplied={!!state?.starterBonus?.applied}
                           flashPenalty={wasPenalized}
                           pendingDeduct={pendingDeducts[p.id] || 0}
-                          isWinner={p.id === state?.winnerId} />
+                          isWinner={p.id === state?.winnerId}
+                          powerUpDisabledReason={pupReason} />
           )
           })
         })()}
@@ -1060,6 +1123,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           </div>
         ))}
       </div>
+
+      {/* Power-up modal rendered when requested */}
+      {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (

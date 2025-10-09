@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false, showPowerUpButton = false, onOpenPowerUps = null }) {
+export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false, showPowerUpButton = false, onOpenPowerUps = null, powerUpDisabledReason = null }) {
   // accept starterApplied prop to control when starter badge is visible
   const starterApplied = arguments[0] && arguments[0].starterApplied
   const revealed = player.revealed || []
@@ -159,8 +159,13 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
               <>
                 <button disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Locked'}</button>
                 {/* power-up button visible when parent allows it (e.g. it's your turn) */}
-                {showPowerUpButton && onOpenPowerUps && !player.eliminated && (
-                  <button title="Open power-ups" onClick={() => onOpenPowerUps(player.id)} style={{ marginLeft: 8 }}>
+                {onOpenPowerUps && !isSelf && !player.eliminated && (
+                  <button
+                    title={powerUpDisabledReason || 'Open power-ups'}
+                    onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; onOpenPowerUps(player.id) }}
+                    disabled={!!powerUpDisabledReason}
+                    style={{ marginLeft: 8, opacity: powerUpDisabledReason ? 0.55 : 1, cursor: powerUpDisabledReason ? 'not-allowed' : 'pointer' }}
+                  >
                     ⚡ Power-up
                   </button>
                 )}
