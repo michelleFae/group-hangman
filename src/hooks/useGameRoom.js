@@ -61,6 +61,13 @@ export default function useGameRoom(roomId, playerName) {
     }
   }, [roomId])
 
+  function getStartMoney(roomVal) {
+    try {
+      if (roomVal && typeof roomVal.startingHangmoney === 'number') return Math.max(0, Number(roomVal.startingHangmoney))
+    } catch (e) {}
+    return 2
+  }
+
   function stopHeartbeat() {
     try {
       if (heartbeatRef.current) {
@@ -87,9 +94,11 @@ export default function useGameRoom(roomId, playerName) {
     console.log('joinRoom called with password:', password)
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
+      // use default starting hangmoney for local fallback
+      const start = 2
       setState(prev => ({
         ...prev,
-        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, hangmoney: 2, revealed: [] }]
+        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, hangmoney: start, revealed: [] }]
       }))
       return
     }
@@ -114,7 +123,8 @@ export default function useGameRoom(roomId, playerName) {
       }
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
-      await dbSet(pRef, { id: pKey, name: playerName, hangmoney: 2, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
+      const start = getStartMoney(roomVal)
+      await dbSet(pRef, { id: pKey, name: playerName, hangmoney: start, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }
 

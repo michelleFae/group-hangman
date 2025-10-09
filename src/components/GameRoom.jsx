@@ -60,7 +60,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     setMinWordSize(typeof state?.minWordSize === 'number' ? Math.max(2, Math.min(10, state.minWordSize)) : 2)
     // sync starting hangmoney (host-configurable)
     setStartingHangmoney(typeof state?.startingHangmoney === 'number' ? Math.max(0, Number(state.startingHangmoney)) : 2)
-  }, [state?.timed, state?.turnTimeoutSeconds])
+  }, [state])
 
   // toggle a body-level class so the background becomes green when money-mode is active
   useEffect(() => {
@@ -1058,15 +1058,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setSubmitting(true)
         setIsResetting(true)
 
-    const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
-        ;(players || []).forEach(p => {
+  const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
+    // determine starting hangmoney to apply for resets (prefer authoritative room state, fallback to local setting)
+    const resetStart = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : (typeof startingHangmoney === 'number' ? Math.max(0, Number(startingHangmoney)) : 2)
+    ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          // use configured startingHangmoney (fallback to 2)
-          updates[`players/${p.id}/hangmoney`] = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : startingHangmoney || 2
+          // apply configured starting hangmoney
+          updates[`players/${p.id}/hangmoney`] = resetStart
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -1137,7 +1139,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : 2
+  const startMoney = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : (typeof startingHangmoney === 'number' ? Math.max(0, Number(startingHangmoney)) : 2)
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
