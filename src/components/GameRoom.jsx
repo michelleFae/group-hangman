@@ -26,6 +26,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [powerUpTarget, setPowerUpTarget] = useState(null)
   const [powerUpChoiceValue, setPowerUpChoiceValue] = useState('')
   const [powerUpLoading, setPowerUpLoading] = useState(false)
+  const powerUpChoiceRef = useRef(null)
   const multiHitSeenRef = useRef({})
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
@@ -472,9 +473,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word." },
     { id: 'vowel_vision', name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.' },
     { id: 'letter_scope', name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.' },
-    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed!' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word." },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word.' },
+    { id: 'one_random', name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!' },
+    { id: 'mind_leech', name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!" },
+    { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word. You can guess this letter to get points next turn, if it is not already revealed!' },
     { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
     { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word.' },
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
@@ -560,20 +561,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const allLettersFull = Array.from(new Set(((targetWord || '').toLowerCase().split('').filter(Boolean))))
         updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existingFull || []), ...allLettersFull]))
       } else if (powerId === 'sound_check' || powerId === 'what_do_you_mean') {
-        // Try to query Datamuse for similar-sounding words or similar-meaning words respectively.
+        // sound_check: return exactly one rhyming word (Datamuse rel_rhy) that isn't the exact target
+        // what_do_you_mean: return similar-meaning suggestions (ml) as before
         try {
-          const query = encodeURIComponent(targetWord || '')
-          const url = powerId === 'sound_check'
-            ? `https://api.datamuse.com/words?sl=${query}&max=6`
-            : `https://api.datamuse.com/words?ml=${query}&max=6`
-          const res = await fetch(url)
-          if (res && res.ok) {
-            const list = await res.json()
-            // map to simple words array
-            const words = (Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []).slice(0,6)
-            resultPayload = { suggestions: words }
+          const q = encodeURIComponent(targetWord || '')
+          if (powerId === 'sound_check') {
+            const url = `https://api.datamuse.com/words?rel_rhy=${q}&max=6`
+            const res = await fetch(url)
+            if (res && res.ok) {
+              const list = await res.json()
+              const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
+              // pick the first rhyme that's not identical (case-insensitive)
+              const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
+              resultPayload = { suggestions: candidate ? [candidate] : [] }
+            } else {
+              resultPayload = { suggestions: [] }
+            }
           } else {
-            resultPayload = { suggestions: [] }
+            const url = `https://api.datamuse.com/words?ml=${q}&max=6`
+            const res = await fetch(url)
+            if (res && res.ok) {
+              const list = await res.json()
+              const words = (Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []).slice(0,6)
+              resultPayload = { suggestions: words }
+            } else {
+              resultPayload = { suggestions: [] }
+            }
           }
         } catch (e) {
           resultPayload = { suggestions: [] }
@@ -710,6 +723,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
   }
 
+  // Keep the letter_peek input focused while the power-up modal is open so typing isn't interrupted
+  useEffect(() => {
+    if (!powerUpOpen) return
+    // small next-tick focus to ensure the input exists in the DOM
+    const t = setTimeout(() => {
+      try {
+        const el = powerUpChoiceRef.current
+        if (el && typeof el.focus === 'function') {
+          el.focus()
+          // move caret to end
+          const len = (el.value || '').length
+          if (typeof el.setSelectionRange === 'function') el.setSelectionRange(len, len)
+        }
+      } catch (e) {}
+    }, 0)
+    return () => clearTimeout(t)
+  }, [powerUpOpen, powerUpTarget, powerUpChoiceValue])
+
   function PowerUpModal({ open, targetId, onClose }) {
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
@@ -732,7 +763,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <div>
                   {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <input id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
+                        <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
                         <button disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : (
