@@ -436,7 +436,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         <div className="card" style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
-            <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }} aria-label="Close settings">✖</button>
+            {/* fixed-size close button to avoid jitter when hovered/focused */}
+            <button onClick={onClose} aria-label="Close settings" style={{
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              width: 36,
+              height: 36,
+              padding: 6,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'none',
+              outline: 'none'
+            }}>✖</button>
           </div>
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <label htmlFor="timedMode">
@@ -485,6 +498,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.' }
   ]
 
+  // add self-targeted powerups (available when target is yourself)
+  POWER_UPS.push(
+    { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.' },
+    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some hangmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.' },
+    { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.' },
+    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.' },
+    { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word — you get the credit. Letters are revealed publicly and are no-score.' },
+    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.' }
+  )
+
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
   async function purchasePowerUp(powerId, opts = {}) {
     if (!powerUpTarget) return
@@ -496,13 +519,33 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
     const pu = POWER_UPS.find(p => p.id === powerId)
     if (!pu) return
-    const cost = pu.price
+    const baseCost = pu.price
+    // compute effective cost (account for global price surge set by another player)
+    let cost = baseCost
+    try {
+      const surge = state && state.priceSurge
+      if (surge && surge.amount && surge.by !== myId) {
+        const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+        const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+        if (active) cost = baseCost + Number(surge.amount || 0)
+      }
+    } catch (e) {}
     // check buyer hangmoney
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.hangmoney) || 0
     if (myHang - cost < 0) {
       setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough hangmoney to buy that power-up.' }])
       return
+    }
+
+    // Guard: only allow longest_word_bonus once per buyer
+    if (powerId === 'longest_word_bonus') {
+      try {
+        if (state && state.usedLongestWordBonus && state.usedLongestWordBonus[myId]) {
+          setToasts(t => [...t, { id: `pup_err_used_${Date.now()}`, text: 'Longest Word Bonus already used.' }])
+          return
+        }
+      } catch (e) {}
     }
     setPowerUpLoading(true)
     try {
@@ -523,7 +566,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (powerId === 'letter_scope') {
         resultPayload = { letters: (targetWord || '').length }
       } else if (powerId === 'zeta_drop') {
-        resultPayload = { last: targetWord ? targetWord.slice(-1) : null }
+        const last = targetWord ? targetWord.slice(-1) : null
+        resultPayload = { last }
       } else if (powerId === 'vowel_vision') {
         const vowels = (targetWord.match(/[aeiou]/ig) || []).length
         resultPayload = { vowels }
@@ -682,7 +726,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } catch (e) {
           resultPayload = { found: [], attempted: [] }
         }
-      } else if (powerId === 'letter_for_letter') {
+  } else if (powerId === 'letter_for_letter') {
         // reveal one random letter from the target's word publicly (no-score),
         // AND privately reveal one random letter from the buyer's own word to the target.
         const targetLetters = (targetWord || '').split('')
@@ -712,6 +756,85 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
         // assign a combined resultPayload for the generic 'data' in case it's used elsewhere
         resultPayload = { targetReveal: buyerResultPayload, buyerReveal: targetResultPayload }
+      }
+
+      // self-targeted powerups
+      else if (powerId === 'word_freeze') {
+        // mark the buyer as frozen until their next turn; store a flag on player
+        resultPayload = { frozen: true }
+        updates[`players/${myId}/frozenUntilTurnIndex`] = state.currentTurnIndex // marker; server should clear when next seen
+        // also write a privatePowerUp record so only the buyer knows details
+        // but players will see visual freeze via players/{id}/frozen flag
+        updates[`players/${myId}/frozen`] = true
+      } else if (powerId === 'double_down') {
+        // opts.stake should be numeric and limited so buyer doesn't go negative if they lose
+        const stakeRaw = Number(opts && opts.stake) || 0
+        // ensure stake is at least 1 and at most myHang - cost (so they can't go negative after paying fee)
+        const maxStake = Math.max(0, myHang - cost)
+        const stake = Math.max(1, Math.min(maxStake, stakeRaw))
+        // store the active double down on the buyer node with stake and an id
+        const dd = { stake, active: true, ts: Date.now(), fromTurnIndex: state.currentTurnIndex }
+        resultPayload = { doubleDown: dd }
+        updates[`players/${myId}/doubleDown`] = dd
+        // deduct the fee (price already deducted above via hangmoney update)
+      } else if (powerId === 'hang_shield') {
+        // store a private shield marker only visible to the buyer
+        const shield = { active: true, ts: Date.now() }
+        resultPayload = { shield }
+        updates[`players/${myId}/hangShield`] = shield
+      } else if (powerId === 'price_surge') {
+        // set a room-level marker that other clients will interpret to add +2 to shop prices for one round
+        const surge = { by: myId, amount: 2, ts: Date.now(), expiresAtTurnIndex: (state.currentTurnIndex || 0) + 1 }
+        resultPayload = { surge }
+        updates[`priceSurge`] = surge
+      } else if (powerId === 'crowd_hint') {
+        try {
+          // reveal one random letter from every player's word; mark as no-score
+          const playersArr = state.players || []
+          const revealedMap = {}
+          playersArr.forEach(p => {
+            const w = p.word || ''
+            if (!w) return
+            const letters = w.split('')
+            if (letters.length === 0) return
+            const idx = Math.floor(Math.random() * letters.length)
+            const ch = (letters[idx] || '').toLowerCase()
+            if (!ch) return
+            // add to their public revealed set and mark as no-score
+            const existing = p.revealed || []
+            const newRevealed = Array.from(new Set([...(existing || []), ch]))
+            updates[`players/${p.id}/revealed`] = newRevealed
+            updates[`players/${p.id}/noScoreReveals/${ch}`] = true
+            // record what was revealed so buyer's privatePowerReveals can show a summary
+            revealedMap[p.id] = ch
+          })
+          resultPayload = { revealed: revealedMap }
+        } catch (e) {
+          resultPayload = { revealed: {} }
+        }
+      } else if (powerId === 'longest_word_bonus') {
+        try {
+          // compute the longest word among players (ties: earliest in list)
+          const playersArr = state.players || []
+          let best = null
+          playersArr.forEach(p => {
+            const len = (p.word || '').length || 0
+            if (!best || len > best.len) best = { id: p.id, len }
+          })
+          if (best && best.id) {
+            // grant +10 hangmoney to that player
+            const winnerNode = (state.players || []).find(x => x.id === best.id) || {}
+            const prev = Number(winnerNode.hangmoney) || 0
+            updates[`players/${best.id}/hangmoney`] = prev + 10
+            resultPayload = { winner: best.id, amount: 10 }
+            // mark that this powerup was used so it can't be reused (client-side best-effort)
+            updates[`usedLongestWordBonus/${myId}`] = true
+          } else {
+            resultPayload = { winner: null }
+          }
+        } catch (e) {
+          resultPayload = { winner: null }
+        }
       }
 
       // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
@@ -757,7 +880,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (resultPayload && resultPayload.last) {
         const existing = targetNode.revealed || []
         const add = (resultPayload.last || '').toLowerCase()
-        if (add) updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
+        if (add) {
+          updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
+          // If zeta_drop revealed only one occurrence, make it no-score (per rules)
+          try {
+            if (powerId === 'zeta_drop') {
+              const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
+              if (count === 1) updates[`players/${powerUpTarget}/noScoreReveals/${add}`] = true
+            }
+          } catch (e) {}
+        }
       }
 
       // Also advance the turn immediately after a power-up is applied (end the buyer's turn)
@@ -774,6 +906,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
             const prevNextHang = (typeof nextNode.hangmoney === 'number') ? nextNode.hangmoney : 0
             updates[`players/${nextPlayer}/hangmoney`] = prevNextHang + 1
+            // clear any frozen flags when their turn begins
+            updates[`players/${nextPlayer}/frozen`] = null
+            updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
           } catch (e) {}
         }
       } catch (e) {}
@@ -839,25 +974,43 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
           </div>
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {POWER_UPS.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 8, background: 'rgba(0,0,0,0.03)' }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{p.name} <small style={{ color: '#666', marginLeft: 8 }}>{p.desc}</small></div>
-                  <div style={{ fontSize: 13, color: '#777' }}>{p.price} 🪙</div>
-                </div>
-                <div>
-                  {p.id === 'letter_peek' ? (
+            {(POWER_UPS || []).map(p => {
+              // compute effective price for display (show surge applied if it affects buyer)
+              let displayPrice = p.price
+              try {
+                const surge = state && state.priceSurge
+                if (surge && surge.amount && surge.by !== myId) {
+                  const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+                  const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                  if (active) displayPrice = p.price + Number(surge.amount || 0)
+                }
+              } catch (e) { }
+
+              return (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 8, background: 'rgba(0,0,0,0.03)' }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{p.name} <small style={{ color: '#666', marginLeft: 8 }}>{p.desc}</small></div>
+                    <div style={{ fontSize: 13, color: '#777' }}>{displayPrice} 🪙{displayPrice !== p.price ? <small style={{ marginLeft: 8, color: '#b33' }}>(+ surge)</small> : null}</div>
+                  </div>
+                  <div>
+                    {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      </div>
+                    ) : p.id === 'double_down' ? (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
+                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : (
-                    <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < p.price} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
-                  )}
+                      <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>
@@ -1059,6 +1212,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
           // include the expired turn's start timestamp so consumers can dedupe by turn
           updates[`timeouts/${tkey}`] = { player: timedOutPlayer, deducted: 2, ts: Date.now(), turnStartedAt: r.currentTurnStartedAt || null }
+          // clear frozen flags for the player whose turn will start
+          try {
+            const nextPlayer = order[nextIdx]
+            if (nextPlayer) {
+              updates[`players/${nextPlayer}/frozen`] = null
+              updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+            }
+          } catch (e) {}
           if (debug) console.log('TimerWatcher: writing timeout', { roomId, tkey, timedOutPlayer, expiredTurnStartedAt: r.currentTurnStartedAt || null })
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))

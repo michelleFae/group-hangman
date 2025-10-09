@@ -146,7 +146,8 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
 
   const isTurn = currentTurnId && currentTurnId === player.id
   return (
-    <div className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''}`} style={{ ['--halo']: haloRgba }}>
+    // show a frozen overlay when player.frozen or player.frozenUntilTurnIndex is set
+    <div className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative' }}>
       <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
       <div className="meta">
         <div className="name">{player.name} {player.eliminated ? '(out)' : ''}
@@ -160,8 +161,29 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
             ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
           </span>
         </div>
-  <div className="revealed">{(ownerWord && ownerWord.length > 0) ? revealedPositions : revealed.join(' ')}</div>
+  <div className="revealed">
+    {ownerWord && ownerWord.length > 0 ? (
+      // show only actual revealed letters (preserve duplicates); do not show '_' placeholders that reveal length
+      (() => {
+        const letters = (ownerWord || '').split('')
+        const shown = letters.map((ch, idx) => {
+          const lower = (ch || '').toLowerCase()
+          return revealedSet.has(lower) ? <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span> : null
+        }).filter(Boolean)
+        return shown.length > 0 ? shown : <span>(hidden)</span>
+      })()
+    ) : <span>(hidden)</span>}
+  </div>
       </div>
+      { (player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
+        <div aria-hidden={true} title="Word frozen — cannot be guessed until the owner's turn" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.65)', pointerEvents: 'none', zIndex: 6, borderRadius: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.85)', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 20, boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
+            <span style={{ fontSize: 18 }}>❄️</span>
+            <div style={{ fontSize: 13, color: '#333', fontWeight: 700 }}>Frozen</div>
+            <div style={{ fontSize: 12, color: '#555' }}>No guesses until owner's turn</div>
+          </div>
+        </div>
+      )}
       <div className="actions">
         {/* Controls first for non-self viewers, then hidden word below (so Locked appears above hidden) */}
         {isSelf ? (

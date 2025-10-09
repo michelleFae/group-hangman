@@ -79,6 +79,11 @@ module.exports = async (req, res) => {
       const word = lc(target.word || '')
       if (!word) return res.status(400).json({ error: 'Target has no word yet' })
 
+      // Block guesses against frozen targets
+      if (target && (target.frozen || (typeof target.frozenUntilTurnIndex !== 'undefined' && target.frozenUntilTurnIndex !== null))) {
+        return res.status(400).json({ error: 'Target is frozen and cannot be guessed right now' })
+      }
+
       let count = 0
       for (let ch of word) if (ch === letter) count++
 
@@ -95,8 +100,23 @@ module.exports = async (req, res) => {
           // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award hangmoney
           const noScore = target.noScoreReveals && target.noScoreReveals[letter]
           if (!noScore) {
+            // Base award for correct letter(s)
             const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-            updates[`players/${from}/hangmoney`] = prevHang + (2 * toAdd)
+            let award = (2 * toAdd)
+
+            // Apply double-down bonus if the guesser staked
+            const dd = guesser.doubleDown
+            if (dd && dd.active) {
+              const stake = Number(dd.stake) || 0
+              if (stake > 0) {
+                const extraMultiplier = (toAdd >= 4) ? 4 : 2
+                const extra = stake * extraMultiplier
+                award += extra
+                // consume the doubleDown entry after use
+                updates[`players/${from}/doubleDown`] = null
+              }
+            }
+            updates[`players/${from}/hangmoney`] = prevHang + award
 
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
@@ -122,9 +142,26 @@ module.exports = async (req, res) => {
           if (!prevWrong.includes(letter)) {
             prevWrong.push(letter)
             updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them
+            // reward the target for a wrong guess against them — unless they have an active hang shield
             const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
-            updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+            const shield = target.hangShield
+            if (shield && shield.active) {
+              // consume the shield but do not award hangmoney
+              updates[`players/${targetId}/hangShield`] = null
+            } else {
+              updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+            }
+
+            // If the guesser had an active doubleDown, they lose their stake on a wrong guess
+            const ddFail = guesser.doubleDown
+            if (ddFail && ddFail.active) {
+              const stake = Number(ddFail.stake) || 0
+              if (stake > 0) {
+                const prevGHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+                updates[`players/${from}/hangmoney`] = Math.max(0, prevGHang - stake)
+              }
+              updates[`players/${from}/doubleDown`] = null
+            }
           }
         }
 
@@ -138,10 +175,15 @@ module.exports = async (req, res) => {
           updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
         }
       }
-    } else {
+      } else {
       const guessWord = lc(value)
       const targetWord = lc(target.word || '')
       if (!targetWord) return res.status(400).json({ error: 'Target has no word yet' })
+
+        // Block guesses against frozen targets
+        if (target && (target.frozen || (typeof target.frozenUntilTurnIndex !== 'undefined' && target.frozenUntilTurnIndex !== null))) {
+          return res.status(400).json({ error: 'Target is frozen and cannot be guessed right now' })
+        }
 
       if (guessWord === targetWord) {
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
@@ -167,6 +209,17 @@ module.exports = async (req, res) => {
         const prevWrongWords = (guesser.privateWrongWords && guesser.privateWrongWords[targetId]) ? guesser.privateWrongWords[targetId].slice() : []
         prevWrongWords.push(value)
         updates[`players/${from}/privateWrongWords/${targetId}`] = prevWrongWords
+
+        // If the guesser had an active doubleDown, they lose their stake on a wrong guess
+        const ddFailWord = guesser.doubleDown
+        if (ddFailWord && ddFailWord.active) {
+          const stake = Number(ddFailWord.stake) || 0
+          if (stake > 0) {
+            const prevGHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+            updates[`players/${from}/hangmoney`] = Math.max(0, prevGHang - stake)
+          }
+          updates[`players/${from}/doubleDown`] = null
+        }
       }
     }
 
