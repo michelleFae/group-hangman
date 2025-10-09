@@ -399,46 +399,6 @@ body.my-turn-body .player {
   background: rgba(0,0,0,0.45) !important;
   transition: none !important;
 }
-
-/* Power-up shop specific styles (replace inline styles used in GameRoom.jsx) */
-.shop-modal .shop-modal-dialog {
-  max-width: 720px;
-  width: min(92%, 720px);
-  max-height: 90vh;
-  overflow: auto;
-  box-sizing: border-box;
-  padding: 12px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(38,50,56,0.95), rgba(33,47,52,0.95));
-  color: #fff;
-}
-
-.shop-modal .shop-modal-header { display:flex; justify-content:space-between; align-items:center }
-.shop-modal .shop-modal-header strong { color: #fff; font-size:16px }
-.shop-modal .shop-modal-header small { color: rgba(255,255,255,0.75); font-size:12px }
-.shop-modal .shop-modal-close { border:none; background:transparent; color:#fff; cursor:pointer }
-
-.shop-modal .powerup-list { margin-top:12px; display:flex; flex-direction:column; gap:10px }
-.shop-modal .powerup-row { display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:8px; background:#263238; color:#fff; transition: background .18s ease, transform .18s ease, box-shadow .18s }
-.shop-modal .powerup-row:hover { transform: translateY(-4px); box-shadow: 0 10px 24px rgba(0,0,0,0.24) }
-.shop-modal .powerup-row .powerup-meta { max-width: calc(100% - 120px) }
-.shop-modal .powerup-row .powerup-meta .title { font-weight:700; color:#fff }
-.shop-modal .powerup-row .powerup-meta .desc { color:#cfd8dc; margin-left:8px; font-weight:400 }
-.shop-modal .powerup-price { font-size:13px; color:#e0f7fa }
-.shop-modal .powerup-price .surge { margin-left:8px; color:#ff8a80 }
-.shop-modal .powerup-actions { display:flex; gap:8px; align-items:center }
-.shop-modal input.powerup-input { width:84px; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color:#fff }
-.shop-modal button.powerup-buy { min-width:64px; transition:none }
-
-/* Transition for modal dialog appearance (subtle scale+fade) */
-.shop-modal .shop-modal-dialog { transform-origin: center; transition: transform 220ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease }
-.shop-modal.open .shop-modal-dialog { transform: translateY(0) scale(1); opacity:1 }
-.shop-modal.closed .shop-modal-dialog { transform: translateY(8px) scale(0.995); opacity:0 }
-
-/* .circle highlight transition when it's your turn */
-.circle { transition: background 260ms ease, box-shadow 260ms ease }
-.circle.my-turn { background: #fff9c4; box-shadow: 0 10px 30px rgba(255,241,118,0.22); border-radius: 12px }
-
 .shop-modal .shop-modal-dialog,
 .shop-modal-dialog {
   background: rgba(255,255,255,0.98) !important;
