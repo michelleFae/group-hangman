@@ -429,7 +429,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (!open) return null
     return (
       <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }}>
-        <div className="card" style={{ padding: 12 }}>
+        <div className="card" style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>
@@ -466,18 +466,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_scope', name: 'Letter Scope', price: 5, desc: 'Find out how many letters the word has.' },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word.' },
-    { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
+    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: 'Reveal a random letter for both players.' },
     { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.' },
-    { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word (datamuse).' },
-    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning (datamuse).' },
-    { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
+    { id: 'letter_scope', name: 'Letter Scope', price: 5, desc: 'Find out how many letters the word has.' },
     { id: 'one_random', name: 'One Random Letter', price: 5, desc: 'Reveal one random letter.' },
     { id: 'mind_leech', name: 'Mind Leech', price: 5, desc: "Use your guessed letters to try someone's word." },
+    { id: 'zeta_drop', name: 'Zeta Drop', price: 6, desc: 'Reveal the last letter of the word.' },
+    { id: 'letter_peek', name: 'Letter Peek', price: 6, desc: 'Pick a position and reveal that specific letter.' },
+    { id: 'sound_check', name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word (datamuse).' },
+    { id: 'dice_of_doom', name: 'Dice of Doom', price: 10, desc: 'Rolls a dice and reveals that many letters at random.' },
+    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 12, desc: 'Suggests words with similar meaning (datamuse).' },
     { id: 'all_letter_reveal', name: 'All Letter Reveal', price: 16, desc: 'Reveal all letters in shuffled order.' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 25, desc: 'Reveal the entire word instantly.' },
-    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: 'Reveal a random letter for both players.' }
+    { id: 'full_reveal', name: 'Full Reveal', price: 25, desc: 'Reveal the entire word instantly.' }
   ]
 
   // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
@@ -601,6 +601,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const letters = (targetWord || '').split('')
         const l = letters.length > 0 ? letters[Math.floor(Math.random() * letters.length)] : null
         resultPayload = { letter: l }
+        if (l) {
+          const lower = l.toLowerCase()
+          const occ = (targetWord || '').toLowerCase().split('').filter(ch => ch === lower).length
+          const existing = targetNode.revealed || []
+          // add the letter to revealed publicly (ensure letter is present at least once)
+          const newRevealedSet = Array.from(new Set([...(existing || []), lower]))
+          updates[`players/${powerUpTarget}/revealed`] = newRevealedSet
+          // mark this letter as a no-score reveal so guesses won't award points for it
+          updates[`players/${powerUpTarget}/noScoreReveals/${lower}`] = true
+        }
       }
 
       data.result = resultPayload
@@ -643,7 +653,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const myHang = Number(me.hangmoney) || 0
     return (
       <div className="modal-overlay" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
-        <div className="modal-dialog card" style={{ maxWidth: 720, width: 'min(92%,720px)' }}>
+        <div className="modal-dialog card" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Power-ups for {targetName}</strong>
             <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>✖</button>

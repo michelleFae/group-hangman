@@ -191,18 +191,21 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                 <div style={{ marginTop: 8, background: '#e6ffe6', padding: 6, borderRadius: 4 }}>
                   <strong>Your correct guesses:</strong>
                   <ul style={{ margin: '6px 0 0 12px' }}>
-                    {privateHits.map((h, idx) => (
-                      <li key={idx} style={{ marginTop: 6 }}>
-                        {h.type === 'letter' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div>Letter "{h.letter}" — {h.count} occurrence(s)</div>
-                            <div className="private-hit-count" style={{ background: '#c8f5c8', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>{h.count}x</div>
-                          </div>
-                        ) : (
-                          <div>Word "{h.word}"</div>
-                        )}
-                      </li>
-                    ))}
+                    {privateHits.map((h, idx) => {
+                      const isNoScore = h && h.note === 'no-score'
+                      return (
+                        <li key={idx} style={{ marginTop: 6 }}>
+                          {h.type === 'letter' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ color: isNoScore ? '#555' : 'inherit' }}>Letter "{h.letter}" — {h.count} occurrence(s){isNoScore ? ' ' : ''}{isNoScore && <small title="This was revealed by a power-up and does not award points when guessed." style={{ color: '#777', marginLeft: 6 }}>(no points)</small>}</div>
+                              <div className="private-hit-count" style={{ background: isNoScore ? '#efefef' : '#c8f5c8', color: isNoScore ? '#444' : '#0b6623', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>{h.count}x</div>
+                            </div>
+                          ) : (
+                            <div style={{ color: isNoScore ? '#777' : 'inherit' }}>Word "{h.word}"{isNoScore && <small title="This was revealed by a power-up and does not award points when guessed." style={{ color: '#777', marginLeft: 6 }}>(no points)</small>}</div>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )}
