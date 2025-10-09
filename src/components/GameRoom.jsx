@@ -964,8 +964,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   function PowerUpModal({ open, targetId, onClose }) {
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
-    const me = (state?.players || []).find(p => p.id === myId) || {}
+  const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.hangmoney) || 0
+  const isLobby = phase === 'lobby'
     return (
       <div className="modal-overlay shop-modal" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10002 }}>
         <div className="modal-dialog card no-anim shop-modal-dialog" style={{ maxWidth: 720, width: 'min(92%,720px)', maxHeight: '90vh', overflow: 'auto', boxSizing: 'border-box' }}>
@@ -989,23 +990,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               return (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, borderRadius: 8, background: 'rgba(0,0,0,0.03)' }}>
                   <div>
-                    <div style={{ fontWeight: 700 }}>{p.name} <small style={{ color: '#666', marginLeft: 8 }}>{p.desc}</small></div>
-                    <div style={{ fontSize: 13, color: '#777' }}>{displayPrice} 🪙{displayPrice !== p.price ? <small style={{ marginLeft: 8, color: '#b33' }}>(+ surge)</small> : null}</div>
+                    <div style={{ fontWeight: 700, color: '#222' }}>{p.name} <small style={{ color: '#444', marginLeft: 8 }}>{p.desc}</small></div>
+                    <div style={{ fontSize: 13, color: '#333' }}>{displayPrice} 🪙{displayPrice !== p.price ? <small style={{ marginLeft: 8, color: '#b33' }}>(+ surge)</small> : null}</div>
                   </div>
                   <div>
                     {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
+                        <input ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} disabled={isLobby} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : p.id === 'double_down' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} />
-                        <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <input id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} style={{ width: 84 }} disabled={isLobby} />
+                        <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : (
-                      <button style={{ minWidth: 64, transition: 'none' }} disabled={powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      <button style={{ minWidth: 64, transition: 'none' }} disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                     )}
                   </div>
                 </div>
@@ -1030,7 +1031,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setSubmitting(true)
         setIsResetting(true)
 
-  const updates = { phase: 'lobby', open: true }
+    const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -1048,7 +1049,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/noScoreReveals`] = null
         })
 
-        const ok = await attemptReset(updates)
+  const ok = await attemptReset(updates)
         if (ok) {
           const idOk = `rematch_host_ok_${Date.now()}`
           setToasts(t => [...t, { id: idOk, text: 'Room restarted — waiting for players to rejoin.' }])
@@ -1108,7 +1109,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-        const updates = { phase: 'lobby', open: true }
+  const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false

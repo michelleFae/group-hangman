@@ -53,8 +53,36 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         // persist storedAnon to state so UI can reflect it
         setStoredAnonForRoom(storedAnon)
         if (val && val.open === false && !storedAnon) {
-          setJoinError('This room has already started and is closed to new players.')
-          return
+          try {
+            // if all players are stale (lastSeen > 10 minutes), reset the room and allow join
+            const players = val.players || {}
+            const keys = Object.keys(players)
+            const now = Date.now()
+            const tenMin = 10 * 60 * 1000
+            const allStale = keys.length > 0 && keys.every(k => {
+              try {
+                const p = players[k] || {}
+                const ls = Number(p.lastSeen) || 0
+                return (now - ls) > tenMin
+              } catch (e) { return false }
+            })
+            if (allStale) {
+              // reopen and clear players so the joining user can take the room
+              const roomRef = dbRef(db, `rooms/${room}`)
+              const updates = { open: true, phase: 'lobby', turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
+              // clear player nodes to avoid conflicts (server-side eviction may do this later)
+              keys.forEach(k => { updates[`players/${k}`] = null })
+              update(roomRef, updates).catch(err => console.warn('Could not reset stale room before join', err))
+              // allow join to proceed
+            } else {
+              setJoinError('This room has already started and is closed to new players.')
+              return
+            }
+          } catch (e) {
+            // fallback: treat as closed
+            setJoinError('This room has already started and is closed to new players.')
+            return
+          }
         }
         // validate password inline instead of using a blocking alert
         // If there is a password and it doesn't match, allow rejoin when we have a stored anon id
