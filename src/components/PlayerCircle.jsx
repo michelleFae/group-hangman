@@ -241,21 +241,28 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
                 <ul style={{ margin: '6px 0 0 12px' }}>
                   {privatePowerRevealsList.map((r, idx) => {
                     const res = r && r.result
+                    // Defensive: don't show 'side effect' messages in a player's own tile unless it explicitly addresses 'you'.
+                    const lowerMsg = (res && res.message ? (res.message || '').toString().toLowerCase() : '')
+                    if (isSelf && lowerMsg.includes('side effect') && !lowerMsg.includes('you')) {
+                      return null
+                    }
+                    let content = null
+                    if (res && res.message) {
+                      content = <div>{res.message}</div>
+                    } else if (r.powerId === 'letter_for_letter') {
+                      if (res && res.letterFromTarget) {
+                        content = <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
+                      } else if (res && res.letterFromBuyer) {
+                        content = <div>One letter revealed: <strong>{res.letterFromBuyer}</strong></div>
+                      } else {
+                        content = <div>{r.powerId}: {JSON.stringify(res)}</div>
+                      }
+                    } else {
+                      content = <div>{r.powerId}: {JSON.stringify(res)}</div>
+                    }
                     return (
                       <li key={idx} style={{ marginTop: 6 }}>
-                        {res && res.message ? (
-                          <div>{res.message}</div>
-                        ) : r.powerId === 'letter_for_letter' ? (
-                          res && res.letterFromTarget ? (
-                            <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
-                          ) : res && res.letterFromBuyer ? (
-                            <div>One letter revealed: <strong>{res.letterFromBuyer}</strong></div>
-                          ) : (
-                            <div>{r.powerId}: {JSON.stringify(res)}</div>
-                          )
-                        ) : (
-                          <div>{r.powerId}: {JSON.stringify(res)}</div>
-                        )}
+                        {content}
                       </li>
                     )
                   })}

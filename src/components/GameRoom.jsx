@@ -817,6 +817,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   if (!merged) prevHits.push({ type: 'letter', letter: lower, count, ts: Date.now() })
                   updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
                   updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+                  // ALSO award the target (owner of the revealed word) the same amount for the newly revealed occurrences
+                  try {
+                    const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+                    const prevTargetHang = Number(targetNodeState.hangmoney) || 0
+                    const baseTargetAfter = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? updates[`players/${powerUpTarget}/hangmoney`] : prevTargetHang
+                    const targetAward = 2 * count
+                    updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetAfter) + targetAward)
+                    updates[`players/${powerUpTarget}/lastGain`] = { amount: targetAward, by: myId, reason: 'powerupReveal', ts: Date.now() }
+                  } catch (e) {}
                 } catch (e) {}
               }
             }
