@@ -192,6 +192,34 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
             <div style={{ marginTop: 6 }}>{showWord ? (
               <span>{fullWordRendered}</span>
             ) : (player.word ? <span>{'_ '.repeat((player.word || '').length)}</span> : '(hidden)')}</div>
+            {/* show private power-up reveals for the owner as well (side-effect messages targeted to self) */}
+            {privatePowerRevealsList.length > 0 && (
+              <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
+                <strong>Power-up results:</strong>
+                <ul style={{ margin: '6px 0 0 12px' }}>
+                  {privatePowerRevealsList.map((r, idx) => {
+                    const res = r && r.result
+                    return (
+                      <li key={idx} style={{ marginTop: 6 }}>
+                        {res && res.message ? (
+                          <div>{res.message}</div>
+                        ) : r.powerId === 'letter_for_letter' ? (
+                          res && res.letterFromTarget ? (
+                            <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
+                          ) : res && res.letterFromBuyer ? (
+                            <div>One letter revealed: <strong>{res.letterFromBuyer}</strong></div>
+                          ) : (
+                            <div>{r.powerId}: {JSON.stringify(res)}</div>
+                          )
+                        ) : (
+                          <div>{r.powerId}: {JSON.stringify(res)}</div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ marginBottom: 8 }}>

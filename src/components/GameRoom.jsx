@@ -970,12 +970,61 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // create short human-readable messages so the viewer sees concise info
         const buyerResult = (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null
         const targetResult = (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null
-        const buyerMsg = buyerResult && buyerResult.letterFromTarget ? { message: `Letter revealed from ${playerIdToName[powerUpTarget] || powerUpTarget}: '${buyerResult.letterFromTarget}'`, letterFromTarget: buyerResult.letterFromTarget } : null
-        const targetMsg = targetResult && targetResult.letterFromBuyer ? { message: `Letter revealed from ${playerIdToName[myId] || myId}: '${targetResult.letterFromBuyer}'`, letterFromBuyer: targetResult.letterFromBuyer } : null
+        // determine awards (they were applied earlier into updates[].hangmoney when applicable)
+        // For buyer: if buyerResult.letterFromTarget exists, compute how many occurrences in targetWord
+        let buyerAward = 0
+        let buyerLetter = null
+        if (buyerResult && buyerResult.letterFromTarget) {
+          buyerLetter = (buyerResult.letterFromTarget || '').toString()
+          const lower = buyerLetter.toLowerCase()
+          const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === lower).length
+          buyerAward = count > 0 ? 2 * count : 0
+        }
+        // For target: if targetResult.letterFromBuyer exists, compute occurrences in buyer's word
+        let targetAward = 0
+        let targetLetter = null
+        if (targetResult && targetResult.letterFromBuyer) {
+          targetLetter = (targetResult.letterFromBuyer || '').toString()
+          const lowerB = targetLetter.toLowerCase()
+          const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
+          const buyerWord = buyerNode.word || ''
+          const countB = (buyerWord || '').split('').filter(ch => (ch || '').toLowerCase() === lowerB).length
+          targetAward = countB > 0 ? 2 * countB : 0
+        }
+
+        // Build messages according to user's requested phrasing.
+        // Buyer sees in opponent's div: either "letter for letter: revealed, + points" or "no points awarded since the letter is already revealed"
+        let buyerMsg = null
+        if (buyerLetter) {
+          if (buyerAward > 0) buyerMsg = { message: `letter for letter: revealed, +${buyerAward} points`, letterFromTarget: buyerLetter }
+          else buyerMsg = { message: `letter for letter: no points awarded since the letter is already revealed`, letterFromTarget: buyerLetter }
+        }
+
+        // Target sees in buyer's div: side-effect message and award info
+        let targetMsg = null
+        if (targetLetter) {
+          if (targetAward > 0) targetMsg = { message: `letter for letter side effect: revealed, +${targetAward} points`, letterFromBuyer: targetLetter }
+          else targetMsg = { message: `letter for letter side effect: no points awarded since the letter is already revealed`, letterFromBuyer: targetLetter }
+        }
+
         const buyerData = { ...base, result: buyerMsg }
         const targetData = { ...base, result: targetMsg }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+
+        // Additionally, write side-effect messages visible only to the owner themselves (their own div)
+        // Buyer's own div: note that the letter_for_letter side effect caused the target to see a letter from buyer
+        if (targetLetter) {
+          const selfKey = `pu_side_${Date.now()}_${myId}_${powerUpTarget}`
+          const selfMsg = { powerId, ts: Date.now(), from: myId, to: myId, result: { message: `Letter for letter side effect: player revealed letter '${targetLetter}'` } }
+          updates[`players/${myId}/privatePowerReveals/${myId}/${selfKey}`] = selfMsg
+        }
+        // Target's own div: note that buyer revealed a letter from target
+        if (buyerLetter) {
+          const selfKeyT = `pu_side_${Date.now()}_${powerUpTarget}_${myId}`
+          const selfMsgT = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `Letter for letter: player revealed letter '${buyerLetter}'` } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${powerUpTarget}/${selfKeyT}`] = selfMsgT
+        }
       } else if (powerId === 'vowel_vision') {
         // Include a human-readable message for buyer and target, visible only to them
         const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
