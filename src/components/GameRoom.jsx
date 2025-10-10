@@ -1175,12 +1175,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             if (m) {
               const pid = m[1]
               try {
-                const lg = updates[k]
+                  const lg = updates[k]
                 if (lg && typeof lg.ts !== 'undefined') {
+                  // Avoid persisting a local history entry for letter-for-letter here because
+                  // the DB write will arrive and PlayerCircle will also add the same entry,
+                  // producing a duplicate visible line in the hangmoney tooltip.
+                  if ((lg.reason === 'letter_for_letter' || lg.reason === 'letter-for-letter')) return
                   // write a small array entry for tooltip fallback
                   const key = `gh_hang_history_${pid}`
                   const existing = (function() { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null } catch (e) { return null } })()
-                  const entry = { ts: Number(lg.ts || Date.now()), delta: Number(lg.amount || 0), reason: (lg.reason || 'Adjustment'), prev: null }
+                  const reasonMap = (r) => {
+                    const s = (r || '').toString()
+                    if (s === 'powerupReveal') return 'from power-up reveal'
+                    if (s === 'letter_for_letter' || s === 'letter-for-letter') return 'from letter-for-letter'
+                    if (s === 'startTurn' || s === 'turnStart' || s === 'startBonus') return 'from start of turn'
+                    if (s === 'wrongGuess' || s === 'correctGuess') return 'from guessing'
+                    return s || 'Adjustment'
+                  }
+                  const entry = { ts: Number(lg.ts || Date.now()), delta: Number(lg.amount || 0), reason: reasonMap(lg.reason), prev: null }
                   const next = [entry].concat(existing || []).slice(0,3)
                   try { localStorage.setItem(key, JSON.stringify(next)) } catch (e) {}
                   try {
