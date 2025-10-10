@@ -818,14 +818,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
                   updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
                   // ALSO award the target (owner of the revealed word) the same amount for the newly revealed occurrences
-                  try {
-                    const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-                    const prevTargetHang = Number(targetNodeState.hangmoney) || 0
-                    const baseTargetAfter = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? updates[`players/${powerUpTarget}/hangmoney`] : prevTargetHang
-                    const targetAward = 2 * count
-                    updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetAfter) + targetAward)
-                    updates[`players/${powerUpTarget}/lastGain`] = { amount: targetAward, by: myId, reason: 'powerupReveal', ts: Date.now() }
-                  } catch (e) {}
+                      try {
+                        const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+                        const prevTargetHang = Number(targetNodeState.hangmoney) || 0
+                        // If we've already set a hangmoney update earlier in this multi-path update, add to it
+                        const baseTargetAfter = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined')
+                          ? Number(updates[`players/${powerUpTarget}/hangmoney`])
+                          : prevTargetHang
+                        const targetAward = 2 * count
+                        updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetAfter) + targetAward)
+                        updates[`players/${powerUpTarget}/lastGain`] = { amount: targetAward, by: myId, reason: 'powerupReveal', ts: Date.now() }
+                      } catch (e) {}
                 } catch (e) {}
               }
             }
@@ -843,10 +846,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const lowerB = bletter.toLowerCase()
             targetResultPayload = { letterFromBuyer: bletter }
             // award the target (viewer of buyer's reveal) for occurrences in buyer's word
-            try {
-              const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-              const prevTargetHang = Number(targetNodeState.hangmoney) || 0
-              const baseTarget = prevTargetHang
+              try {
+                const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+                const prevTargetHang = Number(targetNodeState.hangmoney) || 0
+                // If a prior update already adjusted the target's hangmoney, use that as the base
+                const baseTarget = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/hangmoney`]) : prevTargetHang
               // Only award if this letter wasn't already publicly revealed from the buyer's word
               const buyerExisting = buyerNode.revealed || []
               const buyerExistingSet = new Set((buyerExisting || []).map(x => (x || '').toLowerCase()))
