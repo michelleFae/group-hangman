@@ -777,33 +777,89 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           resultPayload = { found: [], attempted: [] }
         }
   } else if (powerId === 'letter_for_letter') {
-        // reveal one random letter from the target's word publicly (no-score),
+        // reveal one random letter from the target's word publicly,
         // AND privately reveal one random letter from the buyer's own word to the target.
+        // Award points to both players for any newly revealed occurrences (2 hangmoney per occurrence).
         const targetLetters = (targetWord || '').split('')
         const tletter = targetLetters.length > 0 ? targetLetters[Math.floor(Math.random() * targetLetters.length)] : null
         // prepare asymmetric payloads
         let buyerResultPayload = null // what buyer (myId) will see about the target
         let targetResultPayload = null // what target will see about the buyer
-        if (tletter) {
-          const lower = tletter.toLowerCase()
-          const existing = targetNode.revealed || []
-          // add the letter to target's revealed publicly
-          updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), lower]))
-          // mark this letter as a no-score reveal so guesses won't award points for it
-          updates[`players/${powerUpTarget}/noScoreReveals/${lower}`] = true
-          // buyer sees the target letter
-          buyerResultPayload = { letterFromTarget: tletter }
-        }
-        // compute a random letter from buyer's own word to reveal privately to the target
         try {
+          if (tletter) {
+            const lower = tletter.toLowerCase()
+            const existing = targetNode.revealed || []
+            const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
+            // add the letter to target's revealed publicly (UI will show all positions)
+            updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), lower]))
+
+            // award buyer for newly revealed occurrences of this letter
+            if (!existingSet.has(lower)) {
+              const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === lower).length
+              if (count > 0) {
+                try {
+                  const me = (state?.players || []).find(p => p.id === myId) || {}
+                  const myHangCurrent = Number(me.hangmoney) || 0
+                  const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
+                  const award = 2 * count
+                  updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                  // record private hit for buyer
+                  const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                  let merged = false
+                  for (let i = 0; i < prevHits.length; i++) {
+                    const h = prevHits[i]
+                    if (h && h.type === 'letter' && h.letter === lower) {
+                      prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                      merged = true
+                      break
+                    }
+                  }
+                  if (!merged) prevHits.push({ type: 'letter', letter: lower, count, ts: Date.now() })
+                  updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+                  updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+                } catch (e) {}
+              }
+            }
+
+            // buyer sees the target letter
+            buyerResultPayload = { letterFromTarget: tletter }
+          }
+
+          // compute a random letter from buyer's own word to reveal privately to the target
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const buyerWord = buyerNode.word || ''
           const bLetters = (buyerWord || '').split('')
           const bletter = bLetters.length > 0 ? bLetters[Math.floor(Math.random() * bLetters.length)] : null
-          if (bletter) targetResultPayload = { letterFromBuyer: bletter }
-        } catch (e) {
-          // ignore
-        }
+          if (bletter) {
+            const lowerB = bletter.toLowerCase()
+            targetResultPayload = { letterFromBuyer: bletter }
+            // award the target (viewer of buyer's reveal) for occurrences in buyer's word
+            try {
+              const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+              const prevTargetHang = Number(targetNodeState.hangmoney) || 0
+              const baseTarget = prevTargetHang
+              const countB = (buyerWord || '').split('').filter(ch => ch.toLowerCase() === lowerB).length
+              if (countB > 0) {
+                const awardT = 2 * countB
+                updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTarget) + awardT)
+                // record private hit for target against buyer
+                const prevTargetHits = (targetNodeState.privateHits && targetNodeState.privateHits[myId]) ? targetNodeState.privateHits[myId].slice() : []
+                let mergedT = false
+                for (let i = 0; i < prevTargetHits.length; i++) {
+                  const h = prevTargetHits[i]
+                  if (h && h.type === 'letter' && h.letter === lowerB) {
+                    prevTargetHits[i] = { ...h, count: (Number(h.count) || 0) + countB, ts: Date.now() }
+                    mergedT = true
+                    break
+                  }
+                }
+                if (!mergedT) prevTargetHits.push({ type: 'letter', letter: lowerB, count: countB, ts: Date.now() })
+                updates[`players/${powerUpTarget}/privateHits/${myId}`] = prevTargetHits
+                updates[`players/${powerUpTarget}/lastGain`] = { amount: 2 * countB, by: myId, reason: 'powerupReveal', ts: Date.now() }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
         // assign a combined resultPayload for the generic 'data' in case it's used elsewhere
         resultPayload = { targetReveal: buyerResultPayload, buyerReveal: targetResultPayload }
       }
@@ -859,6 +915,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // include the player's display name so UI can show names instead of ids
             revealedMap[p.id] = { letter: ch, name: p.name || p.id }
           })
+          // Award buyer points for all revealed letters across players (2 per occurrence)
+          try {
+            const me = (state?.players || []).find(p => p.id === myId) || {}
+            const myHangCurrent = Number(me.hangmoney) || 0
+            const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
+            let totalAward = 0
+            Object.keys(revealedMap).forEach(pid => {
+              const ch = (revealedMap[pid] && revealedMap[pid].letter) ? revealedMap[pid].letter.toLowerCase() : null
+              if (!ch) return
+              const word = (state.players || []).find(p => p.id === pid) || {}
+              const count = ((word.word || '').split('').filter(c => c.toLowerCase() === ch) || []).length
+              if (count > 0) totalAward += 2 * count
+            })
+            if (totalAward > 0) {
+              updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + totalAward)
+              updates[`players/${myId}/lastGain`] = { amount: totalAward, by: 'crowd_hint', reason: 'powerupReveal', ts: Date.now() }
+            }
+          } catch (e) {}
           resultPayload = { revealed: revealedMap }
         } catch (e) {
           resultPayload = { revealed: {} }
@@ -888,7 +962,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } catch (e) {
           resultPayload = { winner: null }
         }
-      }
+  }
 
       // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
       if (powerId === 'letter_for_letter') {
@@ -923,26 +997,159 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (resultPayload && resultPayload.letters && Array.isArray(resultPayload.letters)) {
         // add those letters to target's revealed set
         const existing = targetNode.revealed || []
+        const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
         const toAdd = resultPayload.letters.map(ch => (ch || '').toLowerCase()).filter(Boolean)
         const newRevealed = Array.from(new Set([...(existing || []), ...toAdd]))
         updates[`players/${powerUpTarget}/revealed`] = newRevealed
-        // ensure buyer also sees these via their privateHits? keep the private reveal in privatePowerReveals
+
+        // Award points to the buyer for newly revealed letters (2 hangmoney per newly revealed occurrence)
+        try {
+          const me = (state?.players || []).find(p => p.id === myId) || {}
+          const myHangCurrent = Number(me.hangmoney) || 0
+          // base hangmoney after paying cost was set earlier; compute fresh base here in case
+          const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined')
+            ? updates[`players/${myId}/hangmoney`]
+            : (myHangCurrent - cost)
+
+          let awardTotal = 0
+          const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+          toAdd.forEach(letter => {
+            if (!existingSet.has(letter)) {
+              // reveal all occurrences of this letter in the target's word and award for each
+              const countInWord = (targetWord.toLowerCase().match(new RegExp(letter, 'g')) || []).length
+              if (countInWord > 0) {
+                awardTotal += 2 * countInWord
+                // merge into privateHits for buyer
+                let merged = false
+                for (let i = 0; i < prevHits.length; i++) {
+                  const h = prevHits[i]
+                  if (h && h.type === 'letter' && h.letter === letter) {
+                    prevHits[i] = { ...h, count: (Number(h.count) || 0) + countInWord, ts: Date.now() }
+                    merged = true
+                    break
+                  }
+                }
+                if (!merged) prevHits.push({ type: 'letter', letter, count: countInWord, ts: Date.now() })
+              }
+            }
+          })
+
+          if (awardTotal > 0) {
+            updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + awardTotal)
+            updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+            // record a small visible gain on buyer so UI toasts show the award
+            updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+          }
+        } catch (e) {}
       }
 
-      // For zeta_drop, letter_peek, one_random, all_letter_reveal, full_reveal we may want to reveal to target.revealed
+  // For zeta_drop, letter_peek, one_random, all_letter_reveal, full_reveal we may want to reveal to target.revealed
       if (resultPayload && resultPayload.last) {
         const existing = targetNode.revealed || []
+        const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
         const add = (resultPayload.last || '').toLowerCase()
         if (add) {
           updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
-          // If zeta_drop revealed only one occurrence, make it no-score (per rules)
+          // Award buyer points for newly revealed occurrences of the letter (2 per occurrence)
           try {
-            if (powerId === 'zeta_drop') {
+            if (!existingSet.has(add)) {
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
-              if (count === 1) updates[`players/${powerUpTarget}/noScoreReveals/${add}`] = true
+              if (count > 0) {
+                const me = (state?.players || []).find(p => p.id === myId) || {}
+                const myHangCurrent = Number(me.hangmoney) || 0
+                const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined')
+                  ? updates[`players/${myId}/hangmoney`]
+                  : (myHangCurrent - cost)
+                const award = 2 * count
+                updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                let merged = false
+                for (let i = 0; i < prevHits.length; i++) {
+                  const h = prevHits[i]
+                  if (h && h.type === 'letter' && h.letter === add) {
+                    prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                    merged = true
+                    break
+                  }
+                }
+                if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
+                updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+                // zeta_drop special-case: if only one occurrence, still mark no-score per rules
+                try {
+                  if (powerId === 'zeta_drop') {
+                    if (count === 1) updates[`players/${powerUpTarget}/noScoreReveals/${add}`] = true
+                  }
+                } catch (e) {}
+                // mark visible gain
+                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+              }
             }
           } catch (e) {}
         }
+      }
+      // handle single-letter payloads (one_random, letter_peek) where resultPayload.letter is set
+      if (resultPayload && resultPayload.letter) {
+        try {
+          const add = (resultPayload.letter || '').toLowerCase()
+          if (add) {
+            const existing = targetNode.revealed || []
+            const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
+            updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
+            if (!existingSet.has(add)) {
+              const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
+              if (count > 0) {
+                const me = (state?.players || []).find(p => p.id === myId) || {}
+                const myHangCurrent = Number(me.hangmoney) || 0
+                const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
+                const award = 2 * count
+                updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                let merged = false
+                for (let i = 0; i < prevHits.length; i++) {
+                  const h = prevHits[i]
+                  if (h && h.type === 'letter' && h.letter === add) {
+                    prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                    merged = true
+                    break
+                  }
+                }
+                if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
+                updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      // handle full reveal (full word) awarding buyer for all unique letters occurrences
+      if (resultPayload && resultPayload.full) {
+        try {
+          const full = (resultPayload.full || '').toLowerCase()
+          if (full) {
+            // reveal all letters (already set on updates earlier)
+            // award buyer for every letter occurrence in the target's word
+            const letters = full.split('')
+            let total = 0
+            const counts = {}
+            letters.forEach(ch => { if (ch) counts[ch] = (counts[ch] || 0) + 1 })
+            Object.keys(counts).forEach(l => { total += 2 * counts[l] })
+            if (total > 0) {
+              const me = (state?.players || []).find(p => p.id === myId) || {}
+              const myHangCurrent = Number(me.hangmoney) || 0
+              const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
+              updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + total)
+              updates[`players/${myId}/lastGain`] = { amount: total, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+              // record aggregated privateHits for buyer
+              const mePrev = (state?.players || []).find(p => p.id === myId) || {}
+              const prevHits = (mePrev.privateHits && mePrev.privateHits[powerUpTarget]) ? mePrev.privateHits[powerUpTarget].slice() : []
+              Object.keys(counts).forEach(l => {
+                prevHits.push({ type: 'letter', letter: l, count: counts[l], ts: Date.now() })
+              })
+              updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+            }
+          }
+        } catch (e) {}
       }
 
       // Also advance the turn immediately after a power-up is applied (end the buyer's turn)
