@@ -1032,17 +1032,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           else targetMsg = { message: `letter for letter side effect: letter '${targetLetter}' revealed; you got no points`, letterFromBuyer: targetLetter }
         }
 
-  // Buyer-facing summary (visible in the target's div)
-  const buyerData = { ...buyerBase, result: buyerMsg }
+  // Buyer-facing summary: show the buyer which letter was revealed on them (if any)
+  // and how many points the opponent earned. Fall back to the original buyerMsg if target info not present.
+  let buyerResultForSelf = buyerMsg
+  if (targetLetter) {
+    if (targetAward > 0) buyerResultForSelf = { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} revealed '${targetLetter}' on you; they earned +${targetAward} points`, letterFromBuyer: targetLetter }
+    else buyerResultForSelf = { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} revealed '${targetLetter}' on you; they earned no points`, letterFromBuyer: targetLetter }
+  }
+  const buyerData = { ...buyerBase, result: buyerResultForSelf }
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
-  // Store a single buyer-side message (so buyer sees their own award for the public reveal)
-        if (buyerLetter) {
+  // Store a single buyer-side message: show the buyer which letter was revealed on them
+  // (i.e. the letter the opponent saw from the buyer's word) and how many points the opponent earned.
+        if (targetLetter) {
           const buyerSideKey = `pu_side_effect_${Date.now()}_${powerUpTarget}_${myId}`
-          const buyerSideMsg = (buyerAward && buyerAward > 0)
-            ? { message: `letter for letter side effect: letter '${buyerLetter}' revealed; you got +${buyerAward} points` }
-            : { message: `letter for letter side effect: letter '${buyerLetter}' revealed; you got no points` }
-          const buyerSideEntry = { powerId, ts: Date.now(), from: myId, to: myId, result: buyerSideMsg }
+          const buyerSideMsg = (targetAward && targetAward > 0)
+            ? { message: `letter for letter side effect: letter '${targetLetter}' revealed on you; ${playerIdToName[powerUpTarget] || powerUpTarget} earned +${targetAward} points` }
+            : { message: `letter for letter side effect: letter '${targetLetter}' revealed on you; no points were earned` }
+          const buyerSideEntry = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: buyerSideMsg }
           updates[`players/${myId}/privatePowerReveals/${myId}/${buyerSideKey}`] = buyerSideEntry
         }
         // Target's own div: note that buyer revealed a letter from target (visible to target in their own tile)
@@ -1246,7 +1253,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const nextPlayer = effectiveTurnOrder[nextIndex]
             const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
             const prevNextHang = (typeof nextNode.hangmoney === 'number') ? nextNode.hangmoney : 0
-            updates[`players/${nextPlayer}/hangmoney`] = prevNextHang + 1
+            // If a previous staged update already adjusted this player's hangmoney (e.g. from a power-up), add to it
+            const stagedNextHang = (typeof updates[`players/${nextPlayer}/hangmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/hangmoney`]) : prevNextHang
+            updates[`players/${nextPlayer}/hangmoney`] = Math.max(0, Number(stagedNextHang) + 1)
             // clear any frozen flags when their turn begins
             updates[`players/${nextPlayer}/frozen`] = null
             updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null

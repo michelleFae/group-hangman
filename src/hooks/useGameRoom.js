@@ -377,6 +377,19 @@ export default function useGameRoom(roomId, playerName) {
         }
         // mark starterBonus as applied so we don't attempt to re-award later
         if (roomRoot.starterBonus && roomRoot.starterBonus.enabled) updates['starterBonus/applied'] = true
+        // Award +1 to the first player in turnOrder as a starting bonus; be additive to any existing staged value
+        try {
+          const first = (turnOrder && turnOrder.length > 0) ? turnOrder[0] : null
+          if (first) {
+            const pSnap = await get(dbRef(db, `rooms/${roomId}/players/${first}`))
+            const pVal = pSnap.val() || {}
+            const prev = (typeof pVal.hangmoney === 'number') ? Number(pVal.hangmoney) : getStartMoneyFromRoom(roomRoot)
+            updates[`players/${first}/hangmoney`] = Number(prev) + 1
+            updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() }
+          }
+        } catch (e) {
+          console.warn('Could not award start +1 bonus', e)
+        }
         await update(roomRootRef, updates)
       }
     } catch (e) {
@@ -445,26 +458,29 @@ export default function useGameRoom(roomId, playerName) {
     if (!payloadVal) return
 
     if (useServer) {
-      if (!auth || !auth.currentUser) {
-        console.warn('Not authenticated for serverless call')
-        return
-      }
-      try {
-        const token = await auth.currentUser.getIdToken()
-        const res = await fetch('/api/processGuess', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ roomId, targetId, value: payloadVal })
-        })
-        if (!res.ok) {
-          // fallback to DB queue if serverless endpoint not reachable or returned error
-          console.warn('Serverless endpoint returned non-ok, falling back to DB queue')
-        } else {
-          return
+      // If running in serverless mode prefer the serverless endpoint when possible.
+      // However, if the client is not authenticated (no id token available) we should
+      // fall back to the DB queue so local/unauthed testing still works.
+      if (auth && auth.currentUser) {
+        try {
+          const token = await auth.currentUser.getIdToken()
+          const res = await fetch('/api/processGuess', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ roomId, targetId, value: payloadVal })
+          })
+          if (!res.ok) {
+            // fallback to DB queue if serverless endpoint not reachable or returned error
+            console.warn('Serverless endpoint returned non-ok, falling back to DB queue')
+          } else {
+            return
+          }
+        } catch (e) {
+          console.error('Serverless guess failed, falling back to DB queue', e)
+          // fall through to DB queue push
         }
-      } catch (e) {
-        console.error('Serverless guess failed, falling back to DB queue', e)
-        // fall through to DB queue push
+      } else {
+        console.warn('Not authenticated for serverless call — falling back to DB queue')
       }
     }
 
