@@ -838,8 +838,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
               const prevTargetHang = Number(targetNodeState.hangmoney) || 0
               const baseTarget = prevTargetHang
+              // Only award if this letter wasn't already publicly revealed from the buyer's word
+              const buyerExisting = buyerNode.revealed || []
+              const buyerExistingSet = new Set((buyerExisting || []).map(x => (x || '').toLowerCase()))
               const countB = (buyerWord || '').split('').filter(ch => ch.toLowerCase() === lowerB).length
-              if (countB > 0) {
+              if (countB > 0 && !buyerExistingSet.has(lowerB)) {
                 const awardT = 2 * countB
                 updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTarget) + awardT)
                 // record private hit for target against buyer
@@ -978,7 +981,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           buyerLetter = (buyerResult.letterFromTarget || '').toString()
           const lower = buyerLetter.toLowerCase()
           const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === lower).length
-          buyerAward = count > 0 ? 2 * count : 0
+          // Only count award if the target did not already have this letter publicly revealed
+          const targetExisting = (targetNode && targetNode.revealed) ? targetNode.revealed : []
+          const targetExistingSet = new Set((targetExisting || []).map(x => (x || '').toLowerCase()))
+          buyerAward = (count > 0 && !targetExistingSet.has(lower)) ? 2 * count : 0
         }
         // For target: if targetResult.letterFromBuyer exists, compute occurrences in buyer's word
         let targetAward = 0
@@ -989,7 +995,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const buyerWord = buyerNode.word || ''
           const countB = (buyerWord || '').split('').filter(ch => (ch || '').toLowerCase() === lowerB).length
-          targetAward = countB > 0 ? 2 * countB : 0
+          // Only award target if the buyer's letter wasn't already publicly revealed
+          const buyerExisting = (buyerNode && buyerNode.revealed) ? buyerNode.revealed : []
+          const buyerExistingSet = new Set((buyerExisting || []).map(x => (x || '').toLowerCase()))
+          targetAward = (countB > 0 && !buyerExistingSet.has(lowerB)) ? 2 * countB : 0
         }
 
         // Build messages according to user's requested phrasing.
@@ -1016,13 +1025,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // Buyer's own div: note that the letter_for_letter side effect caused the target to see a letter from buyer
         if (targetLetter) {
           const selfKey = `pu_side_${Date.now()}_${myId}_${powerUpTarget}`
-          const selfMsg = { powerId, ts: Date.now(), from: myId, to: myId, result: { message: `Letter for letter side effect: player revealed letter '${targetLetter}'` } }
+          const targetName = playerIdToName[powerUpTarget] || powerUpTarget
+          const targetPointsText = (targetAward && targetAward > 0) ? ` and earned +${targetAward} points` : ' and earned no points'
+          const selfMsg = { powerId, ts: Date.now(), from: myId, to: myId, result: { message: `Letter for letter side effect: ${targetName} revealed letter '${targetLetter}'${targetPointsText}` } }
           updates[`players/${myId}/privatePowerReveals/${myId}/${selfKey}`] = selfMsg
         }
         // Target's own div: note that buyer revealed a letter from target
         if (buyerLetter) {
           const selfKeyT = `pu_side_${Date.now()}_${powerUpTarget}_${myId}`
-          const selfMsgT = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `Letter for letter: player revealed letter '${buyerLetter}'` } }
+          const buyerName = playerIdToName[myId] || myId
+          const buyerPointsText = (buyerAward && buyerAward > 0) ? ` and earned +${buyerAward} points` : ' and earned no points'
+          const selfMsgT = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `Letter for letter: ${buyerName} revealed letter '${buyerLetter}'${buyerPointsText}` } }
           updates[`players/${powerUpTarget}/privatePowerReveals/${powerUpTarget}/${selfKeyT}`] = selfMsgT
         }
       } else if (powerId === 'vowel_vision') {
