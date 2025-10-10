@@ -969,7 +969,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
       if (powerId === 'letter_for_letter') {
-        const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+        const nowTs = Date.now()
+        const buyerBase = { powerId, ts: nowTs, from: myId, to: powerUpTarget }
+        // targetBase is stored under the target's node but points to the buyer (so the target sees it in the buyer's tile)
+        const targetBase = { powerId, ts: nowTs, from: myId, to: myId }
         // create short human-readable messages so the viewer sees concise info
         const buyerResult = (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null
         const targetResult = (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null
@@ -1005,38 +1008,41 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // Buyer sees in opponent's div: either "letter for letter: revealed, + points" or "no points awarded since the letter is already revealed"
         let buyerMsg = null
         if (buyerLetter) {
-          if (buyerAward > 0) buyerMsg = { message: `letter for letter: revealed, +${buyerAward} points`, letterFromTarget: buyerLetter }
-          else buyerMsg = { message: `letter for letter: no points awarded since the letter is already revealed`, letterFromTarget: buyerLetter }
+          if (buyerAward > 0) buyerMsg = { message: `letter for letter: you revealed '${buyerLetter}', +${buyerAward} points`, letterFromTarget: buyerLetter }
+          else buyerMsg = { message: `letter for letter: you revealed '${buyerLetter}', no points awarded since the letter is already revealed`, letterFromTarget: buyerLetter }
         }
 
-        // Target sees in buyer's div: side-effect message and award info
+        // Target-side effect message (what the target will see in the buyer's div)
         let targetMsg = null
         if (targetLetter) {
-          if (targetAward > 0) targetMsg = { message: `letter for letter side effect: revealed, +${targetAward} points`, letterFromBuyer: targetLetter }
-          else targetMsg = { message: `letter for letter side effect: no points awarded since the letter is already revealed`, letterFromBuyer: targetLetter }
+          if (targetAward > 0) targetMsg = { message: `letter for letter side effect: letter '${targetLetter}' revealed; you got +${targetAward} points`, letterFromBuyer: targetLetter }
+          else targetMsg = { message: `letter for letter side effect: letter '${targetLetter}' revealed; you got no points`, letterFromBuyer: targetLetter }
         }
 
-        const buyerData = { ...base, result: buyerMsg }
-        const targetData = { ...base, result: targetMsg }
-        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
-        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+  // Buyer-facing summary (visible in the target's div)
+  const buyerData = { ...buyerBase, result: buyerMsg }
+  updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
-        // Additionally, write side-effect messages visible only to the owner themselves (their own div)
-        // Buyer's own div: note that the letter_for_letter side effect caused the target to see a letter from buyer
-        if (targetLetter) {
-          const selfKey = `pu_side_${Date.now()}_${myId}_${powerUpTarget}`
-          const targetName = playerIdToName[powerUpTarget] || powerUpTarget
-          const targetPointsText = (targetAward && targetAward > 0) ? ` and earned +${targetAward} points` : ' and earned no points'
-          const selfMsg = { powerId, ts: Date.now(), from: myId, to: myId, result: { message: `Letter for letter side effect: ${targetName} revealed letter '${targetLetter}'${targetPointsText}` } }
-          updates[`players/${myId}/privatePowerReveals/${myId}/${selfKey}`] = selfMsg
+  // Store a single buyer-side message (so buyer sees their own award for the public reveal)
+        if (buyerLetter) {
+          const buyerSideKey = `pu_side_effect_${Date.now()}_${powerUpTarget}_${myId}`
+          const buyerSideMsg = (buyerAward && buyerAward > 0)
+            ? { message: `letter for letter side effect: letter '${buyerLetter}' revealed; you got +${buyerAward} points` }
+            : { message: `letter for letter side effect: letter '${buyerLetter}' revealed; you got no points` }
+          const buyerSideEntry = { powerId, ts: Date.now(), from: myId, to: myId, result: buyerSideMsg }
+          updates[`players/${myId}/privatePowerReveals/${myId}/${buyerSideKey}`] = buyerSideEntry
         }
-        // Target's own div: note that buyer revealed a letter from target
+        // Target's own div: note that buyer revealed a letter from target (visible to target in their own tile)
         if (buyerLetter) {
           const selfKeyT = `pu_side_${Date.now()}_${powerUpTarget}_${myId}`
           const buyerName = playerIdToName[myId] || myId
           const buyerPointsText = (buyerAward && buyerAward > 0) ? ` and earned +${buyerAward} points` : ' and earned no points'
           const selfMsgT = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `Letter for letter: ${buyerName} revealed letter '${buyerLetter}'${buyerPointsText}` } }
           updates[`players/${powerUpTarget}/privatePowerReveals/${powerUpTarget}/${selfKeyT}`] = selfMsgT
+        }
+        // Also store the side-effect message under the target's node keyed by buyer so the target will see it in the buyer's tile
+        if (targetMsg) {
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: targetMsg }
         }
       } else if (powerId === 'vowel_vision') {
         // Include a human-readable message for buyer and target, visible only to them
@@ -1767,7 +1773,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             privateHits: viewerNode.privateHits || {},
             privateWrongWords: viewerNode.privateWrongWords || {},
             privatePowerUps: viewerNode.privatePowerUps || {},
-            privatePowerReveals: viewerNode.privatePowerReveals || {}
+            privatePowerReveals: viewerNode.privatePowerReveals || {},
+            // include a map of player id -> color so child components can color private reveals by player
+            playerColors: (players || []).reduce((acc, pp) => { if (pp && pp.id) acc[pp.id] = pp.color || null; return acc }, {})
           }
 
           // clone player and attach viewer's private data under _viewer so child can render it

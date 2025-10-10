@@ -34,6 +34,35 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   // the buyer stored under targetId (buyer view) and where the target stored under buyerId (target view).
   const privatePowerRevealsList = _allPrivateReveals.filter(r => r && (r.to === player.id))
 
+  // Build a map of privately revealed letters -> source player id (who caused the reveal)
+  // We only care about single-letter reveals (letterFromTarget / letterFromBuyer / letter / last etc.)
+  const privateLetterSource = {}
+  privatePowerRevealsList.forEach(r => {
+    if (!r || !r.result) return
+    const res = r.result
+    // r.from is the player who caused this private reveal (buyer)
+    const sourceId = r.from
+    if (res.letterFromTarget) {
+      const l = (res.letterFromTarget || '').toLowerCase()
+      if (l) privateLetterSource[l] = sourceId
+    }
+    if (res.letterFromBuyer) {
+      const l = (res.letterFromBuyer || '').toLowerCase()
+      if (l) privateLetterSource[l] = sourceId
+    }
+    if (res.letter) {
+      const l = (res.letter || '').toLowerCase()
+      if (l) privateLetterSource[l] = sourceId
+    }
+    if (res.last) {
+      const l = (res.last || '').toLowerCase()
+      if (l) privateLetterSource[l] = sourceId
+    }
+    if (res.letters && Array.isArray(res.letters)) {
+      res.letters.forEach(ch => { const l = (ch || '').toLowerCase(); if (l) privateLetterSource[l] = sourceId })
+    }
+  })
+
   // prepare display of owner's word with revealed letters colored red if viewer is the owner
   const ownerWord = player.word || ''
   const guessedBy = player.guessedBy || {} // map letter -> array of userIds, '__word' for full word
@@ -41,8 +70,15 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   const revealedSet = new Set(revealed || [])
   const fullWordRendered = ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
+    // If publicly revealed, color red
     if (revealedSet.has(lower)) {
       return <span key={idx} style={{ color: 'red', fontWeight: '700' }}>{ch}</span>
+    }
+    // If privately revealed (source exists) and not publicly revealed, color by source player's color
+    const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
+    const sourceId = privateLetterSource[lower]
+    if (sourceId && playerColors && playerColors[sourceId]) {
+      return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: '700' }}>{ch}</span>
     }
     return <span key={idx} style={{ color: '#333' }}>{ch}</span>
   })
@@ -64,6 +100,12 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   const revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
     const lower = (ch || '').toLowerCase()
     if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
+    // if privately revealed, color by source
+    const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
+    const sourceId = privateLetterSource[lower]
+    if (sourceId && playerColors && playerColors[sourceId]) {
+      return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
+    }
     return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
   })
 
