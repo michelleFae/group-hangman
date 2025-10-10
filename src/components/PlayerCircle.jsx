@@ -1,117 +1,108 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
-export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf = false, viewerId = null, playerIdToName = {}, phase = 'lobby', hasSubmitted = false, timeLeftMs = null, currentTurnId = null, flashPenalty = false, pendingDeduct = 0, isWinner = false, showPowerUpButton = false, onOpenPowerUps = null, powerUpDisabledReason = null }) {
-  // accept starterApplied prop to control when starter badge is visible
-  const starterApplied = arguments[0] && arguments[0].starterApplied
+export default function PlayerCircle({
+  player,
+  onGuess,
+  canGuess = false,
+  isSelf = false,
+  viewerId = null,
+  playerIdToName = {},
+  phase = 'lobby',
+  hasSubmitted = false,
+  timeLeftMs = null,
+  currentTurnId = null,
+  flashPenalty = false,
+  pendingDeduct = 0,
+  isWinner = false,
+  showPowerUpButton = false,
+  onOpenPowerUps = null,
+  powerUpDisabledReason = null,
+  starterApplied = false
+}) {
+  // hostId is optional prop; when provided, ensure the host's own revealed area shows public reveals
+  // so the host and other players can see letters guessed for the host's word.
+  const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
   const [soundedLow, setSoundedLow] = useState(false)
   const [animateHang, setAnimateHang] = useState(false)
   const [pulse, setPulse] = useState(false)
   const lastDisplayedRef = useRef(null)
+  const lastTotalRef = useRef(null)
+  const lastGainTsRef = useRef(0)
+  const [hangHistory, setHangHistory] = useState([]) // newest first
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const [showOwnWord, setShowOwnWord] = useState(false)
 
-  // viewer-specific private arrays are stored on the player object under their own node when server processed
-  // For example: rooms/{roomId}/players/{viewerId}/privateWrong/{targetId} and privateHits
-  // Here, the component receives only the target player object, so viewer-side data must be injected via the player list structure.
-  // We expect the parent to include viewer's private arrays under player._viewerPrivate (non-persistent field) if needed.
-
-  // check whether the current viewer is the guesser or not
-  const isViewerGuesser = !!(viewerId && player && player.id === viewerId)
-
-  // private data for this target from the viewer's perspective may be embedded at player._viewer (populated by parent)
   const viewerPrivate = player._viewer || {}
   const privateWrong = (viewerPrivate.privateWrong && viewerPrivate.privateWrong[player.id]) || []
   const privateHits = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
   const privatePowerRevealsObj = viewerPrivate.privatePowerReveals || {}
-  // collect all private power-up reveals the viewer has stored, then filter those relevant to this player
+
   const _allPrivateReveals = []
   Object.values(privatePowerRevealsObj || {}).forEach(bucket => {
     Object.values(bucket || {}).forEach(r => { if (r) _allPrivateReveals.push(r) })
   })
-  // show reveals that target this player (r.to === player.id). This covers cases where
-  // the buyer stored under targetId (buyer view) and where the target stored under buyerId (target view).
   const privatePowerRevealsList = _allPrivateReveals.filter(r => r && (r.to === player.id))
 
-  // Build a map of privately revealed letters -> source player id (who caused the reveal)
-  // We only care about single-letter reveals (letterFromTarget / letterFromBuyer / letter / last etc.)
   const privateLetterSource = {}
   privatePowerRevealsList.forEach(r => {
     if (!r || !r.result) return
     const res = r.result
-    // r.from is the player who caused this private reveal (buyer)
     const sourceId = r.from
-    if (res.letterFromTarget) {
-      const l = (res.letterFromTarget || '').toLowerCase()
-      if (l) privateLetterSource[l] = sourceId
-    }
-    if (res.letterFromBuyer) {
-      const l = (res.letterFromBuyer || '').toLowerCase()
-      if (l) privateLetterSource[l] = sourceId
-    }
-    if (res.letter) {
-      const l = (res.letter || '').toLowerCase()
-      if (l) privateLetterSource[l] = sourceId
-    }
-    if (res.last) {
-      const l = (res.last || '').toLowerCase()
-      if (l) privateLetterSource[l] = sourceId
-    }
-    if (res.letters && Array.isArray(res.letters)) {
-      res.letters.forEach(ch => { const l = (ch || '').toLowerCase(); if (l) privateLetterSource[l] = sourceId })
+    if (res.letterFromTarget) privateLetterSource[(res.letterFromTarget || '').toLowerCase()] = sourceId
+    if (res.letterFromBuyer) privateLetterSource[(res.letterFromBuyer || '').toLowerCase()] = sourceId
+    if (res.letter) privateLetterSource[(res.letter || '').toLowerCase()] = sourceId
+    if (res.last) privateLetterSource[(res.last || '').toLowerCase()] = sourceId
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch || '').toLowerCase()] = sourceId })
+    // capture overridePublicColor flag per-letter so we can color public reveals by the revealer
+    if (res.overridePublicColor) {
+      const letter = (res.letterFromTarget || res.letterFromBuyer || res.letter || res.last)
+      if (letter) {
+        // mark a special key to prefer source color even when letter is public
+        privateLetterSource[`__override__${(letter || '').toLowerCase()}`] = sourceId
+      }
     }
   })
 
-  // prepare display of owner's word with revealed letters colored red if viewer is the owner
   const ownerWord = player.word || ''
-  const guessedBy = player.guessedBy || {} // map letter -> array of userIds, '__word' for full word
-
   const revealedSet = new Set(revealed || [])
+
   const fullWordRendered = ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
-    // If publicly revealed, color red
-    if (revealedSet.has(lower)) {
-      return <span key={idx} style={{ color: 'red', fontWeight: '700' }}>{ch}</span>
-    }
-    // If privately revealed (source exists) and not publicly revealed, color by source player's color
+    // if this letter is publicly revealed but a private reveal asked to override public color,
+    // render it in the revealer's color instead of the public red.
+    const overrideSource = privateLetterSource[`__override__${lower}`]
     const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
-    const sourceId = privateLetterSource[lower]
-    if (sourceId && playerColors && playerColors[sourceId]) {
-      return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: '700' }}>{ch}</span>
+    if (revealedSet.has(lower)) {
+      if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={idx} style={{ color: playerColors[overrideSource], fontWeight: 700 }}>{ch}</span>
+      return <span key={idx} style={{ color: 'red', fontWeight: 700 }}>{ch}</span>
     }
+    const sourceId = privateLetterSource[lower]
+    if (sourceId && playerColors && playerColors[sourceId]) return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: 700 }}>{ch}</span>
     return <span key={idx} style={{ color: '#333' }}>{ch}</span>
   })
 
-  // masked word rendering for non-owners and default view
-  // Masked rendering: only show underscores (and letter count) if the viewer has explicit permission
-  // to see masked structure (e.g. via a power-up). Otherwise keep it fully hidden to avoid revealing length.
   const showMasked = !!(player && player._viewer && player._viewer.showMasked)
   const maskedRendered = showMasked ? ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
-    if (revealedSet.has(lower)) {
-      return <span key={idx} style={{ color: '#000', fontWeight: 700, marginRight: 4 }}>{ch}</span>
-    }
+    if (revealedSet.has(lower)) return <span key={idx} style={{ color: '#000', fontWeight: 700, marginRight: 4 }}>{ch}</span>
     return <span key={idx} style={{ color: '#999', marginRight: 4 }}>_</span>
   }) : null
 
-  // Show revealed letters preserving duplicates: render one slot per character in the owner's word
-  // This ensures power-ups that populate `player.revealed` with unique letters still display duplicates
   const revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
     const lower = (ch || '').toLowerCase()
     if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
-    // if privately revealed, color by source
     const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
     const sourceId = privateLetterSource[lower]
-    if (sourceId && playerColors && playerColors[sourceId]) {
-      return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
-    }
+    if (sourceId && playerColors && playerColors[sourceId]) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
     return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
   })
 
-  // derive halo color (semi-transparent) from player.color
   const avatarColor = player.color || '#FFD1D1'
-  // Convert hex to rgba with 0.28 alpha
   function hexToRgba(hex, alpha = 0.28) {
     const h = hex.replace('#', '')
     const bigint = parseInt(h.length === 3 ? h.split('').map(c => c+c).join('') : h, 16)
@@ -122,60 +113,20 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
   }
   const haloRgba = hexToRgba(avatarColor, 0.28)
 
-  // play a short beep when time goes under 5s, and a different beep when time expires
-  React.useEffect(() => {
-    if (timeLeftMs == null) {
-      setSoundedLow(false)
-      return
-    }
+  useEffect(() => {
+    if (timeLeftMs == null) { setSoundedLow(false); return }
     const s = Math.ceil(timeLeftMs / 1000)
-    if (s <= 0) {
-      // expired
-      try { navigator.vibrate && navigator.vibrate(200) } catch (e) {}
-      // short lower-pitch beep for end
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)()
-        const o = ctx.createOscillator()
-        const g = ctx.createGain()
-        o.type = 'sine'
-        o.frequency.value = 220
-        g.gain.value = 0.001
-        o.connect(g); g.connect(ctx.destination)
-        o.start()
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
-        setTimeout(() => { o.stop(); ctx.close() }, 400)
-      } catch (e) {}
-      setSoundedLow(false)
-      return
-    }
+    if (s <= 0) { try { navigator.vibrate && navigator.vibrate(200) } catch (e) {} ; setSoundedLow(false); return }
     if (s <= 5 && !soundedLow) {
       try { navigator.vibrate && navigator.vibrate([60,30,60]) } catch (e) {}
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)()
-        const o = ctx.createOscillator()
-        const g = ctx.createGain()
-        o.type = 'sine'
-        o.frequency.value = 880
-        g.gain.value = 0.002
-        o.connect(g); g.connect(ctx.destination)
-        o.start()
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12)
-        setTimeout(() => { o.stop(); ctx.close() }, 160)
-      } catch (e) {}
       setSoundedLow(true)
     }
   }, [timeLeftMs])
 
-  // when parent signals penalty flash, animate hangmoney briefly
-  React.useEffect(() => {
-    if (flashPenalty) {
-      setAnimateHang(true)
-      const id = setTimeout(() => setAnimateHang(false), 1000)
-      return () => clearTimeout(id)
-    }
+  useEffect(() => {
+    if (flashPenalty) { setAnimateHang(true); const id = setTimeout(() => setAnimateHang(false), 1000); return () => clearTimeout(id) }
   }, [flashPenalty])
 
-  // pulse when the displayed hangmoney amount changes
   useEffect(() => {
     const displayed = (Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)
     if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
@@ -183,196 +134,460 @@ export default function PlayerCircle({ player, onGuess, canGuess = false, isSelf
       const id = setTimeout(() => setPulse(false), 450)
       return () => clearTimeout(id)
     }
+    // initialize history/tracking on first render for this player
+    if (lastDisplayedRef.current === null) {
+      // load saved history from localStorage if present
+      try {
+        const key = `gh_hang_history_${player.id}`
+        const raw = localStorage.getItem(key)
+        if (raw) {
+          const arr = JSON.parse(raw)
+          if (Array.isArray(arr)) {
+            setHangHistory(arr.slice(0,3))
+          }
+        } else {
+          // If no local history, seed from server-provided lastGain when available
+          try {
+            const lg = player.lastGain
+            if (lg && typeof lg.amount === 'number') {
+              const reasonMap = (r) => {
+                const s = (r || '').toString()
+                if (s === 'powerupReveal') return 'from power-up reveal'
+                if (s === 'letter_for_letter' || s === 'letter-for-letter') return 'from letter-for-letter'
+                if (s === 'startTurn' || s === 'turnStart' || s === 'startBonus') return 'from start of turn'
+                if (s === 'wrongGuess' || s === 'correctGuess') return 'from guessing'
+                return `(${s})`
+              }
+              const entry = { ts: Number(lg.ts) || Date.now(), delta: Number(lg.amount || 0), reason: reasonMap(lg.reason), prev: Math.max(0, displayed - Number(lg.amount || 0)) }
+              setHangHistory([entry])
+              try { localStorage.setItem(key, JSON.stringify([entry])) } catch (e) {}
+              lastGainTsRef.current = Number(lg.ts || 0)
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+      lastTotalRef.current = displayed
+      // record lastGain ts so we don't double-record the same event (if not already set above)
+      try { lastGainTsRef.current = lastGainTsRef.current || (player.lastGain && player.lastGain.ts ? Number(player.lastGain.ts) : 0) } catch (e) { lastGainTsRef.current = 0 }
+    }
+    // detect changes and record an entry
+    if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
+      const prev = lastDisplayedRef.current || 0
+      const delta = displayed - prev
+      // determine a reason text if possible
+      let reasonText = 'Adjustment'
+      try {
+        const lg = player.lastGain
+          if (lg && lg.ts && Number(lg.ts) > (lastGainTsRef.current || 0) && Math.abs(Number(lg.amount || 0)) === Math.abs(delta)) {
+          // map some reason codes to human text
+          const r = (lg.reason || '').toString()
+          if (r === 'powerupReveal') reasonText = 'from power-up reveal'
+          else if (r === 'letter_for_letter' || r === 'letter-for-letter') reasonText = 'from letter-for-letter'
+          else if (r === 'startTurn' || r === 'turnStart' || r === 'startBonus') reasonText = 'from start of turn'
+          else if (r === 'wrongGuess' || r === 'correctGuess') reasonText = 'from guessing'
+          else reasonText = `(${r})`
+          // include who (by) when available
+          if (lg.by) reasonText = `${reasonText} ${lg.by ? `by ${playerIdToName[lg.by] || lg.by}` : ''}`.trim()
+          lastGainTsRef.current = Number(lg.ts || 0)
+        } else if (delta < 0 && Number(pendingDeduct) > 0) {
+          reasonText = 'From buying power-up'
+        }
+      } catch (e) {}
+
+  const entry = { ts: Date.now(), delta: Number(delta), reason: reasonText, prev }
+  try { console.debug('hangmoney change detected for', player.id, entry) } catch (e) {}
+      const next = [entry].concat(hangHistory || []).slice(0,3)
+      setHangHistory(next)
+      // persist
+      try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
+      // update recorded total
+      lastTotalRef.current = displayed
+      // animation pulse for change
+      setPulse(true)
+      const id = setTimeout(() => setPulse(false), 450)
+      return () => clearTimeout(id)
+    }
     lastDisplayedRef.current = displayed
   }, [player.hangmoney, pendingDeduct])
 
+  // Also listen specifically for explicit lastGain updates from the server and record them
+  useEffect(() => {
+    try {
+      const lg = player.lastGain
+      if (!lg || typeof lg.ts === 'undefined') return
+      const ts = Number(lg.ts || 0)
+      if (ts && ts > (lastGainTsRef.current || 0)) {
+        const amount = Number(lg.amount || 0)
+        const reasonMap = (r) => {
+          const s = (r || '').toString()
+          if (s === 'powerupReveal') return 'from power-up reveal'
+          if (s === 'letter_for_letter' || s === 'letter-for-letter') return 'from letter-for-letter'
+          if (s === 'startTurn' || s === 'turnStart' || s === 'startBonus') return 'from start of turn'
+          if (s === 'wrongGuess' || s === 'correctGuess') return 'from guessing'
+          return `(${s})`
+        }
+        let reasonText = reasonMap(lg.reason)
+        if (lg.by) reasonText = `${reasonText} ${lg.by ? `by ${playerIdToName[lg.by] || lg.by}` : ''}`.trim()
+        const displayed = (Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)
+        const entry = { ts, delta: Number(amount), reason: reasonText, prev: Math.max(0, displayed - Number(amount || 0)) }
+        lastGainTsRef.current = ts
+        try { console.debug('hangmoney lastGain observed for', player.id, entry) } catch (e) {}
+        setHangHistory(h => {
+          const next = [entry].concat(h || []).slice(0,3)
+          try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
+          return next
+        })
+      }
+    } catch (e) {}
+  }, [player.lastGain])
+
+  // Listen for cross-component local updates dispatched from GameRoom seeding step
+  useEffect(() => {
+    function onUpdate(e) {
+      try {
+        const d = e && e.detail
+        if (!d || !d.playerId || d.playerId !== player.id) return
+        const entry = d.entry
+        if (!entry) return
+        setHangHistory(h => {
+          const next = [entry].concat(h || []).slice(0,3)
+          try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
+          return next
+        })
+      } catch (e) {}
+    }
+    try { window.addEventListener('gh_hang_history_update', onUpdate) } catch (e) {}
+    return () => { try { window.removeEventListener('gh_hang_history_update', onUpdate) } catch (e) {} }
+  }, [player.id])
+
   const isTurn = currentTurnId && currentTurnId === player.id
+
+  // When a new round starts (lobby phase), clear hangmoney details so tooltip is empty
+  useEffect(() => {
+    try {
+      if (phase === 'lobby') {
+        setHangHistory([])
+        try { localStorage.removeItem(`gh_hang_history_${player.id}`) } catch (e) {}
+        // reset tracking refs so we re-seed cleanly on first display after lobby
+        try { lastDisplayedRef.current = null; lastTotalRef.current = null; lastGainTsRef.current = 0 } catch (e) {}
+      }
+    } catch (e) {}
+  }, [phase, player.id])
+
   return (
-    // show a frozen overlay when player.frozen or player.frozenUntilTurnIndex is set
-    <div className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative' }}>
-      <div className="avatar" style={{ background: avatarColor }}>{player.name[0] || '?'}</div>
-      <div className="meta">
-        <div className="name">{player.name} {player.eliminated ? '(out)' : ''}
-          {player.starterBonusAwarded && phase === 'submit' && starterApplied && (
-            <span className="starter-badge" title="Starter bonus awarded">+10</span>
+    <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
+          <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center' }}>{player.name}</div>
+          {/* hangmoney moved here to sit under the player's name */}
+          <div className={`hangmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
+            <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
+              ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
+            </span>
+            {/* info icon with hover tooltip showing last 3 updates */}
+            <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
+              {/* prettier-ignore */}
+              <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#eef3ff', color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
+              {/* tooltip will be rendered into document.body to avoid z-index clipping */}
+              {/* we mount a hidden container here and populate it imperatively */}
+              <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
+            </span>
+          </div>
+          {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, background: 'rgba(0,0,0,0.06)', fontSize: 11, fontWeight: 700 }}>YOU</div>}
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'hidden' }}>
+              {isSelf ? (
+                showOwnWord ? (
+                  // show the submitted word with private reveals colored by revealer and public reveals in red
+                  fullWordRendered
+                ) : (
+                  // when hidden show masked underscores
+                  ownerWord.split('').map((ch, idx) => <span key={`mask_${idx}`} style={{ color: '#999', marginRight: 6 }}>_</span>)
+                )
+              ) : revealedPositions}
+
+              {/* styled hover tooltip that shows the full word with guessed letters highlighted */}
+              {isSelf && ownerWord && (
+                <div className="word-tooltip" aria-hidden="true" style={{ position: 'absolute', left: 8, top: '100%', marginTop: 6, background: 'white', padding: 6, borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {ownerWord.split('').map((ch, idx) => {
+                    const lower = (ch || '').toLowerCase()
+                    const isGuessedByOthers = revealedSet.has(lower)
+                    const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
+                    const sourceId = privateLetterSource[lower]
+                    const overrideSource = privateLetterSource[`__override__${lower}`]
+                    const style = { marginRight: 6 }
+                    if (isGuessedByOthers) {
+                      if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={`tip_${idx}`} className={'tip-guessed'} style={{ ...style, color: playerColors[overrideSource] }}>{ch}</span>
+                      return <span key={`tip_${idx}`} className={'tip-guessed'} style={{ ...style, color: 'red' }}>{ch}</span>
+                    }
+                    if (sourceId && playerColors && playerColors[sourceId]) return <span key={`tip_${idx}`} className={'tip-private'} style={{ ...style, color: playerColors[sourceId] }}>{ch}</span>
+                    return <span key={`tip_${idx}`} className={'tip-unguessed'} style={style}>{ch}</span>
+                  })}
+                </div>
+              )}
+            </div>
+
+
+            <div className="actions" style={{ marginBottom: 8 }}>
+              {isSelf ? (
+                <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
+              ) : (
+                <button className="action-button" title="Guess this word" disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
+              )}
+
+              {!isSelf && onOpenPowerUps && !player.eliminated && (
+                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason}>{'⚡ Power-up'}</button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>{expanded ? 'Hide info' : 'Expand info'}</button>
+          </div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10 }}>
+          {privateWrong.length > 0 && (
+            <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
+              <strong>Your wrong letters:</strong> {privateWrong.join(', ')}
+            </div>
+          )}
+
+          {(player._viewer && player._viewer.privateWrongWords && player._viewer.privateWrongWords[player.id] && player._viewer.privateWrongWords[player.id].length > 0) && (
+            <div style={{ marginTop: 8, background: '#fff3e6', padding: 6, borderRadius: 4 }}>
+              <strong>Your wrong words:</strong>
+              <div style={{ marginTop: 6 }}>{(player._viewer.privateWrongWords[player.id] || []).join(', ')}</div>
+            </div>
+          )}
+
+              {privatePowerRevealsList.length > 0 && (
+            <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
+              <strong>Power-up results:</strong>
+              <ul style={{ margin: '6px 0 0 12px' }}>
+                {privatePowerRevealsList.map((r, idx) => {
+                  const res = r && r.result
+                  const actorId = r && (r.from || r.by)
+                  const actorName = (actorId && (playerIdToName && playerIdToName[actorId])) || actorId || 'Someone'
+                  const actorIsViewer = viewerId && actorId && viewerId === actorId
+                  return (
+                    <li key={idx} style={{ marginTop: 6 }}>
+                      {res && res.message ? (
+                        <div>{res.message}</div>
+                      ) : r.powerId === 'letter_for_letter' ? (
+                        (() => {
+                          // buyer revealed a letter from the target's word
+                          if (res && res.letterFromTarget) {
+                            const letter = String(res.letterFromTarget || '').slice(0,1)
+                            // count occurrences in this player's word
+                            const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
+                            const points = (Number(res.count || res.occurrences) || occ || 1) * 2
+                            if (actorIsViewer) {
+                              return <div><strong>You</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — you earned <strong>+${points}</strong></div>
+                            }
+                            return <div><strong>{actorName}</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — <strong>+${points}</strong> to {actorName}</div>
+                          }
+
+                          // target received a letter reveal from buyer's word as a side-effect
+                          if (res && res.letterFromBuyer) {
+                            const letter = String(res.letterFromBuyer || '').slice(0,1)
+                            // if the payload includes occurrences/count, use it; otherwise assume 1
+                            const occ = Number(res.count || res.occurrences || res.hits) || 1
+                            const points = occ * 2
+                            // if the tile owner is the viewer, phrase as 'you got'
+                            if (player && viewerId && player.id === viewerId) {
+                              return <div>Letter-for-letter side effect: <strong>'{letter}'</strong> revealed; <strong>you got +${points}</strong></div>
+                            }
+                            return <div><strong>{player.name}</strong> got a letter-for-letter side effect: <strong>'{letter}'</strong> revealed from {actorName}'s word; <strong>+${points}</strong></div>
+                          }
+
+                          // fallback
+                          return <div>{r.powerId}: {JSON.stringify(res)}</div>
+                        })()
+                      ) : (
+                        <div>{r.powerId}: {JSON.stringify(res)}</div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           )}
         </div>
-        {/* Show pending deduction visually while DB update appears; pendingDeduct is negative for a deduction */}
-        <div className={`hangmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`}>
-          <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700, transition: 'transform 180ms ease, box-shadow 180ms ease' }}>
-            ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
-          </span>
-        </div>
-  <div className="revealed">
-    {ownerWord && ownerWord.length > 0 ? (
-      // show only actual revealed letters (preserve duplicates); do not show '_' placeholders that reveal length
-      (() => {
-        const letters = (ownerWord || '').split('')
-        const shown = letters.map((ch, idx) => {
-          const lower = (ch || '').toLowerCase()
-          return revealedSet.has(lower) ? <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span> : null
-        }).filter(Boolean)
-        return shown.length > 0 ? shown : <span>(hidden)</span>
-      })()
-    ) : <span>(hidden)</span>}
-  </div>
-      </div>
-      { (player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
-        <div aria-hidden={true} title="Word frozen — cannot be guessed until the owner's turn" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.65)', pointerEvents: 'none', zIndex: 6, borderRadius: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.85)', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 20, boxShadow: '0 2px 6px rgba(0,0,0,0.06)' }}>
-            <span style={{ fontSize: 18 }}>❄️</span>
-            <div style={{ fontSize: 13, color: '#333', fontWeight: 700 }}>Frozen</div>
-            <div style={{ fontSize: 12, color: '#555' }}>No guesses until owner's turn</div>
+      )}
+
+      {showGuessDialog && (
+        <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
+          <input id={`guess_for_${player.id}`} name={`guess_for_${player.id}`} placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={() => {
+              const val = (guessValue || '').trim()
+              if (!val) return
+              const isLetter = val.length === 1 && /^[a-zA-Z]$/.test(val)
+              onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val })
+              setShowGuessDialog(false)
+            }}>Submit</button>
+            <button onClick={() => setShowGuessDialog(false)}>Cancel</button>
           </div>
         </div>
       )}
-      <div className="actions">
-        {/* Controls first for non-self viewers, then hidden word below (so Locked appears above hidden) */}
-        {isSelf ? (
-          <div style={{ marginBottom: 8 }}>
-            <button onClick={() => setShowWord(s => !s)}>{showWord ? 'Hide word' : 'Show word'}</button>
-            <div style={{ marginTop: 6 }}>{showWord ? (
-              <span>{fullWordRendered}</span>
-            ) : (player.word ? <span>{'_ '.repeat((player.word || '').length)}</span> : '(hidden)')}</div>
-            {/* show private power-up reveals for the owner as well (side-effect messages targeted to self) */}
-            {privatePowerRevealsList.length > 0 && (
-              <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
-                <strong>Power-up results:</strong>
-                <ul style={{ margin: '6px 0 0 12px' }}>
-                  {privatePowerRevealsList.map((r, idx) => {
-                    const res = r && r.result
-                    // Defensive: don't show 'side effect' messages in a player's own tile unless it explicitly addresses 'you'.
-                    const lowerMsg = (res && res.message ? (res.message || '').toString().toLowerCase() : '')
-                    if (isSelf && lowerMsg.includes('side effect') && !lowerMsg.includes('you')) {
-                      return null
-                    }
-                    let content = null
-                    if (res && res.message) {
-                      content = <div>{res.message}</div>
-                    } else if (r.powerId === 'letter_for_letter') {
-                      if (res && res.letterFromTarget) {
-                        content = <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
-                      } else if (res && res.letterFromBuyer) {
-                        content = <div>One letter revealed: <strong>{res.letterFromBuyer}</strong></div>
-                      } else {
-                        content = <div>{r.powerId}: {JSON.stringify(res)}</div>
-                      }
-                    } else {
-                      content = <div>{r.powerId}: {JSON.stringify(res)}</div>
-                    }
-                    return (
-                      <li key={idx} style={{ marginTop: 6 }}>
-                        {content}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ marginBottom: 8 }}>
-            <div>
-              <>
-                <button disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Locked'}</button>
-                {/* power-up button visible when parent allows it (e.g. it's your turn) */}
-                {onOpenPowerUps && !isSelf && !player.eliminated && (
-                  <button
-                    title={powerUpDisabledReason || 'Open power-ups'}
-                    onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; onOpenPowerUps(player.id) }}
-                    disabled={!!powerUpDisabledReason}
-                    style={{ marginLeft: 8, opacity: powerUpDisabledReason ? 0.55 : 1, cursor: powerUpDisabledReason ? 'not-allowed' : 'pointer' }}
-                  >
-                    ⚡ Power-up
-                  </button>
-                )}
-                {showGuessDialog && (
-                  <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
-                    <input id={`guess_for_${player.id}`} name={`guess_for_${player.id}`} placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button onClick={() => {
-                        const val = (guessValue || '').trim()
-                        if (!val) return
-                        const isLetter = val.length === 1 && /^[a-zA-Z]$/.test(val)
-                        onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val })
-                        setShowGuessDialog(false)
-                      }}>Submit</button>
-                      <button onClick={() => setShowGuessDialog(false)}>Cancel</button>
-                    </div>
-                  </div>
-                )}
-              </>
 
-              {/* show private correct hits (only visible to the guesser) */}
-              {privateHits.length > 0 && (
-                <div style={{ marginTop: 8, background: '#e6ffe6', padding: 6, borderRadius: 4 }}>
-                  <strong>Your correct guesses:</strong>
-                  <ul style={{ margin: '6px 0 0 12px' }}>
-                    {privateHits.map((h, idx) => {
-                      const isNoScore = h && h.note === 'no-score'
-                      return (
-                        <li key={idx} style={{ marginTop: 6 }}>
-                          {h.type === 'letter' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ color: isNoScore ? '#555' : 'inherit' }}>Letter "{h.letter}" — {h.count} occurrence(s){isNoScore ? ' ' : ''}{isNoScore && <small title="This was revealed by a power-up and does not award points when guessed." style={{ color: '#777', marginLeft: 6 }}>(no points)</small>}</div>
-                              <div className="private-hit-count" style={{ background: isNoScore ? '#efefef' : '#c8f5c8', color: isNoScore ? '#444' : '#0b6623', padding: '4px 8px', borderRadius: 8, fontWeight: 700 }}>{h.count}x</div>
-                            </div>
-                          ) : (
-                            <div style={{ color: isNoScore ? '#777' : 'inherit' }}>Word "{h.word}"{isNoScore && <small title="This was revealed by a power-up and does not award points when guessed." style={{ color: '#777', marginLeft: 6 }}>(no points)</small>}</div>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              {/* show private wrong letters/words only to the guesser */}
-              {privateWrong.length > 0 && (
-                <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
-                  <strong>Wrong letters:</strong> {privateWrong.join(', ')}
-                </div>
-              )}
-
-              {/* show private power-up reveals (only visible to the viewer) */}
-              {privatePowerRevealsList.length > 0 && (
-                <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
-                  <strong>Power-up results:</strong>
-                  <ul style={{ margin: '6px 0 0 12px' }}>
-                    {privatePowerRevealsList.map((r, idx) => {
-                      const res = r && r.result
-                      return (
-                        <li key={idx} style={{ marginTop: 6 }}>
-                          {res && res.message ? (
-                            <div>{res.message}</div>
-                          ) : r.powerId === 'letter_for_letter' ? (
-                            res && res.letterFromTarget ? (
-                              <div>One letter revealed: <strong>{res.letterFromTarget}</strong></div>
-                            ) : res && res.letterFromBuyer ? (
-                              <div>One letter revealed: <strong>{res.letterFromBuyer}</strong></div>
-                            ) : (
-                              <div>{r.powerId}: {JSON.stringify(res)}</div>
-                            )
-                          ) : (
-                            <div>{r.powerId}: {JSON.stringify(res)}</div>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )}
-            </div>
-            {/* hidden word below locked/guess */}
-            <div style={{ marginTop: 8 }}>
-              {player.word ? (
-                showMasked ? <span>{maskedRendered}</span> : <span>(hidden)</span>
-              ) : <span>(hidden)</span>}
-            </div>
-          </div>
-        )}
-
-      </div>
     </div>
+  )
+}
+
+// Add minimal CSS for the hangmoney tooltip by injecting a style tag when module loads
+try {
+  const styleId = 'gh-playercircle-hang-style'
+  if (!document.getElementById(styleId)) {
+    const s = document.createElement('style')
+    s.id = styleId
+    s.innerHTML = `
+      .hang-tooltip-inner { box-shadow: 0 10px 30px rgba(0,0,0,0.2); background: white; border-radius: 10px; }
+      .hang-tooltip-inner .plus { color: green }
+      .hang-tooltip-inner .minus { color: red }
+      /* make sure tooltip content is readable */
+      .gh-hang-tooltip { z-index: 2147483000 !important; position: absolute; min-width: 260px; max-width: 420px; }
+      .gh-hang-tooltip .line { display:flex; align-items:center; gap:8px; margin-bottom:6px }
+      .gh-hang-tooltip .delta { font-weight:700 }
+      /* revealed word wrapping */
+      .player .revealed { word-break: break-word; white-space: normal; }
+      .player .revealed span { flex: 0 0 auto; }
+      .player .word-tooltip { max-width: 360px; word-break: break-word; }
+    `
+    document.head.appendChild(s)
+  }
+} catch (e) {}
+
+// Portal tooltip component - renders hangHistory into document.body near the icon
+function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied = false, playerName = '' }) {
+  const iconRef = React.useRef(null)
+  const [visible, setVisible] = React.useState(false)
+  const [pos, setPos] = React.useState({ left: 0, top: 0 })
+  useEffect(() => {
+    // find the icon element for this player by scanning for the hang-info span under the player container
+    const container = document.querySelector(`.player[data-player-id="${playerId}"]`)
+    if (!container) return
+    const info = container.querySelector('.hang-info > span')
+    iconRef.current = info
+    if (!info) return
+    const enter = () => {
+      const r = info.getBoundingClientRect()
+      // prefer rendering to the right; clamp to viewport
+      const left = Math.min(window.innerWidth - 440, Math.max(8, r.right + 8))
+      const top = Math.max(8, r.top - 8)
+      setPos({ left, top })
+      setVisible(true)
+    }
+    const leave = () => setVisible(false)
+    info.addEventListener('mouseenter', enter)
+    info.addEventListener('mouseleave', leave)
+    // also hide when window scrolls/resize
+    window.addEventListener('scroll', leave, true)
+    window.addEventListener('resize', leave)
+    return () => {
+      try { info.removeEventListener('mouseenter', enter); info.removeEventListener('mouseleave', leave) } catch (e) {}
+      window.removeEventListener('scroll', leave, true)
+      window.removeEventListener('resize', leave)
+    }
+  }, [playerId])
+
+  useEffect(() => {
+    if (!visible) return
+    // ensure we update position if hangHistory changes
+    const info = iconRef.current
+    if (!info) return
+    const r = info.getBoundingClientRect()
+    const left = Math.min(window.innerWidth - 440, Math.max(8, r.right + 8))
+    const top = Math.max(8, r.top - 8)
+    setPos({ left, top })
+  }, [visible, hangHistory])
+
+  // Tooltip visibility is controlled only via mouseenter/mouseleave on the info icon.
+  // We intentionally do not auto-open the tooltip when hangHistory updates so it only
+  // appears when the user explicitly hovers the info icon.
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    visible ? (
+      <div className="gh-hang-tooltip card" style={{ left: pos.left, top: pos.top }}>
+        <div className="hang-tooltip-inner" style={{ padding: 10 }}>
+          <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 800 }}>Hangmoney details</div>
+          <div>
+            {(hangHistory && hangHistory.length > 0) ? (
+              // if the only change is a single-entry (start/letter/powerup), show an aggregated explanatory line
+              (hangHistory.length === 1 && hangHistory[0] && hangHistory[0].reason) ? (
+                (() => {
+                  const entry = hangHistory[0]
+                  const amt = Number(entry.delta || 0)
+                  const prev = Math.max(0, (currentTotal || 0) - amt)
+                  const reason = (entry.reason || '').toLowerCase()
+                  // detect power-up/letter-for-letter style reason
+                  const isPower = reason.includes('power') || reason.includes('power-up') || reason.includes('powerup') || reason.includes('power up')
+                  const isStart = reason.includes('start') || reason.includes('turnstart') || reason.includes('start of turn')
+                  // for letter-for-letter played on you, prefer a clearer label
+                  const powerLabel = isPower ? 'from letter-for-letter played on you' : (isStart ? 'from start of turn' : entry.reason || '')
+                  return (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ color: '#333' }}>
+                        <span style={{ fontWeight: 800 }}>current hangmoney = </span>
+                        <span style={{ color: 'green', fontWeight: 800 }}>${currentTotal}</span>
+                        <span style={{ marginLeft: 8 }}>
+                          ({powerLabel} {amt >= 0 ? `+${amt}` : `${amt}`})
+                        </span>
+                        <span style={{ marginLeft: 8, color: '#333' }}>+ ${prev} (previous hangmoney)</span>
+                        {starterApplied ? (
+                          <span style={{ marginLeft: 8, color: 'green' }}>+ $1 (start of next turn)</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })()
+              ) : (
+                hangHistory.map((h, idx) => {
+                  const sign = h.delta >= 0 ? '+' : '-'
+                  const abs = Math.abs(h.delta)
+                  const color = h.delta >= 0 ? 'green' : 'red'
+                  return (
+                    <div key={idx} className="line">
+                      <div className="delta" style={{ color }}>{sign}${abs}</div>
+                      <div style={{ color: '#333' }}>{h.reason || 'Adjustment'}</div>
+                    </div>
+                  )
+                })
+              )
+            ) : (() => {
+              // fallback: try reading persisted history from localStorage so tooltip can show immediately
+              try {
+                const raw = localStorage.getItem(`gh_hang_history_${playerId}`)
+                if (raw) {
+                  const arr = JSON.parse(raw)
+                  if (Array.isArray(arr) && arr.length > 0) {
+                    return arr.map((h, idx) => {
+                      const sign = h.delta >= 0 ? '+' : '-'
+                      const abs = Math.abs(h.delta)
+                      const color = h.delta >= 0 ? 'green' : 'red'
+                      return (
+                        <div key={`ls_${idx}`} className="line">
+                          <div className="delta" style={{ color }}>{sign}${abs}</div>
+                          <div style={{ color: '#333' }}>{h.reason || 'Adjustment'}</div>
+                        </div>
+                      )
+                    })
+                  }
+                }
+              } catch (e) {}
+              return <div style={{ color: '#666' }}>No recent changes</div>
+            })()}
+          </div>
+        </div>
+      </div>
+    ) : null,
+    document.body
   )
 }

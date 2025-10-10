@@ -306,7 +306,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const key = `lg_${p.id}_${lg.ts}`
           if (!multiHitSeenRef.current[key]) {
             multiHitSeenRef.current[key] = true
-            const toastId = `lg_${Date.now()}`
+            // Use a deterministic id based on player and lastGain timestamp to avoid duplicate keys
+            const toastId = key
             setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
             setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
@@ -605,6 +606,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const key = `pu_${Date.now()}`
       // store under players/{buyer}/privatePowerReveals/{targetId}/{key} = { powerId, data }
       const data = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+  // accumulate any hangmoney awards for the target here and apply once
+  let stagedTargetAwardDelta = 0
+  // flag to avoid double-awarding buyer when a power-up-specific award was already applied
+  let skipBuyerLetterAward = false
       // attach additional results after computing
       // perform server-side or client-side compute for power-up results
       let resultPayload = null
@@ -780,221 +785,26 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // reveal one random letter from the target's word publicly,
         // AND privately reveal one random letter from the buyer's own word to the target.
         // Award points to both players for any newly revealed occurrences (2 hangmoney per occurrence).
-        const targetLetters = (targetWord || '').split('')
-        const tletter = targetLetters.length > 0 ? targetLetters[Math.floor(Math.random() * targetLetters.length)] : null
-        // prepare asymmetric payloads
-        let buyerResultPayload = null // what buyer (myId) will see about the target
-        let targetResultPayload = null // what target will see about the buyer
-        try {
-          if (tletter) {
-            const lower = tletter.toLowerCase()
-            const existing = targetNode.revealed || []
-            const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
-            // add the letter to target's revealed publicly (UI will show all positions)
-            updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), lower]))
-
-            // award buyer for newly revealed occurrences of this letter
-            if (!existingSet.has(lower)) {
-              const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === lower).length
-              if (count > 0) {
-                try {
-                  const me = (state?.players || []).find(p => p.id === myId) || {}
-                  const myHangCurrent = Number(me.hangmoney) || 0
-                  const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
-                  const award = 2 * count
-                  updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
-                  // record private hit for buyer
-                  const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
-                  let merged = false
-                  for (let i = 0; i < prevHits.length; i++) {
-                    const h = prevHits[i]
-                    if (h && h.type === 'letter' && h.letter === lower) {
-                      prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
-                      merged = true
-                      break
-                    }
-                  }
-                  if (!merged) prevHits.push({ type: 'letter', letter: lower, count, ts: Date.now() })
-                  updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-                  updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
-                  // ALSO award the target (owner of the revealed word) the same amount for the newly revealed occurrences
-                      try {
-                        const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-                        const prevTargetHang = Number(targetNodeState.hangmoney) || 0
-                        // If we've already set a hangmoney update earlier in this multi-path update, add to it
-                        const baseTargetAfter = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined')
-                          ? Number(updates[`players/${powerUpTarget}/hangmoney`])
-                          : prevTargetHang
-                        const targetAward = 2 * count
-                        updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetAfter) + targetAward)
-                        updates[`players/${powerUpTarget}/lastGain`] = { amount: targetAward, by: myId, reason: 'powerupReveal', ts: Date.now() }
-                      } catch (e) {}
-                } catch (e) {}
-              }
-            }
-
-            // buyer sees the target letter
-            buyerResultPayload = { letterFromTarget: tletter }
-          }
-
-          // compute a random letter from buyer's own word to reveal privately to the target
-          const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
-          const buyerWord = buyerNode.word || ''
-          const bLetters = (buyerWord || '').split('')
-          const bletter = bLetters.length > 0 ? bLetters[Math.floor(Math.random() * bLetters.length)] : null
-          if (bletter) {
-            const lowerB = bletter.toLowerCase()
-            targetResultPayload = { letterFromBuyer: bletter }
-            // award the target (viewer of buyer's reveal) for occurrences in buyer's word
-              try {
-                const targetNodeState = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-                const prevTargetHang = Number(targetNodeState.hangmoney) || 0
-                // If a prior update already adjusted the target's hangmoney, use that as the base
-                const baseTarget = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/hangmoney`]) : prevTargetHang
-              // Only award if this letter wasn't already publicly revealed from the buyer's word
-              const buyerExisting = buyerNode.revealed || []
-              const buyerExistingSet = new Set((buyerExisting || []).map(x => (x || '').toLowerCase()))
-              const countB = (buyerWord || '').split('').filter(ch => ch.toLowerCase() === lowerB).length
-              if (countB > 0 && !buyerExistingSet.has(lowerB)) {
-                const awardT = 2 * countB
-                updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTarget) + awardT)
-                // record private hit for target against buyer
-                const prevTargetHits = (targetNodeState.privateHits && targetNodeState.privateHits[myId]) ? targetNodeState.privateHits[myId].slice() : []
-                let mergedT = false
-                for (let i = 0; i < prevTargetHits.length; i++) {
-                  const h = prevTargetHits[i]
-                  if (h && h.type === 'letter' && h.letter === lowerB) {
-                    prevTargetHits[i] = { ...h, count: (Number(h.count) || 0) + countB, ts: Date.now() }
-                    mergedT = true
-                    break
-                  }
-                }
-                if (!mergedT) prevTargetHits.push({ type: 'letter', letter: lowerB, count: countB, ts: Date.now() })
-                updates[`players/${powerUpTarget}/privateHits/${myId}`] = prevTargetHits
-                updates[`players/${powerUpTarget}/lastGain`] = { amount: 2 * countB, by: myId, reason: 'powerupReveal', ts: Date.now() }
-              }
-            } catch (e) {}
-          }
-        } catch (e) {}
-        // assign a combined resultPayload for the generic 'data' in case it's used elsewhere
-        resultPayload = { targetReveal: buyerResultPayload, buyerReveal: targetResultPayload }
-      }
-
-      // self-targeted powerups
-      else if (powerId === 'word_freeze') {
-        // mark the buyer as frozen until their next turn; store a flag on player
-        resultPayload = { frozen: true }
-        updates[`players/${myId}/frozenUntilTurnIndex`] = state.currentTurnIndex // marker; server should clear when next seen
-        // also write a privatePowerUp record so only the buyer knows details
-        // but players will see visual freeze via players/{id}/frozen flag
-        updates[`players/${myId}/frozen`] = true
-      } else if (powerId === 'double_down') {
-        // opts.stake should be numeric and limited so buyer doesn't go negative if they lose
-        const stakeRaw = Number(opts && opts.stake) || 0
-        // ensure stake is at least 1 and at most myHang - cost (so they can't go negative after paying fee)
-        const maxStake = Math.max(0, myHang - cost)
-        const stake = Math.max(1, Math.min(maxStake, stakeRaw))
-        // store the active double down on the buyer node with stake and an id
-        const dd = { stake, active: true, ts: Date.now(), fromTurnIndex: state.currentTurnIndex }
-        resultPayload = { doubleDown: dd }
-        updates[`players/${myId}/doubleDown`] = dd
-        // deduct the fee (price already deducted above via hangmoney update)
-      } else if (powerId === 'hang_shield') {
-        // store a private shield marker only visible to the buyer
-        const shield = { active: true, ts: Date.now() }
-        resultPayload = { shield }
-        updates[`players/${myId}/hangShield`] = shield
-      } else if (powerId === 'price_surge') {
-        // set a room-level marker that other clients will interpret to add +2 to shop prices for one round
-        const surge = { by: myId, amount: 2, ts: Date.now(), expiresAtTurnIndex: (state.currentTurnIndex || 0) + 1 }
-        resultPayload = { surge }
-        updates[`priceSurge`] = surge
-      } else if (powerId === 'crowd_hint') {
-        try {
-          // reveal one random letter from every player's word; mark as no-score
-          const playersArr = state.players || []
-          const revealedMap = {}
-          playersArr.forEach(p => {
-            const w = p.word || ''
-            if (!w) return
-            const letters = w.split('')
-            if (letters.length === 0) return
-            const idx = Math.floor(Math.random() * letters.length)
-            const ch = (letters[idx] || '').toLowerCase()
-            if (!ch) return
-            // add to their public revealed set and mark as no-score
-            const existing = p.revealed || []
-            const newRevealed = Array.from(new Set([...(existing || []), ch]))
-            updates[`players/${p.id}/revealed`] = newRevealed
-            updates[`players/${p.id}/noScoreReveals/${ch}`] = true
-            // record what was revealed so buyer's privatePowerReveals can show a summary
-            // include the player's display name so UI can show names instead of ids
-            revealedMap[p.id] = { letter: ch, name: p.name || p.id }
-          })
-          // Award buyer points for all revealed letters across players (2 per occurrence)
-          try {
-            const me = (state?.players || []).find(p => p.id === myId) || {}
-            const myHangCurrent = Number(me.hangmoney) || 0
-            const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
-            let totalAward = 0
-            Object.keys(revealedMap).forEach(pid => {
-              const ch = (revealedMap[pid] && revealedMap[pid].letter) ? revealedMap[pid].letter.toLowerCase() : null
-              if (!ch) return
-              const word = (state.players || []).find(p => p.id === pid) || {}
-              const count = ((word.word || '').split('').filter(c => c.toLowerCase() === ch) || []).length
-              if (count > 0) totalAward += 2 * count
-            })
-            if (totalAward > 0) {
-              updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + totalAward)
-              updates[`players/${myId}/lastGain`] = { amount: totalAward, by: 'crowd_hint', reason: 'powerupReveal', ts: Date.now() }
-            }
-          } catch (e) {}
-          resultPayload = { revealed: revealedMap }
-        } catch (e) {
-          resultPayload = { revealed: {} }
-        }
-      } else if (powerId === 'longest_word_bonus') {
-        try {
-          // compute the longest word among players (ties: earliest in list)
-          const playersArr = state.players || []
-          let best = null
-          playersArr.forEach(p => {
-            const len = (p.word || '').length || 0
-            if (!best || len > best.len) best = { id: p.id, len }
-          })
-          if (best && best.id) {
-            // grant +10 hangmoney to that player
-            const winnerNode = (state.players || []).find(x => x.id === best.id) || {}
-            const prev = Number(winnerNode.hangmoney) || 0
-            updates[`players/${best.id}/hangmoney`] = prev + 10
-            // include a human-readable message so viewers see the winner's name rather than an id
-            const winnerName = playerIdToName && playerIdToName[best.id] ? playerIdToName[best.id] : best.id
-            resultPayload = { winner: best.id, amount: 10, message: `${winnerName} awarded +10 hangmoney for longest word` }
-            // mark that this powerup was used so it can't be reused (client-side best-effort)
-            updates[`usedLongestWordBonus/${myId}`] = true
-          } else {
-            resultPayload = { winner: null }
-          }
-        } catch (e) {
-          resultPayload = { winner: null }
-        }
-  }
-
-      // For special asymmetric cases (letter_for_letter, vowel_vision) write different payloads to each recipient
-      if (powerId === 'letter_for_letter') {
-        const nowTs = Date.now()
-        const buyerBase = { powerId, ts: nowTs, from: myId, to: powerUpTarget }
-        // targetBase is stored under the target's node but points to the buyer (so the target sees it in the buyer's tile)
-        const targetBase = { powerId, ts: nowTs, from: myId, to: myId }
-        // create short human-readable messages so the viewer sees concise info
-        const buyerResult = (resultPayload && resultPayload.targetReveal) ? resultPayload.targetReveal : null
-        const targetResult = (resultPayload && resultPayload.buyerReveal) ? resultPayload.buyerReveal : null
+  const targetLetters = (targetWord || '').split('')
+  const tletter = targetLetters.length > 0 ? targetLetters[Math.floor(Math.random() * targetLetters.length)] : null
+  // pick a random letter from the buyer's own word to privately reveal to the target
+  const buyerNodeForPick = (state?.players || []).find(p => p.id === myId) || {}
+  const buyerLetters = (buyerNodeForPick.word || '').split('')
+  const bletter = buyerLetters.length > 0 ? buyerLetters[Math.floor(Math.random() * buyerLetters.length)] : null
+  // prepare asymmetric payloads
+  let buyerResultPayload = null // what buyer (myId) will see about the target
+  let targetResultPayload = null // what target will see about the buyer
+  // public reveal payload for the target (so downstream code that handles resultPayload.letter applies awards)
+  let resultPayload = null
+  if (tletter) resultPayload = { letter: tletter }
+  if (tletter) buyerResultPayload = { letterFromTarget: tletter }
+  if (bletter) targetResultPayload = { letterFromBuyer: bletter }
         // determine awards (they were applied earlier into updates[].hangmoney when applicable)
-        // For buyer: if buyerResult.letterFromTarget exists, compute how many occurrences in targetWord
+        // For buyer: if buyerResultPayload.letterFromTarget exists, compute how many occurrences in targetWord
         let buyerAward = 0
         let buyerLetter = null
-        if (buyerResult && buyerResult.letterFromTarget) {
-          buyerLetter = (buyerResult.letterFromTarget || '').toString()
+        if (buyerResultPayload && buyerResultPayload.letterFromTarget) {
+          buyerLetter = (buyerResultPayload.letterFromTarget || '').toString()
           const lower = buyerLetter.toLowerCase()
           const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === lower).length
           // Only count award if the target did not already have this letter publicly revealed
@@ -1005,8 +815,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // For target: if targetResult.letterFromBuyer exists, compute occurrences in buyer's word
         let targetAward = 0
         let targetLetter = null
-        if (targetResult && targetResult.letterFromBuyer) {
-          targetLetter = (targetResult.letterFromBuyer || '').toString()
+        if (targetResultPayload && targetResultPayload.letterFromBuyer) {
+          targetLetter = (targetResultPayload.letterFromBuyer || '').toString()
           const lowerB = targetLetter.toLowerCase()
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const buyerWord = buyerNode.word || ''
@@ -1017,53 +827,136 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           targetAward = (countB > 0 && !buyerExistingSet.has(lowerB)) ? 2 * countB : 0
         }
 
-        // Build messages according to user's requested phrasing.
+  // Build messages according to user's requested phrasing.
         // Buyer sees in opponent's div: either "letter for letter: revealed, + points" or "no points awarded since the letter is already revealed"
-        let buyerMsg = null
+  let buyerMsg = null
         if (buyerLetter) {
           if (buyerAward > 0) buyerMsg = { message: `letter for letter: you revealed '${buyerLetter}', +${buyerAward} points`, letterFromTarget: buyerLetter }
           else buyerMsg = { message: `letter for letter: you revealed '${buyerLetter}', no points awarded since the letter is already revealed`, letterFromTarget: buyerLetter }
         }
 
-        // Target-side effect message (what the target will see in the buyer's div)
+        // Target-side effect message (what the buyer should see in the opponent's div)
         let targetMsg = null
         if (targetLetter) {
-          if (targetAward > 0) targetMsg = { message: `letter for letter side effect: letter '${targetLetter}' revealed; you got +${targetAward} points`, letterFromBuyer: targetLetter }
-          else targetMsg = { message: `letter for letter side effect: letter '${targetLetter}' revealed; you got no points`, letterFromBuyer: targetLetter }
+          const targetDisplay = playerIdToName[powerUpTarget] || powerUpTarget
+          if (targetAward > 0) {
+            targetMsg = {
+              message: `letter for letter: ${targetDisplay} had letter '${targetLetter}' revealed; they earned +${targetAward} points`,
+              letterFromBuyer: targetLetter
+            }
+          } else {
+            targetMsg = {
+              message: `letter for letter: ${targetDisplay} had letter '${targetLetter}' revealed; no points were awarded`,
+              letterFromBuyer: targetLetter
+            }
+          }
         }
 
   // Buyer-facing summary: show the buyer which letter was revealed on them (if any)
   // and how many points the opponent earned. Fall back to the original buyerMsg if target info not present.
   let buyerResultForSelf = buyerMsg
-  if (targetLetter) {
-    if (targetAward > 0) buyerResultForSelf = { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} revealed '${targetLetter}' on you; they earned +${targetAward} points`, letterFromBuyer: targetLetter }
-    else buyerResultForSelf = { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} revealed '${targetLetter}' on you; they earned no points`, letterFromBuyer: targetLetter }
+  // Show buyer which letter they revealed on the opponent and how much they earned
+  if (buyerLetter) {
+    if (buyerAward > 0) {
+      buyerResultForSelf = {
+        message: `letter for letter: you revealed '${buyerLetter}' and earned +${buyerAward} points`,
+        letterFromTarget: buyerLetter
+      }
+    } else {
+      buyerResultForSelf = {
+        message: `letter for letter: you revealed '${buyerLetter}', which was already revealed; no points were awarded`,
+        letterFromTarget: buyerLetter
+      }
+    }
   }
-  const buyerData = { ...buyerBase, result: buyerResultForSelf }
+  // base payloads for buyer/target privatePowerReveals entries
+  const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+  const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+  // include both the human-friendly message for the buyer and the raw private letter reveal so PlayerCircle can color it
+  const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
-  // Store a single buyer-side message: show the buyer which letter was revealed on them
-  // (i.e. the letter the opponent saw from the buyer's word) and how many points the opponent earned.
-        if (targetLetter) {
-          const buyerSideKey = `pu_side_effect_${Date.now()}_${powerUpTarget}_${myId}`
-          const buyerSideMsg = (targetAward && targetAward > 0)
-            ? { message: `letter for letter side effect: letter '${targetLetter}' revealed on you; ${playerIdToName[powerUpTarget] || powerUpTarget} earned +${targetAward} points` }
-            : { message: `letter for letter side effect: letter '${targetLetter}' revealed on you; no points were earned` }
-          const buyerSideEntry = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: buyerSideMsg }
-          updates[`players/${myId}/privatePowerReveals/${myId}/${buyerSideKey}`] = buyerSideEntry
+  // Immediately apply buyer award here to ensure their hangmoney reflects the +2 per newly revealed occurrence
+  try {
+    if (buyerAward && buyerAward > 0) {
+      const meNow = (state?.players || []).find(p => p.id === myId) || {}
+      const myHangCurrentNow = Number(meNow.hangmoney) || 0
+      const baseAfterCostNow = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrentNow - cost)
+      updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCostNow) + buyerAward)
+      // merge into privateHits for buyer similar to other award flows
+      try {
+        const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
+        const letter = (buyerLetter || '').toLowerCase()
+        if (letter) {
+          let mergedNow = false
+          const countInWord = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === letter).length
+          for (let i = 0; i < prevHitsNow.length; i++) {
+            const h = prevHitsNow[i]
+            if (h && h.type === 'letter' && h.letter === letter) {
+              prevHitsNow[i] = { ...h, count: (Number(h.count) || 0) + countInWord, ts: Date.now() }
+              mergedNow = true
+              break
+            }
+          }
+          if (!mergedNow) prevHitsNow.push({ type: 'letter', letter, count: countInWord, ts: Date.now() })
         }
-        // Target's own div: note that buyer revealed a letter from target (visible to target in their own tile)
-        if (buyerLetter) {
-          const selfKeyT = `pu_side_${Date.now()}_${powerUpTarget}_${myId}`
-          const buyerName = playerIdToName[myId] || myId
-          const buyerPointsText = (buyerAward && buyerAward > 0) ? ` and earned +${buyerAward} points` : ' and earned no points'
-          const selfMsgT = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `Letter for letter: ${buyerName} revealed letter '${buyerLetter}'${buyerPointsText}` } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${powerUpTarget}/${selfKeyT}`] = selfMsgT
+        updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
+      } catch (e) {}
+      updates[`players/${myId}/lastGain`] = { amount: buyerAward, by: powerUpTarget, reason: powerId, ts: Date.now() }
+      // mark that we've already applied the buyer award so generic reveal branches skip awarding again
+      skipBuyerLetterAward = true
+    }
+  } catch (e) {}
+
+  // (buyer-side message will be written below together with the target-side payload so we avoid overwriting buyer's
+  // view of the opponent's div. See consolidated write later that includes letterFromBuyer for coloring.)
+        // (removed writing a buyer-phrased message into the target's own privatePowerReveals)
+        // Also store the side-effect message under the target's node keyed by buyer so the target will see
+        // both: (A) a message in their own div saying they earned points, and (B) a message appearing in
+        // the buyer's div on the target's screen describing that the target had a letter revealed.
+        if (targetMsg || targetResultPayload) {
+          // (B) Buyer div on target's screen: the target (viewer) should also see a message in the BUYER's tile
+          // indicating the target had a letter revealed (actor is the target, and 'to' is the buyer id so it
+          // renders inside the buyer's div when the target is viewing)
+          const buyerDivKey = `${key}_buyer_${Date.now()}`
+          const buyerDivMsg = (typeof targetAward === 'number' && targetAward > 0)
+            ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; they earned +${targetAward} points`, letterFromBuyer: targetLetter }
+            : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; no points were awarded`, letterFromBuyer: targetLetter }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${buyerDivKey}`] = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(buyerDivMsg || {}), ...(targetResultPayload || {}) } }
+
+          // Also store the side-effect payload under the BUYER's own node so the buyer can see the summary
+          // in their own view (unchanged behavior)
+          const buyerSideKey2 = `pu_side_from_${powerUpTarget}_${Date.now()}_${myId}`
+          const buyerSidePayload = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(targetMsg || {}), ...(targetResultPayload || {}) } }
+          updates[`players/${myId}/privatePowerReveals/${myId}/${buyerSideKey2}`] = buyerSidePayload
+
+          // Instead of writing a personalized "you earned" message into the target's own div (which made the
+          // target's tile show that sentence), write a tiny color-override private reveal entry so that
+          // newly-public letters revealed by letter_for_letter render in the buyer's color on the target's own word.
+          // Only do this when the buyer actually revealed a new letter (buyerAward > 0) — if the letter was
+          // already revealed, keep the normal public/red rendering.
+          try {
+            if (buyerLetter && typeof buyerAward === 'number' && buyerAward > 0) {
+              const colorKey = `pu_color_${Date.now()}_${myId}_${powerUpTarget}`
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${colorKey}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { letterFromTarget: buyerLetter, overridePublicColor: true } }
+            }
+          } catch (e) {}
         }
-        // Also store the side-effect message under the target's node keyed by buyer so the target will see it in the buyer's tile
-        if (targetMsg) {
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: targetMsg }
-        }
+        // if the target earned an award from the private reveal, add it to stagedTargetAwardDelta so it applies once
+        try {
+          if (typeof targetAward === 'number' && targetAward > 0) stagedTargetAwardDelta = (stagedTargetAwardDelta || 0) + targetAward
+        } catch (e) {}
+        // If any target awards were staged, apply them once to avoid multiple incremental writes
+        try {
+            if (typeof stagedTargetAwardDelta === 'number' && stagedTargetAwardDelta > 0) {
+            const targetNodeStateFinal = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+            const prevTargetHangFinal = Number(targetNodeStateFinal.hangmoney) || 0
+            const baseTargetFinal = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/hangmoney`]) : prevTargetHangFinal
+            updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetFinal) + stagedTargetAwardDelta)
+            // Explicitly mark this lastGain as a letter-for-letter award so clients can render a clear message
+            updates[`players/${powerUpTarget}/lastGain`] = { amount: stagedTargetAwardDelta, by: myId, reason: 'letter_for_letter', ts: Date.now() }
+          }
+        } catch (e) {}
       } else if (powerId === 'vowel_vision') {
         // Include a human-readable message for buyer and target, visible only to them
         const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
@@ -1126,7 +1019,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + awardTotal)
             updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
             // record a small visible gain on buyer so UI toasts show the award
-            updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+            updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
           }
         } catch (e) {}
       }
@@ -1142,7 +1035,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           try {
             if (!existingSet.has(add)) {
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
-              if (count > 0) {
+                if (count > 0) {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.hangmoney) || 0
                 const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined')
@@ -1169,7 +1062,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   }
                 } catch (e) {}
                 // mark visible gain
-                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
             }
           } catch (e) {}
@@ -1185,7 +1078,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
             if (!existingSet.has(add)) {
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
-              if (count > 0) {
+                if (count > 0) {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.hangmoney) || 0
                 const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
@@ -1203,7 +1096,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 }
                 if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
                 updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
             }
           }
@@ -1222,12 +1115,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const counts = {}
             letters.forEach(ch => { if (ch) counts[ch] = (counts[ch] || 0) + 1 })
             Object.keys(counts).forEach(l => { total += 2 * counts[l] })
-            if (total > 0) {
+              if (total > 0) {
               const me = (state?.players || []).find(p => p.id === myId) || {}
               const myHangCurrent = Number(me.hangmoney) || 0
               const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
               updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + total)
-              updates[`players/${myId}/lastGain`] = { amount: total, by: powerUpTarget, reason: 'powerupReveal', ts: Date.now() }
+              updates[`players/${myId}/lastGain`] = { amount: total, by: powerUpTarget, reason: powerId, ts: Date.now() }
               // record aggregated privateHits for buyer
               const mePrev = (state?.players || []).find(p => p.id === myId) || {}
               const prevHits = (mePrev.privateHits && mePrev.privateHits[powerUpTarget]) ? mePrev.privateHits[powerUpTarget].slice() : []
@@ -1259,12 +1152,48 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // clear any frozen flags when their turn begins
             updates[`players/${nextPlayer}/frozen`] = null
             updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+            // Add a lastGain entry to indicate the +1 starter award (clients will show this in tooltip)
+            try {
+              // only add when starter bonus is enabled in room state
+              if (state && state.starterBonus && state.starterBonus.enabled) {
+                updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+              }
+            } catch (e) {}
           } catch (e) {}
         }
       } catch (e) {}
 
       // Finally perform the update
+      // (debug logging removed)
       await dbUpdate(roomRef, updates)
+      try {
+    // debug toast removed
+        // Persist any lastGain updates to localStorage so the UI tooltip can show immediately for affected players
+        try {
+          Object.keys(updates || {}).forEach(k => {
+            const m = k.match(/^players\/([^/]+)\/lastGain$/)
+            if (m) {
+              const pid = m[1]
+              try {
+                const lg = updates[k]
+                if (lg && typeof lg.ts !== 'undefined') {
+                  // write a small array entry for tooltip fallback
+                  const key = `gh_hang_history_${pid}`
+                  const existing = (function() { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null } catch (e) { return null } })()
+                  const entry = { ts: Number(lg.ts || Date.now()), delta: Number(lg.amount || 0), reason: (lg.reason || 'Adjustment'), prev: null }
+                  const next = [entry].concat(existing || []).slice(0,3)
+                  try { localStorage.setItem(key, JSON.stringify(next)) } catch (e) {}
+                  try {
+                    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                      try { window.dispatchEvent(new CustomEvent('gh_hang_history_update', { detail: { playerId: pid, entry } })) } catch (e) {}
+                    }
+                  } catch (e) {}
+                }
+              } catch (e) {}
+            }
+          })
+        } catch (e) {}
+      } catch (e) {}
       // add a dismissible success toast for power-up application
       const pupToastId = `pup_ok_${Date.now()}`
       // For longest_word_bonus, show the winner's display name; otherwise show the target
@@ -1827,6 +1756,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <PlayerCircle key={p.id}
                           player={playerWithViewer}
                           isSelf={p.id === myId}
+                          hostId={hostId}
                           viewerId={myId}
                           phase={phase}
                           hasSubmitted={!!p.hasWord}

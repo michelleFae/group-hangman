@@ -79,7 +79,66 @@ button[disabled] {
 /* Player circles */
 .circle { display:flex; gap: 16px; flex-wrap:wrap; justify-content:center }
 .player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95)); box-shadow: 0 8px 20px rgba(103,80,145,0.06); transition: transform .18s }
-.player:hover { transform: translateY(-6px) }
+ .player:hover { transform: translateY(-6px) }
+/* New layout helpers for playing phase: make player tiles slightly more compact and stable */
+.player .you-badge { font-size: 11px; font-weight: 800; color: #111; }
+.player .revealed { display: inline-flex; gap: 6px; align-items: center; flex: 1; min-width: 0; max-width: 160px; overflow-x: auto; white-space: nowrap; padding-right: 6px }
+.player .revealed span { font-weight: 700; display: inline-block }
+.player .revealed::-webkit-scrollbar { height: 6px }
+.player .revealed::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 3px }
+
+/* Prevent the viewer's own tile from translating vertically (keep stable) */
+.player-self { transform: none !important }
+
+/* ensure the player container doesn't clip interactive children and allow buttons to sit above other inline elements */
+.player { overflow: hidden; position: relative }
+.player .revealed { pointer-events: auto }
+.player button { position: relative; z-index: 60 }
+.player .revealed { z-index: 10 }
+.player .avatar { z-index: 5 }
+
+/* Actions container for per-player controls: keep inside the card and allow wrapping */
+.player .actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap; /* allow buttons to wrap to new line if space is tight */
+  min-width: 0; /* allow flex children to shrink */
+}
+
+.player .action-button {
+  flex: 0 1 auto; /* do not grow, can shrink */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+/* For very narrow tiles ensure buttons scale down a bit */
+@media (max-width: 420px) {
+  .player .action-button { padding: 8px 10px; font-size: 13px }
+}
+
+/* tooltip showing the player's submitted word on hover */
+.player .revealed { position: relative }
+.player .word-tooltip {
+  position: absolute;
+  left: 0;
+  top: 110%;
+  background: rgba(0,0,0,0.9);
+  color: white;
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  display: none;
+  z-index: 120;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.32);
+  font-weight: 700;
+}
+.player .revealed:hover .word-tooltip { display: block }
+.player .word-tooltip .tip-guessed { color: #ff6b6b; }
+.player .word-tooltip .tip-unguessed { color: #fff; opacity: 0.95 }
 .avatar { width:56px; height:56px; border-radius:50%; background: linear-gradient(135deg,var(--highlight), #ffd1d1); display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--text); font-size:20px }
 .meta { margin-left: 76px; margin-top: -56px }
 .name { font-weight:700 }
