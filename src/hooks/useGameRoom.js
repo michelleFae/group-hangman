@@ -63,7 +63,7 @@ export default function useGameRoom(roomId, playerName) {
 
   function getStartMoneyFromRoom(roomVal) {
     try {
-      if (roomVal && typeof roomVal.startingHangmoney === 'number') return Math.max(0, Number(roomVal.startingHangmoney))
+      if (roomVal && typeof roomVal.startingWordmoney === 'number') return Math.max(0, Number(roomVal.startingWordmoney))
     } catch (e) {}
     return 2
   }
@@ -94,11 +94,11 @@ export default function useGameRoom(roomId, playerName) {
     console.log('joinRoom called with password:', password)
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
-      // local fallback: use configured starting hangmoney if available in state
-      const startLocal = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : 2
+      // local fallback: use configured starting wordmoney if available in state
+      const startLocal = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : 2
       setState(prev => ({
         ...prev,
-        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, hangmoney: startLocal, revealed: [] }]
+        players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, wordmoney: startLocal, revealed: [] }]
       }))
       return
     }
@@ -124,7 +124,7 @@ export default function useGameRoom(roomId, playerName) {
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
       const startMoney = getStartMoneyFromRoom(roomVal)
-      await dbSet(pRef, { id: pKey, name: playerName, hangmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
+      await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }
 
@@ -201,7 +201,7 @@ export default function useGameRoom(roomId, playerName) {
       const pRef = dbRef(db, `rooms/${roomId}/players/${storedAnonId}`)
       const snap = await get(pRef)
       if (snap && snap.exists()) {
-        // rejoin existing anonymous player: preserve hangmoney/word/etc, update lastSeen
+        // rejoin existing anonymous player: preserve wordmoney/word/etc, update lastSeen
         // only update name if a non-empty playerName was provided (so refresh doesn't wipe server name)
         playerIdRef.current = storedAnonId
         try {
@@ -352,11 +352,11 @@ export default function useGameRoom(roomId, playerName) {
           const pSnap = await get(playerRef)
           const pVal = pSnap.val() || {}
           if (!pVal.starterBonusAwarded) {
-            const prev = (typeof pVal.hangmoney === 'number')
-              ? pVal.hangmoney
-              : ((roomRoot && typeof roomRoot.startingHangmoney === 'number') ? Number(roomRoot.startingHangmoney) : 2)
+            const prev = (typeof pVal.wordmoney === 'number')
+              ? pVal.wordmoney
+              : ((roomRoot && typeof roomRoot.startingWordmoney === 'number') ? Number(roomRoot.startingWordmoney) : 2)
             const ups = {}
-            ups[`players/${uid}/hangmoney`] = prev + 10
+            ups[`players/${uid}/wordmoney`] = prev + 10
             ups[`players/${uid}/starterBonusAwarded`] = true
             await update(roomRootRef, ups)
           }
@@ -383,8 +383,8 @@ export default function useGameRoom(roomId, playerName) {
           if (first) {
             const pSnap = await get(dbRef(db, `rooms/${roomId}/players/${first}`))
             const pVal = pSnap.val() || {}
-            const prev = (typeof pVal.hangmoney === 'number') ? Number(pVal.hangmoney) : getStartMoneyFromRoom(roomRoot)
-            updates[`players/${first}/hangmoney`] = Number(prev) + 1
+            const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : getStartMoneyFromRoom(roomRoot)
+            updates[`players/${first}/wordmoney`] = Number(prev) + 1
             updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() }
           }
         } catch (e) {

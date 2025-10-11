@@ -211,9 +211,9 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           <div key={t.id} className="toast" style={{ background: 'rgba(0,0,0,0.8)', color: 'white', padding: '8px 12px', borderRadius: 8, marginBottom: 8 }}>{t.text}</div>
         ))}
       </div>
-      <div className="hangxiety-header">
-        <h1 className="hangxiety-title">Hangxiety <span className="bubble">😅</span></h1>
-        <p className="hangxiety-tag">A multiplayer word game that should come with a therapist.</p>
+      <div className="wordspiracy-header">
+        <h1 className="wordspiracy-title">Wordspiracy <span className="bubble">😅</span></h1>
+        <p className="wordspiracy-tag">Protect your word. Expose theirs.</p>
       </div>
   <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />
 

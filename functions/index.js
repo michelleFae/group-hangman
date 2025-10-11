@@ -74,10 +74,10 @@ exports.processGuess = functions.database
     const isLetter = value.length === 1
 
   // baseline: give a small reward for taking a turn; may be overridden for correct actions
-  const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+  const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
   let hangIncrement = 1
 
-  // we'll write hangmoney once into updates at the end of processing
+  // we'll write wordmoney once into updates at the end of processing
 
       if (isLetter) {
       const letter = lc(value)
@@ -101,7 +101,7 @@ exports.processGuess = functions.database
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
 
-          // award 2 hangmoney per newly revealed occurrence (as a delta)
+          // award 2 wordmoney per newly revealed occurrence (as a delta)
           hangDeltas[from] = (hangDeltas[from] || 0) + (2 * toAdd)
 
           // record or aggregate private hit for guesser
@@ -153,7 +153,7 @@ exports.processGuess = functions.database
       }
 
       if (guessWord === targetWord) {
-        // correct word: reveal all unique letters, award hangmoney, eliminate
+        // correct word: reveal all unique letters, award wordmoney, eliminate
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
 
@@ -228,8 +228,8 @@ exports.processGuess = functions.database
         if (!curr.players) curr.players = {}
         Object.keys(hangDeltas).forEach(pid => {
           if (!curr.players[pid]) curr.players[pid] = {}
-          const prev = typeof curr.players[pid].hangmoney === 'number' ? curr.players[pid].hangmoney : 0
-          curr.players[pid].hangmoney = Math.max(0, prev + (hangDeltas[pid] || 0))
+          const prev = typeof curr.players[pid].wordmoney === 'number' ? curr.players[pid].wordmoney : 0
+          curr.players[pid].wordmoney = Math.max(0, prev + (hangDeltas[pid] || 0))
         })
 
         return curr
@@ -305,15 +305,15 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
           if (alreadyRecordedForTurn) return curr
         } catch (logErr) { console.warn('advanceTimedTurns: logging/dedupe check failed', logErr) }
 
-        // deduct penalty of 2 hangmoney from timed out player (min 0)
+        // deduct penalty of 2 wordmoney from timed out player (min 0)
         const playerNode = (curr.players && curr.players[timedOutPlayerId]) || {}
-        const prevHang = typeof playerNode.hangmoney === 'number' ? playerNode.hangmoney : 0
+        const prevHang = typeof playerNode.wordmoney === 'number' ? playerNode.wordmoney : 0
         const newHang = Math.max(0, prevHang - 2)
 
-    // apply updates: deduct hangmoney and advance
+    // apply updates: deduct wordmoney and advance
     if (!curr.players) curr.players = {}
     if (!curr.players[timedOutPlayerId]) curr.players[timedOutPlayerId] = {}
-    curr.players[timedOutPlayerId].hangmoney = newHang
+    curr.players[timedOutPlayerId].wordmoney = newHang
     curr.currentTurnIndex = nextIndex
     // preserve the expired turn's start so consumers can dedupe precisely; record oldTurnStartedAt before moving it forward
   const expiredTurnStartedAt = curr.currentTurnStartedAt || null
@@ -327,8 +327,8 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
         const nextPlayerId = curr.turnOrder && curr.turnOrder[nextIndex]
         if (nextPlayerId) {
           if (!curr.players[nextPlayerId]) curr.players[nextPlayerId] = {}
-          const prev = typeof curr.players[nextPlayerId].hangmoney === 'number' ? curr.players[nextPlayerId].hangmoney : 0
-          curr.players[nextPlayerId].hangmoney = prev + 1
+          const prev = typeof curr.players[nextPlayerId].wordmoney === 'number' ? curr.players[nextPlayerId].wordmoney : 0
+          curr.players[nextPlayerId].wordmoney = prev + 1
           // mark a small visible gain so they see the +1 (optional)
           curr.players[nextPlayerId].lastGain = { amount: 1, by: 'system', reason: 'turnStart', ts: Date.now() }
         }

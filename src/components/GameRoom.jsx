@@ -15,11 +15,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
   const [starterEnabled, setStarterEnabled] = useState(false)
-  const [winnerByHangmoney, setWinnerByHangmoney] = useState(false)
+  const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
-  const [startingHangmoney, setStartingHangmoney] = useState(2)
+  const [startingWordmoney, setStartingWordmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
@@ -56,7 +56,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   useEffect(() => {
     if (state?.timed !== undefined) setTimedMode(!!state.timed);
     if (state?.turnTimeoutSeconds !== undefined) setTurnSeconds(state.turnTimeoutSeconds || 30);
-    setWinnerByHangmoney(!!state?.winnerByHangmoney);
+    setWinnerByWordmoney(!!state?.winnerByWordmoney);
     setStarterEnabled(!!state?.starterBonus?.enabled);
     setPowerUpsEnabled(!!state?.powerUpsEnabled);
 
@@ -73,29 +73,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       return prev;
     });
 
-    // ✅ same for starting hangmoney
-    if (typeof state?.startingHangmoney === 'number') {
-      setStartingHangmoney(Math.max(0, Number(state.startingHangmoney)));
+    // ✅ same for starting wordmoney
+    if (typeof state?.startingWordmoney === 'number') {
+      setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)));
     }
 
   }, [
     state?.timed,
     state?.turnTimeoutSeconds,
-    state?.winnerByHangmoney,
+    state?.winnerByWordmoney,
     state?.starterBonus?.enabled,
     state?.powerUpsEnabled,
     state?.minWordSize,
-    state?.startingHangmoney
+    state?.startingWordmoney
   ]);
 
   // toggle a body-level class so the background becomes green when money-mode is active
   useEffect(() => {
     try {
-      if (state?.winnerByHangmoney) document.body.classList.add('money-theme-body')
+      if (state?.winnerByWordmoney) document.body.classList.add('money-theme-body')
       else document.body.classList.remove('money-theme-body')
     } catch (e) {}
     return () => {}
-  }, [state?.winnerByHangmoney])
+  }, [state?.winnerByWordmoney])
 
   // highlight when it's the viewer's turn by adding/removing a body-level class
   useEffect(() => {
@@ -192,7 +192,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomWinnerMode(enabled) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      await dbUpdate(roomRef, { winnerByHangmoney: !!enabled })
+      await dbUpdate(roomRef, { winnerByWordmoney: !!enabled })
     } catch (e) {
       console.warn('Could not update winner mode', e)
     }
@@ -203,9 +203,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const processedTimeoutPlayersRef = useRef({})
   // also dedupe by timeout key so the same timeout entry doesn't re-trigger repeatedly
   const processedTimeoutKeysRef = useRef({})
-  // track previous hangmoney values so we can show gain toasts when anyone receives points
+  // track previous wordmoney values so we can show gain toasts when anyone receives points
   const prevHangRef = useRef({})
-  // track expected hangmoney values after a pending deduction so the UI can wait for DB confirmation
+  // track expected wordmoney values after a pending deduction so the UI can wait for DB confirmation
   const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
 
@@ -284,13 +284,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         processedTimeoutKeysRef.current[k] = true
 
         const toastId = `${k}`
-        setToasts(t => [...t, { id: toastId, text: `-2 hangmoney for ${playerName} (timed out)` }])
+        setToasts(t => [...t, { id: toastId, text: `-2 wordmoney for ${playerName} (timed out)` }])
         setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
 
-        // pending deduction UI + expected hangmoney
+        // pending deduction UI + expected wordmoney
         if (e && typeof e.deducted === 'number') {
           const playerNow = players.find(p => p.id === playerIdTimed) || {}
-          const currentHang = Number(playerNow.hangmoney) || 0
+          const currentHang = Number(playerNow.wordmoney) || 0
           const expectedAfter = currentHang - e.deducted
           expectedHangRef.current[playerIdTimed] = expectedAfter
           setPendingDeducts(prev => ({ ...prev, [playerIdTimed]: (prev[playerIdTimed] || 0) - e.deducted }))
@@ -316,12 +316,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       })
     } catch (e) {}
 
-    // generic positive hangmoney deltas (uses prevHangRef to avoid initial-load noise)
+    // generic positive wordmoney deltas (uses prevHangRef to avoid initial-load noise)
     try {
       players.forEach(p => {
         const pid = p.id
         const prev = typeof prevHangRef.current[pid] === 'number' ? prevHangRef.current[pid] : null
-        const nowVal = typeof p.hangmoney === 'number' ? p.hangmoney : 0
+        const nowVal = typeof p.wordmoney === 'number' ? p.wordmoney : 0
         if (prev !== null && nowVal > prev) {
           const delta = nowVal - prev
           const toastId = `gain_${pid}_${Date.now()}`
@@ -334,7 +334,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
   }, [state?.players, state?.timeouts])
 
-  // clear pending deductions when we observe the DB has applied the hangmoney change
+  // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
     if (!state || !state.players) return
     const updated = { ...pendingDeducts }
@@ -343,7 +343,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const expected = expectedHangRef.current[pid]
       const p = (state.players || []).find(x => x.id === pid)
       if (!p) return
-      const actual = Number(p.hangmoney) || 0
+      const actual = Number(p.wordmoney) || 0
       // once actual is less-than-or-equal-to expected, consider the deduction persisted
       if (actual <= expected) {
         if (typeof updated[pid] !== 'undefined') {
@@ -375,8 +375,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // consider the viewer a winner if the room's winnerId matches their id,
   // or if the stored winnerName equals their effective name (covers legacy rooms)
   const isWinner = (state?.winnerId && myId && state.winnerId === myId) || (state?.winnerName && state.winnerName === myName)
-  // compute standings by hangmoney desc as a best-effort ranking
-  const standings = (state?.players || []).slice().sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+  // compute standings by wordmoney desc as a best-effort ranking
+  const standings = (state?.players || []).slice().sort((a,b) => (b.wordmoney || 0) - (a.wordmoney || 0))
 
   // defensive: ensure standings are valid objects before rendering (prevents invalid element type errors)
   const sanitizedStandings = (standings || []).filter(p => p && typeof p === 'object' && (p.id || p.name))
@@ -398,7 +398,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }, [isWinner])
 
   const cashPieces = useMemo(() => {
-    if (!state?.winnerByHangmoney) return []
+    if (!state?.winnerByWordmoney) return []
     return new Array(28).fill(0).map(() => ({
       left: Math.random() * 100,
       // stagger delays up to ~1.6s like confetti
@@ -407,18 +407,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // start slightly above the top using vh so viewport-relative
       topVh: -2 - (Math.random() * 6)
     }))
-  }, [state?.winnerByHangmoney])
+  }, [state?.winnerByWordmoney])
 
   
 
   const modeBadge = (
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
       <div className="mode-badge card" style={{ padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-  <span style={{ fontSize: 16 }}>{state?.winnerByHangmoney ? '💸' : '🛡️'}</span>
+  <span style={{ fontSize: 16 }}>{state?.winnerByWordmoney ? '💸' : '🛡️'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-            <strong style={{ fontSize: 13 }}>{state?.winnerByHangmoney ? 'Winner: Most hangmoney' : 'Winner: Last one standing'}</strong>
-            <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByHangmoney ? 'Money wins' : 'Elimination wins'}</small>
+            <strong style={{ fontSize: 13 }}>{state?.winnerByWordmoney ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
+            <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByWordmoney ? 'Money wins' : 'Elimination wins'}</small>
           </div>
           {/* show a rocket badge when power-ups are enabled and visible to all players in the lobby */}
           {state?.powerUpsEnabled && phase === 'lobby' && (
@@ -481,11 +481,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <input id="turnSeconds" name="turnSeconds" type="number" min={10} max={300} value={turnSeconds} onChange={e => { const v = Math.max(10, Math.min(300, Number(e.target.value || 30))); setTurnSeconds(v); updateRoomTiming(timedMode, v); updateRoomSettings({ turnTimeoutSeconds: v }) }} style={{ width: 100, marginLeft: 8 }} />
               </label>
             )}
-            <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus hangmoney.">
+            <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus wordmoney.">
               <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
             </label>
-            <label htmlFor="winnerByHangmoney" title="Choose how the winner is determined: Last one standing, or player with most hangmoney.">
-              <input id="winnerByHangmoney" name="winnerByHangmoney" type="checkbox" checked={winnerByHangmoney} onChange={e => { const nv = e.target.checked; setWinnerByHangmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByHangmoney: !!nv }) }} /> Winner by money
+            <label htmlFor="winnerByWordmoney" title="Choose how the winner is determined: Last one standing, or player with most wordmoney.">
+              <input id="winnerByWordmoney" name="winnerByWordmoney" type="checkbox" checked={winnerByWordmoney} onChange={e => { const nv = e.target.checked; setWinnerByWordmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByWordmoney: !!nv }) }} /> Winner by money
             </label>
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
@@ -517,9 +517,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   style={{ width: 80, marginLeft: 8 }}
                 />
               </label>
-              <label htmlFor="startingHangmoney" title="Starting hangmoney for each player when the room is reset">
-                Starting hangmoney:
-                <input id="startingHangmoney" name="startingHangmoney" type="number" min={0} max={999} value={startingHangmoney} onChange={e => { const v = Math.max(0, Number(e.target.value || 0)); setStartingHangmoney(v); updateRoomSettings({ startingHangmoney: v }) }} style={{ width: 80, marginLeft: 8 }} disabled={!isHost} />
+              <label htmlFor="startingWordmoney" title="Starting wordmoney for each player when the room is reset">
+                Starting wordmoney:
+                <input id="startingWordmoney" name="startingWordmoney" type="number" min={0} max={999} value={startingWordmoney} onChange={e => { const v = Math.max(0, Number(e.target.value || 0)); setStartingWordmoney(v); updateRoomSettings({ startingWordmoney: v }) }} style={{ width: 80, marginLeft: 8 }} disabled={!isHost} />
               </label>
           </div>
         </div>
@@ -547,7 +547,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // add self-targeted powerups (available when target is yourself)
   POWER_UPS.push(
     { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
-    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some hangmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
+    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
@@ -557,7 +557,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Ensure the UI shows power-ups ordered by price (ascending)
   try { POWER_UPS.sort((a,b) => (Number(a.price) || 0) - (Number(b.price) || 0)) } catch (e) {}
 
-  // helper to perform a power-up purchase; writes to DB private entries and deducts hangmoney
+  // helper to perform a power-up purchase; writes to DB private entries and deducts wordmoney
   async function purchasePowerUp(powerId, opts = {}) {
     if (!powerUpTarget) return
     if (!myId) return
@@ -579,11 +579,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (active) cost = baseCost + Number(surge.amount || 0)
       }
     } catch (e) {}
-    // check buyer hangmoney
+    // check buyer wordmoney
     const me = (state?.players || []).find(p => p.id === myId) || {}
-    const myHang = Number(me.hangmoney) || 0
+    const myHang = Number(me.wordmoney) || 0
     if (myHang - cost < 0) {
-      setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough hangmoney to buy that power-up.' }])
+      setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough wordmoney to buy that power-up.' }])
       return
     }
 
@@ -600,13 +600,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
       const updates = {}
-      // deduct buyer hangmoney
-      updates[`players/${myId}/hangmoney`] = myHang - cost
+      // deduct buyer wordmoney
+      updates[`players/${myId}/wordmoney`] = myHang - cost
       // write a private entry for buyer and target so only they see the result
       const key = `pu_${Date.now()}`
       // store under players/{buyer}/privatePowerReveals/{targetId}/{key} = { powerId, data }
       const data = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-  // accumulate any hangmoney awards for the target here and apply once
+  // accumulate any wordmoney awards for the target here and apply once
   let stagedTargetAwardDelta = 0
   // flag to avoid double-awarding buyer when a power-up-specific award was already applied
   let skipBuyerLetterAward = false
@@ -784,7 +784,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   } else if (powerId === 'letter_for_letter') {
         // reveal one random letter from the target's word publicly,
         // AND privately reveal one random letter from the buyer's own word to the target.
-        // Award points to both players for any newly revealed occurrences (2 hangmoney per occurrence).
+        // Award points to both players for any newly revealed occurrences (2 wordmoney per occurrence).
   const targetLetters = (targetWord || '').split('')
   const tletter = targetLetters.length > 0 ? targetLetters[Math.floor(Math.random() * targetLetters.length)] : null
   // pick a random letter from the buyer's own word to privately reveal to the target
@@ -799,7 +799,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   if (tletter) resultPayload = { letter: tletter }
   if (tletter) buyerResultPayload = { letterFromTarget: tletter }
   if (bletter) targetResultPayload = { letterFromBuyer: bletter }
-        // determine awards (they were applied earlier into updates[].hangmoney when applicable)
+        // determine awards (they were applied earlier into updates[].wordmoney when applicable)
         // For buyer: if buyerResultPayload.letterFromTarget exists, compute how many occurrences in targetWord
         let buyerAward = 0
         let buyerLetter = null
@@ -876,13 +876,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
-  // Immediately apply buyer award here to ensure their hangmoney reflects the +2 per newly revealed occurrence
+  // Immediately apply buyer award here to ensure their wordmoney reflects the +2 per newly revealed occurrence
   try {
     if (buyerAward && buyerAward > 0) {
       const meNow = (state?.players || []).find(p => p.id === myId) || {}
-      const myHangCurrentNow = Number(meNow.hangmoney) || 0
-      const baseAfterCostNow = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrentNow - cost)
-      updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCostNow) + buyerAward)
+      const myHangCurrentNow = Number(meNow.wordmoney) || 0
+      const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrentNow - cost)
+      updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + buyerAward)
       // merge into privateHits for buyer similar to other award flows
       try {
         const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
@@ -950,9 +950,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
             if (typeof stagedTargetAwardDelta === 'number' && stagedTargetAwardDelta > 0) {
             const targetNodeStateFinal = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-            const prevTargetHangFinal = Number(targetNodeStateFinal.hangmoney) || 0
-            const baseTargetFinal = (typeof updates[`players/${powerUpTarget}/hangmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/hangmoney`]) : prevTargetHangFinal
-            updates[`players/${powerUpTarget}/hangmoney`] = Math.max(0, Number(baseTargetFinal) + stagedTargetAwardDelta)
+            const prevTargetHangFinal = Number(targetNodeStateFinal.wordmoney) || 0
+            const baseTargetFinal = (typeof updates[`players/${powerUpTarget}/wordmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/wordmoney`]) : prevTargetHangFinal
+            updates[`players/${powerUpTarget}/wordmoney`] = Math.max(0, Number(baseTargetFinal) + stagedTargetAwardDelta)
             // Explicitly mark this lastGain as a letter-for-letter award so clients can render a clear message
             updates[`players/${powerUpTarget}/lastGain`] = { amount: stagedTargetAwardDelta, by: myId, reason: 'letter_for_letter', ts: Date.now() }
           }
@@ -983,13 +983,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const newRevealed = Array.from(new Set([...(existing || []), ...toAdd]))
         updates[`players/${powerUpTarget}/revealed`] = newRevealed
 
-        // Award points to the buyer for newly revealed letters (2 hangmoney per newly revealed occurrence)
+        // Award points to the buyer for newly revealed letters (2 wordmoney per newly revealed occurrence)
         try {
           const me = (state?.players || []).find(p => p.id === myId) || {}
-          const myHangCurrent = Number(me.hangmoney) || 0
-          // base hangmoney after paying cost was set earlier; compute fresh base here in case
-          const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined')
-            ? updates[`players/${myId}/hangmoney`]
+          const myHangCurrent = Number(me.wordmoney) || 0
+          // base wordmoney after paying cost was set earlier; compute fresh base here in case
+          const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined')
+            ? updates[`players/${myId}/wordmoney`]
             : (myHangCurrent - cost)
 
           let awardTotal = 0
@@ -1016,7 +1016,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           })
 
           if (awardTotal > 0) {
-            updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + awardTotal)
+            updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + awardTotal)
             updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
             // record a small visible gain on buyer so UI toasts show the award
             updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
@@ -1037,12 +1037,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
                 if (count > 0) {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
-                const myHangCurrent = Number(me.hangmoney) || 0
-                const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined')
-                  ? updates[`players/${myId}/hangmoney`]
+                const myHangCurrent = Number(me.wordmoney) || 0
+                const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined')
+                  ? updates[`players/${myId}/wordmoney`]
                   : (myHangCurrent - cost)
                 const award = 2 * count
-                updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
                 const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
                 let merged = false
                 for (let i = 0; i < prevHits.length; i++) {
@@ -1080,10 +1080,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
                 if (count > 0) {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
-                const myHangCurrent = Number(me.hangmoney) || 0
-                const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
+                const myHangCurrent = Number(me.wordmoney) || 0
+                const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
                 const award = 2 * count
-                updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
                 const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
                 let merged = false
                 for (let i = 0; i < prevHits.length; i++) {
@@ -1117,9 +1117,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             Object.keys(counts).forEach(l => { total += 2 * counts[l] })
               if (total > 0) {
               const me = (state?.players || []).find(p => p.id === myId) || {}
-              const myHangCurrent = Number(me.hangmoney) || 0
-              const baseAfterCost = (typeof updates[`players/${myId}/hangmoney`] !== 'undefined') ? updates[`players/${myId}/hangmoney`] : (myHangCurrent - cost)
-              updates[`players/${myId}/hangmoney`] = Math.max(0, Number(baseAfterCost) + total)
+              const myHangCurrent = Number(me.wordmoney) || 0
+              const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
+              updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + total)
               updates[`players/${myId}/lastGain`] = { amount: total, by: powerUpTarget, reason: powerId, ts: Date.now() }
               // record aggregated privateHits for buyer
               const mePrev = (state?.players || []).find(p => p.id === myId) || {}
@@ -1145,10 +1145,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           try {
             const nextPlayer = effectiveTurnOrder[nextIndex]
             const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
-            const prevNextHang = (typeof nextNode.hangmoney === 'number') ? nextNode.hangmoney : 0
-            // If a previous staged update already adjusted this player's hangmoney (e.g. from a power-up), add to it
-            const stagedNextHang = (typeof updates[`players/${nextPlayer}/hangmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/hangmoney`]) : prevNextHang
-            updates[`players/${nextPlayer}/hangmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+            const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+            // If a previous staged update already adjusted this player's wordmoney (e.g. from a power-up), add to it
+            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+            updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
             // clear any frozen flags when their turn begins
             updates[`players/${nextPlayer}/frozen`] = null
             updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
@@ -1179,7 +1179,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 if (lg && typeof lg.ts !== 'undefined') {
                   // Avoid persisting a local history entry for letter-for-letter here because
                   // the DB write will arrive and PlayerCircle will also add the same entry,
-                  // producing a duplicate visible line in the hangmoney tooltip.
+                  // producing a duplicate visible line in the wordmoney tooltip.
                   if ((lg.reason === 'letter_for_letter' || lg.reason === 'letter-for-letter')) return
                   // write a small array entry for tooltip fallback
                   const key = `gh_hang_history_${pid}`
@@ -1280,7 +1280,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
   const me = (state?.players || []).find(p => p.id === myId) || {}
-    const myHang = Number(me.hangmoney) || 0
+    const myHang = Number(me.wordmoney) || 0
   const isLobby = phase === 'lobby'
     return (
       <div className={`modal-overlay shop-modal ${powerUpOpen ? 'open' : 'closed'}`} role="dialog" aria-modal="true">
@@ -1342,7 +1342,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   function PlayAgainControls({ isHost, myId, players }) {
     const [submitting, setSubmitting] = useState(false)
 
-    // Host-only restart: reset per-player words, hangmoney, submission flags, clear wantsRematch, and set phase to 'waiting'
+    // Host-only restart: reset per-player words, wordmoney, submission flags, clear wantsRematch, and set phase to 'waiting'
     async function restartForAll() {
       if (!isHost) return
       try {
@@ -1350,16 +1350,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setIsResetting(true)
 
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
-    // determine starting hangmoney to apply for resets (prefer authoritative room state, fallback to local setting)
-    const resetStart = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : (typeof startingHangmoney === 'number' ? Math.max(0, Number(startingHangmoney)) : 2)
+    // determine starting wordmoney to apply for resets (prefer authoritative room state, fallback to local setting)
+    const resetStart = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : (typeof startingWordmoney === 'number' ? Math.max(0, Number(startingWordmoney)) : 2)
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          // apply configured starting hangmoney
-          updates[`players/${p.id}/hangmoney`] = resetStart
+          // apply configured starting wordmoney
+          updates[`players/${p.id}/wordmoney`] = resetStart
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -1430,7 +1430,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = (state && typeof state.startingHangmoney === 'number') ? Math.max(0, Number(state.startingHangmoney)) : (typeof startingHangmoney === 'number' ? Math.max(0, Number(startingHangmoney)) : 2)
+  const startMoney = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : (typeof startingWordmoney === 'number' ? Math.max(0, Number(startingWordmoney)) : 2)
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
@@ -1438,7 +1438,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          updates[`players/${p.id}/hangmoney`] = startMoney
+          updates[`players/${p.id}/wordmoney`] = startMoney
           // Clear power-up state as part of rematch reset so old results don't persist
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
@@ -1597,7 +1597,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           {isWinner && confettiPieces.map((c, i) => (
             <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
           ))}
-          {state?.winnerByHangmoney && cashPieces.map((c, i) => (
+          {state?.winnerByWordmoney && cashPieces.map((c, i) => (
             <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
           ))}
 
@@ -1618,7 +1618,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     </div>
                     <div style={{ fontWeight: 800 }}>
                       <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                        ${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                        ${p.wordmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
                       </span>
                     </div>
                   </li>
@@ -1639,7 +1639,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   return (
-    <div className={`game-room ${state && state.winnerByHangmoney ? 'money-theme' : ''}`}>
+    <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''}`}>
       {modeBadge}
       <div className="app-content" style={powerUpOpen ? { pointerEvents: 'none', userSelect: 'none' } : undefined}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
@@ -1660,7 +1660,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           {isHost ? (
             <>
               <button
-                onClick={() => startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByHangmoney } : { starterEnabled, winnerByHangmoney })}
+                onClick={() => startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney })}
                 disabled={players.length < 2}
                 title={players.length < 2 ? 'Need at least 2 players to start' : ''}
                 className={players.length >= 2 ? 'start-ready' : ''}
@@ -1760,7 +1760,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           else {
             const me = (state?.players || []).find(x => x.id === myId) || {}
             const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
-            const myHang = Number(me.hangmoney) || 0
+            const myHang = Number(me.wordmoney) || 0
             if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
           }
 
@@ -1884,7 +1884,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             {isWinner && confettiPieces.map((c, i) => (
               <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
             ))}
-            {state?.winnerByHangmoney && cashPieces.map((c, i) => (
+            {state?.winnerByWordmoney && cashPieces.map((c, i) => (
               <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
             ))}
 
@@ -1905,7 +1905,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       </div>
                       <div style={{ fontWeight: 800 }}>
                         <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                          ${p.hangmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                          ${p.wordmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
                         </span>
                       </div>
                     </li>

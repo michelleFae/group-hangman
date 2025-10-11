@@ -8,7 +8,7 @@
   --halo: rgba(255,171,171,0.28); /* Pulse halo color */
 }
 
-/* Full-page money theme when winner-by-hangmoney is selected */
+/* Full-page money theme when winner-by-wordmoney is selected */
 body.money-theme-body {
   background: linear-gradient(180deg, #e8f5e9, #d0f0d6);
 }
@@ -142,7 +142,7 @@ button[disabled] {
 .avatar { width:56px; height:56px; border-radius:50%; background: linear-gradient(135deg,var(--highlight), #ffd1d1); display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--text); font-size:20px }
 .meta { margin-left: 76px; margin-top: -56px }
 .name { font-weight:700 }
-.hangmoney { color: var(--accent-2); font-weight:700 }
+.wordmoney { color: var(--accent-2); font-weight:700 }
 .revealed { margin-top: 6px; color: var(--muted); font-size: 13px }
 
 .turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:var(--accent); }
@@ -234,10 +234,10 @@ button[disabled] {
   display: inline; /* ensure spans are inline, not block */
 }
 
-/* Hangxiety header */
-.hangxiety-header { text-align: center; margin-bottom: 20px }
-.hangxiety-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
-.hangxiety-title .bubble {
+/* wordspiracy header */
+.wordspiracy-header { text-align: center; margin-bottom: 20px }
+.wordspiracy-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
+.wordspiracy-title .bubble {
   display:inline-block;
   margin-left: 8px;
   transform-origin: 50% 50%;
@@ -250,7 +250,7 @@ button[disabled] {
   /* subtle text shadow to help emoji stand out on gradients */
   text-shadow: 0 1px 0 rgba(255,255,255,0.6);
 }
-.hangxiety-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
+.wordspiracy-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
 
 @keyframes bubble-bounce {
   0% { transform: translateY(0) rotate(0deg) }
@@ -307,16 +307,16 @@ button[disabled] {
 .player.flash-penalty { animation: flash-penalty 1s ease-in-out }
 @keyframes flash-penalty { 0% { box-shadow: 0 0 0 rgba(255,0,0,0) } 10% { box-shadow: 0 0 18px rgba(255,0,0,0.6) } 50% { box-shadow: 0 0 10px rgba(255,0,0,0.24) } 100% { box-shadow: 0 0 0 rgba(255,0,0,0) } }
 
-/* hangmoney decrement pulse */
-.hangmoney.decrement { animation: hang-decrement 1s ease-in-out }
+/* wordmoney decrement pulse */
+.wordmoney.decrement { animation: hang-decrement 1s ease-in-out }
 @keyframes hang-decrement { 0% { transform: translateY(0); color: var(--accent-2) } 30% { transform: translateY(-6px); color: #c62828 } 100% { transform: translateY(0); color: var(--accent-2) } }
 
-/* brief pulse when hangmoney changes */
-.hangmoney.pulse span {
+/* brief pulse when wordmoney changes */
+.wordmoney.pulse span {
   transform: scale(1.08);
   box-shadow: 0 8px 18px rgba(0,0,0,0.08);
 }
-.hangmoney.pulse span { transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms cubic-bezier(.2,.9,.2,1) }
+.wordmoney.pulse span { transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms cubic-bezier(.2,.9,.2,1) }
 
 /* ensure avatar background uses provided color gracefully */
 .player .avatar { color: #333; box-shadow: 0 6px 18px rgba(0,0,0,0.06); display:inline-flex; align-items:center; justify-content:center }
@@ -379,7 +379,7 @@ button[disabled] {
 
 /* Money theme: green background and subtle floating cash animation */
 .money-theme { background: linear-gradient(180deg,#e8f5e9,#d0f0d6); color: #0b3d0b }
-.money-theme .hangmoney { color: #1b5e20 }
+.money-theme .wordmoney { color: #1b5e20 }
 .money-anim { position: absolute; pointer-events: none }
 @keyframes cash-float { 0% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-16px) rotate(-8deg) } 100% { transform: translateY(0) rotate(0) } }
 .cash-piece { width: 18px; height: 10px; background: linear-gradient(90deg,#a5d6a7,#66bb6a); border-radius:3px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); animation: cash-float 2.2s ease-in-out infinite }

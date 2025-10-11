@@ -128,7 +128,7 @@ export default function PlayerCircle({
   }, [flashPenalty])
 
   useEffect(() => {
-    const displayed = (Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)
+    const displayed = (Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)
     if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
       setPulse(true)
       const id = setTimeout(() => setPulse(false), 450)
@@ -195,7 +195,7 @@ export default function PlayerCircle({
       } catch (e) {}
 
   const entry = { ts: Date.now(), delta: Number(delta), reason: reasonText, prev }
-  try { console.debug('hangmoney change detected for', player.id, entry) } catch (e) {}
+  try { console.debug('wordmoney change detected for', player.id, entry) } catch (e) {}
       const next = [entry].concat(hangHistory || []).slice(0,3)
       setHangHistory(next)
       // persist
@@ -208,7 +208,7 @@ export default function PlayerCircle({
       return () => clearTimeout(id)
     }
     lastDisplayedRef.current = displayed
-  }, [player.hangmoney, pendingDeduct])
+  }, [player.wordmoney, pendingDeduct])
 
   // Also listen specifically for explicit lastGain updates from the server and record them
   useEffect(() => {
@@ -228,10 +228,10 @@ export default function PlayerCircle({
         }
         let reasonText = reasonMap(lg.reason)
         if (lg.by) reasonText = `${reasonText} ${lg.by ? `by ${playerIdToName[lg.by] || lg.by}` : ''}`.trim()
-        const displayed = (Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)
+        const displayed = (Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)
         const entry = { ts, delta: Number(amount), reason: reasonText, prev: Math.max(0, displayed - Number(amount || 0)) }
         lastGainTsRef.current = ts
-        try { console.debug('hangmoney lastGain observed for', player.id, entry) } catch (e) {}
+        try { console.debug('wordmoney lastGain observed for', player.id, entry) } catch (e) {}
         setHangHistory(h => {
           const next = [entry].concat(h || []).slice(0,3)
           try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
@@ -262,7 +262,7 @@ export default function PlayerCircle({
 
   const isTurn = currentTurnId && currentTurnId === player.id
 
-  // When a new round starts (lobby phase), clear hangmoney details so tooltip is empty
+  // When a new round starts (lobby phase), clear wordmoney details so tooltip is empty
   useEffect(() => {
     try {
       if (phase === 'lobby') {
@@ -280,10 +280,10 @@ export default function PlayerCircle({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
           <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center' }}>{player.name}</div>
-          {/* hangmoney moved here to sit under the player's name */}
-          <div className={`hangmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
+          {/* wordmoney moved here to sit under the player's name */}
+          <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
             <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
-              ${(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)}
+              ${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}
             </span>
             {/* info icon with hover tooltip showing last 3 updates */}
             <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
@@ -291,7 +291,7 @@ export default function PlayerCircle({
               <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#eef3ff', color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
               {/* tooltip will be rendered into document.body to avoid z-index clipping */}
               {/* we mount a hidden container here and populate it imperatively */}
-              <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.hangmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
+              <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
             </span>
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, background: 'rgba(0,0,0,0.06)', fontSize: 11, fontWeight: 700 }}>YOU</div>}
@@ -441,7 +441,7 @@ export default function PlayerCircle({
   )
 }
 
-// Add minimal CSS for the hangmoney tooltip by injecting a style tag when module loads
+// Add minimal CSS for the wordmoney tooltip by injecting a style tag when module loads
 try {
   const styleId = 'gh-playercircle-hang-style'
   if (!document.getElementById(styleId)) {
@@ -517,7 +517,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
     visible ? (
       <div className="gh-hang-tooltip card" style={{ left: pos.left, top: pos.top }}>
         <div className="hang-tooltip-inner" style={{ padding: 10 }}>
-          <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 800 }}>Hangmoney details</div>
+          <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 800 }}>Wordmoney details</div>
           <div>
             {(hangHistory && hangHistory.length > 0) ? (
               // if the only change is a single-entry (start/letter/powerup), show an aggregated explanatory line
@@ -535,12 +535,12 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   return (
                     <div style={{ marginBottom: 6 }}>
                       <div style={{ color: '#333' }}>
-                        <span style={{ fontWeight: 800 }}>current hangmoney = </span>
+                        <span style={{ fontWeight: 800 }}>current wordmoney = </span>
                         <span style={{ color: 'green', fontWeight: 800 }}>${currentTotal}</span>
                         <span style={{ marginLeft: 8 }}>
                           ({powerLabel} {amt >= 0 ? `+${amt}` : `${amt}`})
                         </span>
-                        <span style={{ marginLeft: 8, color: '#333' }}>+ ${prev} (previous hangmoney)</span>
+                        <span style={{ marginLeft: 8, color: '#333' }}>+ ${prev} (previous wordmoney)</span>
                         {starterApplied ? (
                           <span style={{ marginLeft: 8, color: 'green' }}>+ $1 (start of next turn)</span>
                         ) : null}

@@ -1,4 +1,4 @@
-Group Hangman - real-time multiplayer hangman
+Group Hangman - real-time multiplayer hangman (Wordspiracy)
 
 Overview
 --
@@ -102,7 +102,7 @@ There are two supported approaches in this repo:
 
 1. Serverless HTTP handler (recommended for Vercel) — `api/processGuess.js`:
    - Verifies the caller's Firebase ID token using Admin SDK.
-   - Validates turn order, processes letter/word guesses, applies hangmoney changes, reveals letters, marks eliminations, and advances the turn.
+   - Validates turn order, processes letter/word guesses, applies wordmoney changes, reveals letters, marks eliminations, and advances the turn.
 
 2. Firebase Cloud Function / queue consumer — `functions/index.js`:
    - Reference implementation that consumes the DB queue and can also run scheduled jobs for timed turns and eviction of stale anonymous players.
@@ -116,7 +116,7 @@ Frontend notes and behavior
 
 Security & rules
 --
-You should lock down your Realtime Database rules so clients cannot directly modify authoritative game fields (hangmoney, eliminated, revealed, turnOrder, etc.). Use the serverless handler or Cloud Function as the only trusted writer for those fields.
+You should lock down your Realtime Database rules so clients cannot directly modify authoritative game fields (wordmoney, eliminated, revealed, turnOrder, etc.). Use the serverless handler or Cloud Function as the only trusted writer for those fields.
 
 Troubleshooting & tips
 --

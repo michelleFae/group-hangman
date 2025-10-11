@@ -4,7 +4,7 @@ processGuess function
 ---------------------
 - Trigger: Realtime Database `onCreate` at `/rooms/{roomId}/queue/{pushId}`.
 - Purpose: Validate and process guesses (letters and full words) authoritatively.
-  - Correct letter: reveal it in `players/{targetId}/revealed`, award +2 hangmoney to the guesser, add `guessedBy[letter]` entry for the target, record private hit for the guesser.
+  - Correct letter: reveal it in `players/{targetId}/revealed`, award +2 wordmoney to the guesser, add `guessedBy[letter]` entry for the target, record private hit for the guesser.
   - Wrong letter: record under `players/{guesserId}/privateWrong/{targetId}` (private to guesser).
   - Correct word: reveal all letters, award +5, set `players/{targetId}/eliminated = true`, record `guessedBy.__word`, remove player from `turnOrder`, adjust `currentTurnIndex`.
   - Wrong word: record under `players/{guesserId}/privateWrongWords/{targetId}` (private to guesser).
@@ -31,4 +31,4 @@ Make sure your `firebase.json` has functions configured and your Firebase projec
 
 Security note
 -------------
-- This function assumes that clients cannot directly modify `players/*/revealed`, `players/*/hangmoney`, etc. You should tighten your Realtime Database rules to prevent client writes to those fields except where appropriate. Using Cloud Functions centralizes authority for guess processing and prevents cheating.
+- This function assumes that clients cannot directly modify `players/*/revealed`, `players/*/wordmoney`, etc. You should tighten your Realtime Database rules to prevent client writes to those fields except where appropriate. Using Cloud Functions centralizes authority for guess processing and prevents cheating.

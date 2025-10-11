@@ -97,11 +97,11 @@ module.exports = async (req, res) => {
           // reveal newly found occurrences only and award for those
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
-          // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award hangmoney
+          // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
           const noScore = target.noScoreReveals && target.noScoreReveals[letter]
           if (!noScore) {
             // Base award for correct letter(s)
-            const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
+            const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
             let award = (2 * toAdd)
 
             // Apply double-down bonus if the guesser staked
@@ -116,7 +116,7 @@ module.exports = async (req, res) => {
                 updates[`players/${from}/doubleDown`] = null
               }
             }
-            updates[`players/${from}/hangmoney`] = prevHang + award
+            updates[`players/${from}/wordmoney`] = prevHang + award
 
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
@@ -143,13 +143,13 @@ module.exports = async (req, res) => {
             prevWrong.push(letter)
             updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
             // reward the target for a wrong guess against them — unless they have an active hang shield
-            const prevTargetHang = typeof target.hangmoney === 'number' ? target.hangmoney : 0
+            const prevTargetHang = typeof target.wordmoney === 'number' ? target.wordmoney : 0
             const shield = target.hangShield
             if (shield && shield.active) {
-              // consume the shield but do not award hangmoney
+              // consume the shield but do not award wordmoney
               updates[`players/${targetId}/hangShield`] = null
             } else {
-              updates[`players/${targetId}/hangmoney`] = prevTargetHang + 2
+              updates[`players/${targetId}/wordmoney`] = prevTargetHang + 2
             }
 
             // If the guesser had an active doubleDown, they lose their stake on a wrong guess
@@ -157,8 +157,8 @@ module.exports = async (req, res) => {
             if (ddFail && ddFail.active) {
               const stake = Number(ddFail.stake) || 0
               if (stake > 0) {
-                const prevGHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-                updates[`players/${from}/hangmoney`] = Math.max(0, prevGHang - stake)
+                const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+                updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
               }
               updates[`players/${from}/doubleDown`] = null
             }
@@ -188,8 +188,8 @@ module.exports = async (req, res) => {
       if (guessWord === targetWord) {
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
-        const prevHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-        updates[`players/${from}/hangmoney`] = prevHang + 5
+        const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+        updates[`players/${from}/wordmoney`] = prevHang + 5
         updates[`players/${targetId}/eliminated`] = true
         const prevWordGuessedBy = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
         if (!prevWordGuessedBy.includes(from)) prevWordGuessedBy.push(from)
@@ -215,8 +215,8 @@ module.exports = async (req, res) => {
         if (ddFailWord && ddFailWord.active) {
           const stake = Number(ddFailWord.stake) || 0
           if (stake > 0) {
-            const prevGHang = typeof guesser.hangmoney === 'number' ? guesser.hangmoney : 0
-            updates[`players/${from}/hangmoney`] = Math.max(0, prevGHang - stake)
+            const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+            updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
           }
           updates[`players/${from}/doubleDown`] = null
         }
@@ -231,11 +231,11 @@ module.exports = async (req, res) => {
         const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
         updates[`currentTurnIndex`] = nextIndex
         updates[`currentTurnStartedAt`] = Date.now()
-        // award +1 hangmoney to the player whose turn just started
+        // award +1 wordmoney to the player whose turn just started
         try {
           const nextPlayer = effectiveTurnOrder[nextIndex]
-          const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].hangmoney === 'number') ? players[nextPlayer].hangmoney : 0
-          updates[`players/${nextPlayer}/hangmoney`] = prevNextHang + 1
+          const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
+          updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
         } catch (e) {}
       }
     }
@@ -248,10 +248,10 @@ module.exports = async (req, res) => {
     const alive = Object.values(freshPlayers).filter(p => !p.eliminated)
   if (alive.length === 1) {
     let winner = alive[0]
-    // if the room prefers winner by hangmoney, pick the richest player among all players
-    if (room && room.winnerByHangmoney) {
+    // if the room prefers winner by wordmoney, pick the richest player among all players
+    if (room && room.winnerByWordmoney) {
       const all = Object.values(freshPlayers)
-      all.sort((a,b) => (b.hangmoney || 0) - (a.hangmoney || 0))
+      all.sort((a,b) => (b.wordmoney || 0) - (a.wordmoney || 0))
       winner = all[0] || winner
     }
     const gameOverUpdates = {
