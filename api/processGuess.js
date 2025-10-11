@@ -201,6 +201,7 @@ module.exports = async (req, res) => {
               const stake = Number(ddFail.stake) || 0
               if (stake > 0) {
                 const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+                // deduct stake via updates so it's applied when we write updates
                 updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
                 // write a private power-up result entry indicating the loss
                 try {
@@ -209,8 +210,9 @@ module.exports = async (req, res) => {
                   const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, message: `Double Down: guessed '${letterStr3}' and lost -$${stake}` } }
                   updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
                 } catch (e) {}
+                // consume/clear the doubleDown entry so the DD badge is removed
+                updates[`players/${from}/doubleDown`] = null
               }
-              updates[`players/${from}/doubleDown`] = null
             }
           }
         }

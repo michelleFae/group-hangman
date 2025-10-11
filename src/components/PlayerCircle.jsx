@@ -473,6 +473,23 @@ export default function PlayerCircle({
     if (Array.isArray(gb) && gb.length > 0) eliminatedByName = (playerIdToName && playerIdToName[gb[gb.length-1]]) || gb[gb.length-1]
   } catch (e) { eliminatedByName = null }
 
+  // Filter out unhelpful/empty double_down entries so the UI doesn't show a bare "double_down:" line
+  const visiblePrivatePowerReveals = (privatePowerRevealsList || []).filter(r => {
+    if (!r) return false
+    const res = r.result
+    if (!res) return false
+    // For double_down entries, only show when there is a meaningful payload
+    if (r.powerId === 'double_down') {
+      // meaningful if it contains a message, letter info, an amount, or an explicit override
+      if (res.message) return true
+      if (res.letter || res.letterFromTarget || res.letterFromBuyer) return true
+      if (typeof res.amount !== 'undefined' && res.amount !== null) return true
+      if (res.overridePublicColor) return true
+      return false
+    }
+    return true
+  })
+
   return (
     <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
       {/* Host remove control (red X) shown only to host during lobby or ended phases */}
@@ -580,11 +597,11 @@ export default function PlayerCircle({
             </div>
           )}
 
-              {privatePowerRevealsList.length > 0 && (
+              {visiblePrivatePowerReveals.length > 0 && (
             <div style={{ marginTop: 8, background: '#132b56', padding: 6, borderRadius: 4 }}>
               <strong>Power-up results:</strong>
               <ul style={{ margin: '6px 0 0 12px' }}>
-                {privatePowerRevealsList.map((r, idx) => {
+                {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
                   const actorName = (actorId && (playerIdToName && playerIdToName[actorId])) || actorId || 'Someone'

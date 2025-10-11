@@ -489,8 +489,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   
 
   const modeBadge = (
-    <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
-      <div className="mode-badge card" style={{ padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
+    // make the outer container pointer-events:none so it does not block clicks on underlying player tiles
+    // but keep the inner card interactive by re-enabling pointer-events on it
+    <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
+      <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
   <span style={{ fontSize: 16 }}>{state?.winnerByWordmoney ? '💸' : '🛡️'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
@@ -1344,7 +1346,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       setToasts(t => [...t, { id: pupToastId, text: pupText }])
       if (powerId === 'double_down') {
         // remind the buyer they can still guess while the double-down is active
-        setToasts(t => [...t, { id: `pup_tip_double_${Date.now()}`, text: `Double Down active — make a guess now to earn your stake per occurrence.` }])
+        const tipId = `pup_tip_double_${Date.now()}`
+        setToasts(t => [...t, { id: tipId, text: `Double Down active — make a guess now to earn your stake per occurrence.` }])
+        // auto-hide the tip after the same interval as other toasts (fade then remove)
+        setTimeout(() => setToasts(t => t.map(x => x.id === tipId ? { ...x, removing: true } : x)), 3200)
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== tipId)), 4200)
       }
       // schedule fade + removal after a short interval
       setTimeout(() => {
@@ -1461,14 +1467,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeVal = (powerUpChoiceValue || '').toString().trim()
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
+                        // Max stake is your current wordmoney + 1 (you may stake up to your current balance plus the base price)
+                        const maxStake = (Number(me.wordmoney) || 0) + 1
+                        const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                               <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
+                            )}
+                            {stakeTooLarge && (
+                              <div style={{ color: '#900', fontSize: 12 }}>Stake cannot exceed ${maxStake} (your current wordmoney + 1)</div>
                             )}
                           </div>
                         )

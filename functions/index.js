@@ -201,6 +201,10 @@ exports.processGuess = functions.database
                   const ddKey3 = `double_down_loss_${Date.now()}`
                   const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: -stake, message: `Double Down: guessed '${letter}' and lost -$${stake}` } }
                   updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                  // deduct the stake from the guesser as a hang delta so it's applied in the same transaction
+                  hangDeltas[from] = (hangDeltas[from] || 0) - stake
+                  // consume/clear the doubleDown entry so the DD badge is removed
+                  updates[`players/${from}/doubleDown`] = null
                 }
               }
             } catch (e) {}
