@@ -55,17 +55,32 @@ export default function PlayerCircle({
     if (!r || !r.result) return
     const res = r.result
     const sourceId = r.from
-    if (res.letterFromTarget) privateLetterSource[(res.letterFromTarget || '').toLowerCase()] = sourceId
-    if (res.letterFromBuyer) privateLetterSource[(res.letterFromBuyer || '').toLowerCase()] = sourceId
-    if (res.letter) privateLetterSource[(res.letter || '').toLowerCase()] = sourceId
-    if (res.last) privateLetterSource[(res.last || '').toLowerCase()] = sourceId
-    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch || '').toLowerCase()] = sourceId })
+    // Only map letters that actually belong to this player's word. This prevents
+    // reveals produced for the other participant (buyer/target) from appearing
+    // in the wrong player's tile.
+    const ownerWordLocal = (player && player.word) ? (player.word || '') : ''
+    const ownerLower = (ownerWordLocal || '').toLowerCase()
+    const tryMap = (ch) => {
+      if (!ch) return
+      const lower = (ch || '').toLowerCase()
+      if (ownerLower && ownerLower.indexOf(lower) !== -1) {
+        privateLetterSource[lower] = sourceId
+      }
+    }
+    tryMap(res.letterFromTarget)
+    tryMap(res.letterFromBuyer)
+    tryMap(res.letter)
+    tryMap(res.last)
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => tryMap(ch))
     // capture overridePublicColor flag per-letter so we can color public reveals by the revealer
     if (res.overridePublicColor) {
       const letter = (res.letterFromTarget || res.letterFromBuyer || res.letter || res.last)
       if (letter) {
-        // mark a special key to prefer source color even when letter is public
-        privateLetterSource[`__override__${(letter || '').toLowerCase()}`] = sourceId
+        const lower = (letter || '').toLowerCase()
+        if (ownerLower && ownerLower.indexOf(lower) !== -1) {
+          // mark a special key to prefer source color even when letter is public
+          privateLetterSource[`__override__${lower}`] = sourceId
+        }
       }
     }
   })
