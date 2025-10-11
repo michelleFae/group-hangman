@@ -97,78 +97,69 @@ export default function PlayerCircle({
 
   // Build revealedPositions according to revealPreserveOrder / revealShowBlanks settings.
   let revealedPositions = null
-  try {
-    if (!isSelf && !revealPreserveOrder) {
-      // Show letters in guessed order (derived from private reveals and privateHits),
-      // expanding by occurrence count in the owner's word.
-      const arr = []
-      const collected = []
-      _allPrivateReveals.forEach(r => {
-        try {
-          const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
-          const res = r.result || {}
-          const pushLetter = (s) => { if (s) collected.push({ letter: (s||'').toString().toLowerCase(), ts }) }
-          if (res.letterFromTarget) pushLetter(res.letterFromTarget)
-          if (res.letterFromBuyer) pushLetter(res.letterFromBuyer)
-          if (res.letter) pushLetter(res.letter)
-          if (res.last) pushLetter(res.last)
-          if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetter(ch))
-        } catch (e) {}
+  if (!isSelf && !revealPreserveOrder) {
+    // Show letters in guessed order (derived from private reveals and privateHits),
+    // expanding by occurrence count in the owner's word.
+    const arr = []
+    const collectedElems = []
+    _allPrivateReveals.forEach(r => {
+        const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
+        const res = r.result || {}
+        const pushLetter = (s) => { if (s) collectedElems.push({ letter: (s||'').toString().toLowerCase(), ts }) }
+        if (res.letterFromTarget) pushLetter(res.letterFromTarget)
+        if (res.letterFromBuyer) pushLetter(res.letterFromBuyer)
+        if (res.letter) pushLetter(res.letter)
+        if (res.last) pushLetter(res.last)
+        if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetter(ch))
+
+    })
+    // include privateHits entries (viewer-private hits on this player)
+    let ph = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
+    ph = Array.isArray(ph) ? ph : []
+    ph.forEach(h => { if (h && h.letter) collectedElems.push({ letter: (h.letter||'').toString().toLowerCase(), ts: Number(h.ts || Date.now()) || Date.now(), count: Number(h.count||1) }) })
+
+    // ensure collectedElems is an array before operating on it
+    // sort by ts
+    collectedElems.sort((a,b) => (Number(a.ts)||0) - (Number(b.ts)||0))
+    const wordLower = (ownerWord || '').toLowerCase()
+    try {
+      // Force a real array copy (break proxy links)
+      const safeCollected = Array.from(collectedElems)
+      safeCollected.forEach(c => {
+        const letter = (c.letter || '').toLowerCase()
+        if (!letter) return
+        const occurrences = (wordLower.split('').filter(ch => ch === letter).length) || 1
+        for (let i = 0; i < occurrences; i++) arr.push(letter)
       })
-      // include privateHits entries (viewer-private hits on this player)
-      try {
-        const ph = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
-        ph.forEach(h => { try { if (h && h.letter) collected.push({ letter: (h.letter||'').toString().toLowerCase(), ts: Number(h.ts || Date.now()) || Date.now(), count: Number(h.count||1) }) } catch (e) {} })
-      } catch (e) {}
-      // sort by ts
-      collected.sort((a,b) => (Number(a.ts)||0) - (Number(b.ts)||0))
-      const wordLower = (ownerWord || '').toLowerCase()
-      collected.forEach(c => {
-        try {
-          const letter = (c.letter || '').toLowerCase()
-          if (!letter) return
-          const occurrences = (wordLower.split('').filter(ch => ch === letter).length) || 1
-          for (let i=0;i<occurrences;i++) arr.push(letter)
-        } catch (e) {}
-      })
-      // append any publicly revealed letters not already present
-      (revealed || []).forEach(l => {
-        const lower = (l||'').toLowerCase()
-        const countInWord = (ownerWord || '').split('').filter(ch => ch.toLowerCase() === lower).length || 1
-        const present = arr.filter(x => x === lower).length
-        for (let i = 0; i < countInWord - present; i++) arr.push(lower)
-      })
-      // render letters with any private color if available
-      const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
-      revealedPositions = arr.map((letter, idx) => {
-        const sourceId = privateLetterSource[letter]
-        if (sourceId && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
-        return <span key={`g_${idx}`} style={{ marginRight: 6 }}>{letter}</span>
-      })
-    } else {
-      // preserve order: show letters in their positions. If revealShowBlanks is true, show '_' for unrevealed letters.
-      revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
-        const lower = (ch || '').toLowerCase()
-        if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
-        const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
-        const sourceId = privateLetterSource[lower]
-        if (sourceId && playerColors && playerColors[sourceId]) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
-        if (revealShowBlanks) return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
-        return null
-      }).filter(Boolean)
+    } catch (err) {
+      console.error("🔥 collectedElems broke here:", collectedElems, err)
     }
-  } catch (e) {
-    // fallback to original behavior: show revealed letters publicly or colored private reveals
+    // append any publicly revealed letters not already present
+    (revealed || []).forEach(l => {
+      const lower = (l||'').toLowerCase()
+      const countInWord = (ownerWord || '').split('').filter(ch => ch.toLowerCase() === lower).length || 1
+      const present = arr.filter(x => x === lower).length
+      for (let i = 0; i < countInWord - present; i++) arr.push(lower)
+    })
+    // render letters with any private color if available
+    const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
+    revealedPositions = arr.map((letter, idx) => {
+      const sourceId = privateLetterSource[letter]
+      if (sourceId && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
+      return <span key={`g_${idx}`} style={{ marginRight: 6 }}>{letter}</span>
+    })
+  } else {
+    // preserve order: show letters in their positions. If revealShowBlanks is true, show '_' for unrevealed letters.
     revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
       const lower = (ch || '').toLowerCase()
       if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
       const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
       const sourceId = privateLetterSource[lower]
       if (sourceId && playerColors && playerColors[sourceId]) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
-      return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
-    })
+      if (revealShowBlanks) return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
+      return null
+    }).filter(Boolean)
   }
-
   const avatarColor = player.color || '#ca29ffff'
   function hexToRgba(hex, alpha = 0.28) {
     const h = hex.replace('#', '')
