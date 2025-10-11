@@ -418,13 +418,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
             <strong style={{ fontSize: 13 }}>{state?.winnerByWordmoney ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
-            <small style={{ color: '#666', fontSize: 12 }}>{state?.winnerByWordmoney ? 'Money wins' : 'Elimination wins'}</small>
+            <small style={{ color: '#B4A3A3', fontSize: 12 }}>{state?.winnerByWordmoney ? 'Money wins' : 'Elimination wins'}</small>
           </div>
           {/* show a rocket badge when power-ups are enabled and visible to all players in the lobby */}
           {state?.powerUpsEnabled && phase === 'lobby' && (
             <div title="Power-ups are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="powerup-rocket" style={{ fontSize: 18 }}>🚀</span>
-              <small style={{ color: '#666', fontSize: 12 }}>Power-ups</small>
+              <small style={{ color: '#B4A3A3', fontSize: 12 }}>Power-ups</small>
             </div>
           )}
           {isHost && phase === 'lobby' && (
@@ -489,7 +489,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </label>
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
-              <div style={{ fontSize: 12, color: '#666' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
+              <div style={{ fontSize: 12, color: '#B4A3A3' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
             </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
@@ -1836,7 +1836,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div className="submit-left">
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
               {state?.starterBonus?.enabled && (
-                <div style={{ marginTop: 6, fontSize: 13, color: '#666' }} title={state?.starterBonus?.description}>
+                <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
                   Starter rule: <strong>{state?.starterBonus?.description}</strong>
                 </div>
               )}

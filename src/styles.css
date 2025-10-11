@@ -1,11 +1,12 @@
 :root{
-  --bg: #EDE7F6; /* Soft lilac */
-  --accent: #B39DDB; /* Lavender */
-  --accent-2: #81D4FA; /* Sky blue */
-  --highlight: #FFABAB; /* Peach pink */
-  --text: #333333; /* Charcoal */
-  --muted: #7b6f8a;
-  --halo: rgba(255,171,171,0.28); /* Pulse halo color */
+  --bg: #0f0f12; /* Deep noir background */
+  --accent: #6b4f3b; /* Sepia / detective coat */
+  --accent-2: #5a6b7c; /* Smoky blue-gray */
+  --highlight: #c9a66b; /* Aged paper amber */
+  --text: #e6e1dc; /* Parchment-like text */
+  --darktext: #040f1a; /* Parchment-like text */
+  --muted: #9c948a; /* muted paper ink */
+  --halo: rgba(201,166,107,0.12); /* soft amber halo */
 }
 
 /* Full-page money theme when winner-by-wordmoney is selected */
@@ -16,52 +17,52 @@ body.money-theme-body {
 *{box-sizing:border-box}
 body {
   font-family: 'Baloo 2', 'Poppins', system-ui, sans-serif;
-  background: linear-gradient(180deg, var(--bg), #F7F3FB 80%);
+  background: linear-gradient(180deg, var(--bg), #121214 80%);
   color: var(--text);
   padding: 28px;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
 }
 
-/* Subtle floating background blobs */
+/* Subtle floating background blobs (now toned down for noir mood) */
 .body-decor {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
 }
 .blob {
-  position: absolute; filter: blur(36px); opacity: .35; transform: translateZ(0);
+  position: absolute; filter: blur(36px); opacity: .22; transform: translateZ(0);
 }
-.blob.l { width: 420px; height: 420px; background: var(--accent); left: -100px; top: -80px; border-radius: 50%; animation: floaty 8s ease-in-out infinite; }
-.blob.r { width: 360px; height: 360px; background: var(--accent-2); right: -100px; bottom: -60px; border-radius: 50%; animation: floaty 10s ease-in-out infinite; }
+.blob.l { width: 420px; height: 420px; background: rgba(107,79,59,0.18); left: -100px; top: -80px; border-radius: 50%; animation: floaty 8s ease-in-out infinite; }
+.blob.r { width: 360px; height: 360px; background: rgba(90,107,124,0.14); right: -100px; bottom: -60px; border-radius: 50%; animation: floaty 10s ease-in-out infinite; }
 
 @keyframes floaty {
   0% { transform: translateY(0) translateX(0) }
-  50% { transform: translateY(18px) translateX(6px) }
+  50% { transform: translateY(12px) translateX(4px) }
   100% { transform: translateY(0) translateX(0) }
 }
 
-/* Cards and layout */
+/* Cards and layout - darker, smoky paper-like cards */
 .lobby, .game-room { max-width: 980px; margin: 0 auto; position: relative; z-index: 1 }
-.card { background: rgba(255,255,255,0.85); border: none; padding: 18px; margin: 16px 0; border-radius: 16px; box-shadow: 0 6px 18px rgba(99,79,130,0.08); transition: transform .22s cubic-bezier(.2,.9,.2,1), box-shadow .2s }
-.card:hover { transform: translateY(-6px); box-shadow: 0 12px 28px rgba(99,79,130,0.12) }
+.card { background: linear-gradient(180deg, rgba(30,28,32,0.96), rgba(18,16,20,0.92)); border: none; padding: 18px; margin: 16px 0; border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); transition: transform .22s cubic-bezier(.2,.9,.2,1), box-shadow .2s }
+.card:hover { transform: translateY(-6px); box-shadow: 0 14px 28px rgba(0,0,0,0.7) }
 
 /* Dimmed card state (used to indicate disabled/competing action) */
-.card-dimmed { opacity: 0.6; pointer-events: none; filter: grayscale(30%); }
+.card-dimmed { opacity: 0.5; pointer-events: none; filter: grayscale(40%); }
 
 h1, h2, h3 { font-family: 'Baloo 2', 'Poppins', sans-serif; color: var(--text); margin: 0 0 12px 0 }
 h1 { font-size: 36px }
 
 input, button { font-family: inherit }
-input { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06); outline: none; transition: box-shadow .12s, transform .12s }
-input:focus { box-shadow: 0 6px 18px rgba(63,81,181,0.08); transform: translateY(-2px) }
+input { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); background: rgba(20,18,20,0.7); color: var(--text); outline: none; transition: box-shadow .12s, transform .12s }
+input:focus { box-shadow: 0 6px 18px rgba(100,90,80,0.06); transform: translateY(-2px) }
 
-button { padding: 10px 12px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 6px 14px rgba(115,90,170,0.12); transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s }
+button { padding: 10px 12px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s }
 button:hover { transform: translateY(-3px) }
 
 /* Disabled button styles: grey, no hover, show not-allowed cursor */
 button:disabled,
 button[disabled] {
-  background: linear-gradient(90deg, #e0e0e0, #d6d6d6);
-  color: #777;
+  background: linear-gradient(90deg, #3b3b3b, #343434);
+  color: #9b9b9b;
   box-shadow: none;
   cursor: not-allowed;
   transform: none;
@@ -69,8 +70,8 @@ button[disabled] {
 
 /* helper class for Locked style in case logic uses class instead of disabled attribute */
 .btn-locked {
-  background: linear-gradient(90deg, #efefef, #e3e3e3);
-  color: #777;
+  background: linear-gradient(90deg, #2e2e2e, #262626);
+  color: #9b9b9b;
   cursor: not-allowed;
   pointer-events: none; /* prevent clicks */
   box-shadow: none;
@@ -78,19 +79,18 @@ button[disabled] {
 
 /* Player circles */
 .circle { display:flex; gap: 16px; flex-wrap:wrap; justify-content:center }
-.player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95)); box-shadow: 0 8px 20px rgba(103,80,145,0.06); transition: transform .18s }
+.player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(22,20,22,0.9), rgba(18,16,20,0.92)); box-shadow: 0 8px 20px rgba(0,0,0,0.6); transition: transform .18s }
  .player:hover { transform: translateY(-6px) }
 /* New layout helpers for playing phase: make player tiles slightly more compact and stable */
-.player .you-badge { font-size: 11px; font-weight: 800; color: #111; }
+.player .you-badge { font-size: 11px; font-weight: 800; color: var(--text); }
 .player .revealed { display: inline-flex; gap: 6px; align-items: center; flex: 1; min-width: 0; max-width: 160px; overflow-x: auto; white-space: nowrap; padding-right: 6px }
 .player .revealed span { font-weight: 700; display: inline-block }
 .player .revealed::-webkit-scrollbar { height: 6px }
-.player .revealed::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 3px }
+.player .revealed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px }
 
 /* Prevent the viewer's own tile from translating vertically (keep stable) */
 .player-self { transform: none !important }
 
-/* ensure the player container doesn't clip interactive children and allow buttons to sit above other inline elements */
 .player { overflow: hidden; position: relative }
 .player .revealed { pointer-events: auto }
 .player button { position: relative; z-index: 60 }
@@ -126,20 +126,20 @@ button[disabled] {
   position: absolute;
   left: 0;
   top: 110%;
-  background: rgba(0,0,0,0.9);
-  color: white;
+  background: rgba(10,10,10,0.95);
+  color: var(--text);
   padding: 8px 10px;
   border-radius: 8px;
   white-space: nowrap;
   display: none;
   z-index: 120;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.32);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.8);
   font-weight: 700;
 }
 .player .revealed:hover .word-tooltip { display: block }
 .player .word-tooltip .tip-guessed { color: #ff6b6b; }
 .player .word-tooltip .tip-unguessed { color: #fff; opacity: 0.95 }
-.avatar { width:56px; height:56px; border-radius:50%; background: linear-gradient(135deg,var(--highlight), #ffd1d1); display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--text); font-size:20px }
+.avatar { width:56px; height:56px; border-radius:50%; background: linear-gradient(135deg,var(--highlight), #a7885a); display:inline-flex; align-items:center; justify-content:center; font-weight:800; color:var(--text); font-size:20px }
 .meta { margin-left: 76px; margin-top: -56px }
 .name { font-weight:700 }
 .wordmoney { color: var(--accent-2); font-weight:700 }
@@ -147,16 +147,16 @@ button[disabled] {
 
 .turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:var(--accent); }
 
-.room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(179,157,219,0.12), rgba(129,212,250,0.08)); display:inline-block }
+.room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(107,79,59,0.06), rgba(90,107,124,0.04)); display:inline-block }
 
 .victory-screen { text-align:center; padding: 36px; border-radius: 16px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); color: white }
-/* Confetti pieces for victory */
+/* Confetti pieces for victory - keep colorful for celebration */
 .victory-screen.confetti { position: relative; overflow: visible }
-.confetti-piece { position: absolute; top: -10px; border-radius: 3px; opacity: 0.95; animation: confetti-drop 3.4s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
+.confetti-piece { position: absolute; top: -10px; border-radius: 3px; opacity: 0.95; animation: confetti-drop 3.4s cubic-bezier(.2,.7,0,1) forwards; will-change: transform; background: linear-gradient(90deg,#FFD54F,#FFABAB,#81D4FA); }
 @keyframes confetti-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(100vh) rotate(720deg); opacity: 1 } }
 
 /* Sad screen for non-winners */
-.victory-screen.sad { background: linear-gradient(90deg, #8E1B1B, #A52828); color: #ffecec }
+.victory-screen.sad { background: linear-gradient(90deg, #4b1b1b, #6a2828); color: #ffecec }
 .victory-screen.sad h1 { font-size: 36px }
 
 .standings ol { padding-left: 18px; margin: 8px 0 }
@@ -166,7 +166,7 @@ button[disabled] {
 
 /* Improve contrast for final standings on sad victory screen */
 .victory-screen.sad .standings {
-  background: rgba(255,255,255,0.08); /* subtle card behind the standings */
+  background: rgba(255,255,255,0.02); /* subtle card behind the standings (darkened) */
   padding: 12px;
   border-radius: 10px;
   display: inline-block;
@@ -182,15 +182,15 @@ button[disabled] {
 }
 
 /* Modal overlay for host confirmation */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index: 2000 }
-.modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: rgba(255,255,255,0.98); max-height: 90vh; overflow: auto }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display:flex; align-items:center; justify-content:center; z-index: 2000 }
+.modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: linear-gradient(180deg, rgba(26,24,26,0.98), rgba(18,16,20,0.96)); max-height: 90vh; overflow: auto }
 .modal-dialog button { color: inherit; }
 
 /* subtle entrance animation for modal dialogs: fade in and slight lift (not on hover) */
 @keyframes modal-entrance {
-  0% { opacity: 0; transform: translateY(8px) scale(0.995); box-shadow: 0 4px 10px rgba(0,0,0,0.06) }
-  60% { opacity: 1; transform: translateY(-4px) scale(1.002); box-shadow: 0 10px 30px rgba(0,0,0,0.08) }
-  100% { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 6px 18px rgba(0,0,0,0.08) }
+  0% { opacity: 0; transform: translateY(8px) scale(0.995); box-shadow: 0 4px 10px rgba(0,0,0,0.6) }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.002); box-shadow: 0 10px 30px rgba(0,0,0,0.7) }
+  100% { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 6px 18px rgba(0,0,0,0.6) }
 }
 .modal-dialog { animation: modal-entrance 260ms cubic-bezier(.2,.9,.2,1) both }
 
@@ -198,14 +198,14 @@ button[disabled] {
 .modal-dialog.no-anim { animation: none !important }
 
 /* Prevent settings modal card from moving on hover (override the generic .card:hover) */
-.settings-modal .card, .settings-modal .card:hover { transform: none !important; box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important }
+.settings-modal .card, .settings-modal .card:hover { transform: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
 
 /* make settings modal inputs easier to click: avoid floating transform on focus within settings modal */
-.settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(63,81,181,0.06) !important }
+.settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(100,90,80,0.06) !important }
 
-/* Ensure controls in the settings modal (including the close button) are visible against light background */
-.settings-modal button { color: #333; background: transparent; border: none; font-size: 16px; cursor: pointer }
-.settings-modal button:hover { color: #111 }
+/* Ensure controls in the settings modal (including the close button) are visible against dark background */
+.settings-modal button { color: var(--text); background: transparent; border: none; font-size: 16px; cursor: pointer }
+.settings-modal button:hover { color: #fff }
 
 /* Prevent modal dialogs (including the power-up shop) from floating on hover */
 .modal-overlay .modal-dialog.card,
@@ -213,14 +213,14 @@ button[disabled] {
 .modal-overlay .modal-dialog.card:hover,
 .modal-dialog.card:hover {
   transform: none !important;
-  box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important;
 }
 
 /* Avoid focus-induced transform for inputs inside modal dialogs (prevents modal shift when focusing fields) */
 .modal-dialog input:focus,
 .modal-dialog textarea:focus {
   transform: none !important;
-  box-shadow: 0 6px 18px rgba(63,81,181,0.06) !important;
+  box-shadow: 0 6px 18px rgba(100,90,80,0.06) !important;
 }
 
 .guessed-by-list li {
@@ -248,7 +248,7 @@ button[disabled] {
   -webkit-background-clip: unset;
   background-clip: unset;
   /* subtle text shadow to help emoji stand out on gradients */
-  text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
 .wordspiracy-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
 
@@ -261,7 +261,7 @@ button[disabled] {
 }
 
 /* notice card */
-.notice { border: 1px dashed rgba(0,0,0,0.06); background: linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.8)); padding: 12px; border-radius: 12px; text-align: center }
+.notice { border: 1px dashed rgba(255,255,255,0.04); background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.03)); padding: 12px; border-radius: 12px; text-align: center }
 .notice h4 { margin: 0 0 6px 0 }
 
 /* waiting pulse using CSS variable --halo */
@@ -269,27 +269,27 @@ button[disabled] {
 .waiting-pulse { animation: none }
 .waiting-pulse .avatar { animation: pulse-slow 1.8s infinite; }
 
-/* glowing start button when ready */
+/* glowing start button when ready (toned to sepia glow) */
 .start-ready {
-  box-shadow: 0 8px 30px rgba(179,157,219,0.28), 0 0 20px rgba(129,212,250,0.12) inset;
+  box-shadow: 0 8px 30px rgba(107,79,59,0.22), 0 0 20px rgba(90,107,124,0.08) inset;
   animation: glow-pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes glow-pulse {
-  0% { transform: translateY(0); box-shadow: 0 8px 30px rgba(179,157,219,0.12), 0 0 6px rgba(129,212,250,0.06) inset }
-  50% { transform: translateY(-3px); box-shadow: 0 18px 48px rgba(179,157,219,0.22), 0 0 18px rgba(129,212,250,0.12) inset }
-  100% { transform: translateY(0); box-shadow: 0 8px 30px rgba(179,157,219,0.12), 0 0 6px rgba(129,212,250,0.06) inset }
+  0% { transform: translateY(0); box-shadow: 0 8px 30px rgba(107,79,59,0.12), 0 0 6px rgba(90,107,124,0.06) inset }
+  50% { transform: translateY(-3px); box-shadow: 0 18px 48px rgba(107,79,59,0.18), 0 0 18px rgba(90,107,124,0.12) inset }
+  100% { transform: translateY(0); box-shadow: 0 8px 30px rgba(107,79,59,0.12), 0 0 6px rgba(90,107,124,0.06) inset }
 }
 
 /* timer bar */
 .turn-timer { display:flex; align-items:center; gap:12px; margin: 12px 0 }
-.turn-timer .bar { height: 10px; background: rgba(0,0,0,0.06); border-radius: 6px; flex:1; overflow:hidden }
+.turn-timer .bar { height: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; flex:1; overflow:hidden }
 .turn-timer .fill { height:100%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); transition: width .2s linear }
-.turn-timer .time { min-width:56px; text-align:right; font-weight:700 }
+.turn-timer .time { min-width:56px; text-align:right; font-weight:700; color: var(--text) }
 
 /* Toasts */
 .toast-container { position: fixed; right: 18px; top: 18px; z-index: 9999; display:flex; flex-direction:column; gap:8px }
-.toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 14px; border-radius: 10px; font-weight:700; box-shadow: 0 8px 18px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-6px); animation: toast-in .28s forwards }
+.toast { background: rgba(0,0,0,0.8); color: var(--text); padding: 10px 14px; border-radius: 10px; font-weight:700; box-shadow: 0 8px 18px rgba(0,0,0,0.7); opacity: 0; transform: translateY(-6px); animation: toast-in .28s forwards }
 @keyframes toast-in { to { opacity: 1; transform: translateY(0) } }
 
 /* Multi-hit toast */
@@ -314,31 +314,31 @@ button[disabled] {
 /* brief pulse when wordmoney changes */
 .wordmoney.pulse span {
   transform: scale(1.08);
-  box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.5);
 }
 .wordmoney.pulse span { transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms cubic-bezier(.2,.9,.2,1) }
 
 /* ensure avatar background uses provided color gracefully */
-.player .avatar { color: #333; box-shadow: 0 6px 18px rgba(0,0,0,0.06); display:inline-flex; align-items:center; justify-content:center }
+.player .avatar { color: var(--darktext); box-shadow: 0 6px 18px rgba(0,0,0,0.6); display:inline-flex; align-items:center; justify-content:center }
 
 /* small colored dot used in waiting lists */
-.waiting-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 2px 6px rgba(0,0,0,0.12) }
+.waiting-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 2px 6px rgba(0,0,0,0.6) }
 
 /* small screens */
 @media (max-width:600px){ .player{ width: 100%; } .meta{ margin-left: 0; margin-top: 6px }}
 
 /* small inline error text */
 .small-error {
-  color: #c62828; /* Material red 800 */
+  color: #ff8a80; /* soft red on dark background */
   font-size: 13px;
   margin-top: 8px;
 }
 
 /* Inline guess dialog used by PlayerCircle */
-.guess-dialog { display:flex; flex-direction:column; position: relative; margin-top: 8px; padding: 10px; background: white; border-radius: 10px; box-shadow: 0 8px 18px rgba(0,0,0,0.06); }
+.guess-dialog { display:flex; flex-direction:column; position: relative; margin-top: 8px; padding: 10px; background: linear-gradient(180deg, rgba(22,20,22,0.96), rgba(18,16,20,0.94)); border-radius: 10px; box-shadow: 0 8px 18px rgba(0,0,0,0.7); }
 .guess-dialog input { width: 200px }
 
-/* Bottom submit bar used during the 'submit' phase and later for power-ups */
+ /* Bottom submit bar used during the 'submit' phase and later for power-ups */
 .submit-bar {
   position: fixed;
   left: 0;
@@ -353,12 +353,12 @@ button[disabled] {
   padding: 12px 16px;
   border-radius: 14px;
   z-index: 999;
-  background: linear-gradient(90deg, rgba(255,255,255,0.96), rgba(255,255,255,0.98));
-  box-shadow: 0 10px 30px rgba(99,79,130,0.08);
+  background: linear-gradient(90deg, rgba(20,18,20,0.96), rgba(16,14,16,0.96));
+  box-shadow: 0 10px 30px rgba(0,0,0,0.7);
 }
 .submit-bar .submit-left { display:flex; align-items:flex-start; gap:12px }
 .submit-bar .submit-controls { display:flex; align-items:center; gap:8px }
-.submit-bar input { width: 220px }
+.submit-bar input { width: 220px; background: rgba(30,28,30,0.7); color: var(--text); border: 1px solid rgba(255,255,255,0.04) }
 .submit-bar .notice { background: transparent; border: none; padding: 0 }
 
 @media (max-width:700px) {
@@ -368,27 +368,27 @@ button[disabled] {
 }
 
 /* Starter bonus badge shown during submit waiting */
-.starter-badge { display:inline-block; background: linear-gradient(90deg,#fff8e1,#fff3cd); color: #2e7d32; font-weight:700; margin-left:8px; padding: 2px 6px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 10px rgba(46,125,50,0.08) }
+.starter-badge { display:inline-block; background: linear-gradient(90deg,#3b2b1f,#2e271f); color: #e6e1dc; font-weight:700; margin-left:8px; padding: 2px 6px; border-radius: 8px; font-size: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.6) }
 
 /* Name input required glow */
-.name-input.required-glow { box-shadow: 0 0 12px rgba(255, 200, 80, 0.9); border-radius: 8px; border: 1px solid rgba(255,200,80,0.9); padding: 8px }
+.name-input.required-glow { box-shadow: 0 0 12px rgba(201, 166, 107, 0.9); border-radius: 8px; border: 1px solid rgba(201,166,107,0.6); padding: 8px }
 
 /* Join button glow/animation */
-.join-btn.join-glow { animation: pulse 1.6s infinite; box-shadow: 0 8px 24px rgba(255,120,80,0.18); }
+.join-btn.join-glow { animation: pulse 1.6s infinite; box-shadow: 0 8px 24px rgba(201,120,80,0.12); }
 @keyframes pulse { 0% { transform: translateY(0) } 50% { transform: translateY(-3px) } 100% { transform: translateY(0) } }
 
-/* Money theme: green background and subtle floating cash animation */
+/* Money theme: keep green background and values intact (money mode should remain green) */
 .money-theme { background: linear-gradient(180deg,#e8f5e9,#d0f0d6); color: #0b3d0b }
 .money-theme .wordmoney { color: #1b5e20 }
 .money-anim { position: absolute; pointer-events: none }
 @keyframes cash-float { 0% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-16px) rotate(-8deg) } 100% { transform: translateY(0) rotate(0) } }
-.cash-piece { width: 18px; height: 10px; background: linear-gradient(90deg,#a5d6a7,#66bb6a); border-radius:3px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); animation: cash-float 2.2s ease-in-out infinite }
+.cash-piece { width: 18px; height: 10px; background: linear-gradient(90deg,#a5d6a7,#66bb6a); border-radius:3px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); animation: cash-float 2.2s ease-in-out infinite }
 
 /* header mode badge */
-.mode-badge { background: rgba(255,255,255,0.95); box-shadow: 0 8px 22px rgba(0,0,0,0.08); border-radius: 12px }
+.mode-badge { background: rgba(255,255,255,0.02); box-shadow: 0 8px 22px rgba(0,0,0,0.7); border-radius: 12px }
 
-/* small rocket badge used to indicate power-ups are enabled in the room */
-.powerup-rocket { display: inline-block; padding: 4px 6px; border-radius: 8px; background: linear-gradient(90deg,#fff7e6,#fff3e0); box-shadow: 0 6px 14px rgba(255,160,0,0.06) }
+ /* small rocket badge used to indicate power-ups are enabled in the room */
+.powerup-rocket { display: inline-block; padding: 4px 6px; border-radius: 8px; background: linear-gradient(90deg,#3b2b1f,#2e271f); box-shadow: 0 6px 14px rgba(0,0,0,0.6) }
 
 /* adjust cash piece animation for confetti-like drop */
 .victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 3.0s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
@@ -396,46 +396,46 @@ button[disabled] {
 
 /* private hit chips (repeat letters for occurrences) */
 .private-hit-chips { display:inline-flex; gap:6px; margin-left: 6px }
-.hit-chip { background: #dff0d8; color: #1b5e20; padding: 4px 6px; border-radius: 6px; font-weight:700; box-shadow: 0 4px 10px rgba(27,94,32,0.06) }
+.hit-chip { background: #3b2b1f; color: #e6e1dc; padding: 4px 6px; border-radius: 6px; font-weight:700; box-shadow: 0 4px 10px rgba(0,0,0,0.6) }
 
 /* Highlight the screen when it's the viewer's turn */
 body.my-turn-body {
   transition: background 300ms ease, color 300ms ease;
-  /* Use a bright warm gradient so the page clearly signals it's your turn */
-  background: linear-gradient(135deg, #fff9c4 0%, #fff176 100%) !important;
-  color: #111 !important;
+  /* Use a moody amber gradient to signal your turn but keep noir vibe */
+  background: linear-gradient(135deg, #1a130f 0%, #2b221a 100%) !important;
+  color: #e6e1dc !important;
 }
 
-/* Make card-like UI elements light so text is readable against the bright page background */
+/* Make card-like UI elements readable on dark background */
 body.my-turn-body .card,
 body.my-turn-body .notice,
 body.my-turn-body .toast,
 body.my-turn-body .modal-dialog {
-  background: rgba(255,255,255,0.95) !important;
-  color: #111 !important;
-  border-color: rgba(0,0,0,0.06) !important;
+  background: linear-gradient(180deg, rgba(30,28,32,0.98), rgba(22,20,22,0.98)) !important;
+  color: #e6e1dc !important;
+  border-color: rgba(255,255,255,0.03) !important;
 }
 
-/* Ensure player tiles are light with dark text for readability */
+/* Ensure player tiles are readable */
 body.my-turn-body .player {
-  background: linear-gradient(180deg, #ffffff, #fffde7) !important;
-  color: #111 !important;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.06) !important;
+  background: linear-gradient(180deg, rgba(28,26,28,0.98), rgba(24,22,24,0.98)) !important;
+  color: #e6e1dc !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.7) !important;
 }
 
 /* Highlight the viewer's own player tile so it's easy to spot */
 .player-self {
   border: 2px solid var(--accent-2);
-  box-shadow: 0 12px 28px rgba(129,212,250,0.12), 0 0 26px rgba(129,212,250,0.04) inset;
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(249,252,255,0.98));
+  box-shadow: 0 12px 28px rgba(90,107,124,0.12), 0 0 26px rgba(90,107,124,0.04) inset;
+  background: linear-gradient(180deg, rgba(24,22,24,0.98), rgba(29,27,29,0.98));
 }
-.player-self .avatar { box-shadow: 0 8px 22px rgba(129,212,250,0.12); transform: scale(1.02); }
+.player-self .avatar { box-shadow: 0 8px 22px rgba(90,107,124,0.12); transform: scale(1.02); }
 .player-self .name { font-weight: 800 }
 
 /* Highlight for the player whose turn it is */
 .player-turn {
   border: 2px solid var(--accent);
-  box-shadow: 0 14px 36px rgba(179,157,219,0.14), 0 0 26px rgba(179,157,219,0.04) inset;
+  box-shadow: 0 14px 36px rgba(107,79,59,0.14), 0 0 26px rgba(107,79,59,0.04) inset;
   position: relative;
   animation: player-turn-pulse 1.6s ease-in-out infinite;
 }
@@ -444,44 +444,44 @@ body.my-turn-body .player {
   position: absolute;
   inset: -6px;
   border-radius: 18px;
-  box-shadow: 0 8px 28px rgba(179,157,219,0.06);
+  box-shadow: 0 8px 28px rgba(107,79,59,0.06);
   pointer-events: none;
 }
 @keyframes player-turn-pulse {
-  0% { transform: translateY(0); box-shadow: 0 12px 28px rgba(179,157,219,0.06) }
-  50% { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(179,157,219,0.12) }
-  100% { transform: translateY(0); box-shadow: 0 12px 28px rgba(179,157,219,0.06) }
+  0% { transform: translateY(0); box-shadow: 0 12px 28px rgba(107,79,59,0.06) }
+  50% { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(107,79,59,0.12) }
+  100% { transform: translateY(0); box-shadow: 0 12px 28px rgba(107,79,59,0.06) }
 }
 /* Highlight the circle when it's the viewer's turn */
 .circle.my-turn {
-  background: #fff176; /* bright yellow */
+  background: rgba(139,121,86,0.06); /* subtle aged-yellow */
   transition: background-color 220ms ease, box-shadow 220ms ease;
-  box-shadow: 0 8px 20px rgba(255,241,118,0.18);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
   border-radius: 12px;
 }
 /* Shop modal: strongly isolate from body-level transitions (prevent flicker) */
 .shop-modal {
   /* keep overlay color stable and avoid inheriting transitions */
-  background: rgba(0,0,0,0.45) !important;
+  background: rgba(0,0,0,0.65) !important;
   transition: none !important;
 }
 .shop-modal .shop-modal-dialog,
 .shop-modal-dialog {
-  background: rgba(255,255,255,0.98) !important;
+  background: linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.98)) !important;
   color: var(--text) !important;
-  box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.7) !important;
   transform: none !important;
   transition: none !important;
 }
 /* also make sure the shop modal ignores the my-turn-body overrides */
 body.my-turn-body .shop-modal .shop-modal-dialog,
 body.my-turn-body .shop-modal {
-  background: rgba(0,0,0,0.45) !important; /* overlay stays the same */
+  background: rgba(0,0,0,0.65) !important; /* overlay stays dark */
 }
-body.my-turn-body .player .avatar { color: #111 !important; box-shadow: 0 6px 18px rgba(0,0,0,0.06) !important }
+body.my-turn-body .player .avatar { color: var(--text) !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
 
 /* Submit bar and other controls should remain prominent */
-body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.12) !important }
+body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.8) !important }
 
 /* Power-up shop header and list styling */
 .shop-modal .shop-modal-dialog {
@@ -520,21 +520,21 @@ body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.12) !import
 }
 
 .powerup-row {
-  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,252,0.98));
+  background: linear-gradient(180deg, rgba(24,22,24,0.98), rgba(28,26,28,0.98));
   border-radius: 10px;
   padding: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  box-shadow: 0 6px 14px rgba(0,0,0,0.04);
-  border: 1px solid rgba(0,0,0,0.04);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.02);
 }
 
 /* Self-targeted power-ups (e.g., word_freeze, double_down, hang_shield, etc.) */
 .powerup-row.self-powerup {
-  background: linear-gradient(180deg, #fff8e6, #fff3e0); /* warm cream */
-  border: 1px solid rgba(255,160,0,0.08);
+  background: linear-gradient(180deg, #2e241c, #291f18); /* warm noir cream feel */
+  border: 1px solid rgba(255,160,0,0.04);
 }
 
 .powerup-meta { flex: 1; min-width: 0; padding-right: 12px }
@@ -544,9 +544,14 @@ body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.12) !import
 .powerup-buy { min-width: 72px; }
 .powerup-buy:hover, .powerup-buy:focus { transform: none !important; }
 
-/* Ensure buttons inside the shop modal do not trigger card hover transforms */
-.shop-modal .card:hover, .shop-modal .card { transform: none !important; box-shadow: 0 6px 18px rgba(99,79,130,0.08) !important }
-.powerup-input { width: 96px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06) }
+ /* Ensure buttons inside the shop modal do not trigger card hover transforms */
+.shop-modal .card:hover, .shop-modal .card { transform: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
+.powerup-input { width: 96px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04) }
 
 /* ensure the header stands out when my-turn-body is active */
-body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background: linear-gradient(90deg, #b39ddb, #81d4fa) }
+body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background: linear-gradient(90deg, #6b4f3b, #5a6b7c) }
+
+/* Keep the confetti colorful while remaining visible on dark background */
+.confetti-piece { box-shadow: 0 6px 12px rgba(0,0,0,0.6); }
+
+/* ensure cash-piece color remains green for money mode celebrations */

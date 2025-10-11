@@ -212,7 +212,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         ))}
       </div>
       <div className="wordspiracy-header">
-        <h1 className="wordspiracy-title">Wordspiracy <span className="bubble">😅</span></h1>
+        <h1 className="wordspiracy-title">Wordspiracy <span className="bubble">🕵️</span></h1>
         <p className="wordspiracy-tag">Protect your word. Expose theirs.</p>
       </div>
   <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />

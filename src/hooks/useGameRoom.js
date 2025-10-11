@@ -106,8 +106,27 @@ export default function useGameRoom(roomId, playerName) {
     const uid = auth && auth.currentUser ? auth.currentUser.uid : null
     const playersRefPath = `rooms/${roomId}/players`
 
-    // pastel palette (Anxiously Cute)
-    const palette = ['#B39DDB','#81D4FA','#FFABAB','#FFD54F','#C5E1A5','#F8BBD0','#B2EBF2']
+    const palette = [
+      '#FFDC70', // soft yellow
+      '#64B5F6', // clear sky blue
+      '#81C784', // fresh green
+      '#F48FB1', // soft pink
+      '#fff9e4ff', // white
+      '#BA68C8', // gentle purple
+      '#ffae35ff', // mellow orange
+      '#E57373', // coral red
+      '#d5ce81ff', // light olive green
+      '#36f240ff', // fresh green
+      '#cd75a1ff', // violet lavender
+      '#FF8A65', // warm tangerine
+      '#7986CB', // periwinkle blue
+      '#DCE775', // lime yellow-green
+      '#4DB6AC', // soft turquoise
+      '#F06292', // rose pink
+      '#81D4FA', // baby blue
+      '#A1887F', // muted mocha
+      '#90CAF9'  // powder blue
+    ];
 
     async function pickColorAndSetPlayer(pKey) {
       const roomRootRef = dbRef(db, `rooms/${roomId}`)

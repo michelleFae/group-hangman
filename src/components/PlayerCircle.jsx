@@ -102,7 +102,7 @@ export default function PlayerCircle({
     return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
   })
 
-  const avatarColor = player.color || '#FFD1D1'
+  const avatarColor = player.color || '#ca29ffff'
   function hexToRgba(hex, alpha = 0.28) {
     const h = hex.replace('#', '')
     const bigint = parseInt(h.length === 3 ? h.split('').map(c => c+c).join('') : h, 16)
@@ -288,7 +288,7 @@ export default function PlayerCircle({
             {/* info icon with hover tooltip showing last 3 updates */}
             <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
               {/* prettier-ignore */}
-              <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#eef3ff', color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
+              <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',  color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
               {/* tooltip will be rendered into document.body to avoid z-index clipping */}
               {/* we mount a hidden container here and populate it imperatively */}
               <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
@@ -582,7 +582,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   }
                 }
               } catch (e) {}
-              return <div style={{ color: '#666' }}>No recent changes</div>
+              return <div style={{ color: '#B4A3A3' }}>No recent changes</div>
             })()}
           </div>
         </div>
