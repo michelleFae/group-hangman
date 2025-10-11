@@ -134,8 +134,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       runtimeDBURL: !!window.__firebaseDatabaseURL,
       hasAuth: !!(window && window.__firebaseAuth && window.__firebaseAuth.currentUser)
     })
+    // Preferred strategy: use SDK update helpers first (most reliable in normal clients)
+    try {
+      if (typeof dbUpdate === 'function') {
+        await dbUpdate(roomRef, updates)
+        console.log('attemptReset: named dbUpdate succeeded')
+        return true
+      }
+    } catch (errA) {
+      console.warn('attemptReset: named dbUpdate failed', errA && (errA.stack || errA.message || String(errA)))
+      errors.push({ step: 'named dbUpdate', err: errA && (errA.stack || errA.message || String(errA)) })
+    }
 
-    // Strategy D-first: REST PATCH
+    // Next fallback: roomRef.update
+    try {
+      if (roomRef && typeof roomRef.update === 'function') {
+        await roomRef.update(updates)
+        console.log('attemptReset: roomRef.update succeeded')
+        return true
+      }
+    } catch (errB) {
+      console.warn('attemptReset: roomRef.update failed', errB && (errB.stack || errB.message || String(errB)))
+      errors.push({ step: 'ref.update', err: errB && (errB.stack || errB.message || String(errB)) })
+    }
+
+    // REST PATCH fallback (useful for environments where SDK update isn't available)
     try {
       const authToken = (window.__firebaseAuth && window.__firebaseAuth.currentUser) ? await window.__firebaseAuth.currentUser.getIdToken() : null
       const dbUrl = window.__firebaseDatabaseURL || (typeof process !== 'undefined' && process.env && (process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL)) || null
@@ -145,48 +168,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (!res.ok) throw new Error('REST fallback failed: ' + res.status + ' ' + (await res.text()))
       console.log('attemptReset: REST PATCH succeeded')
       return true
-    } catch (errRestFirst) {
-      console.warn('attemptReset: REST PATCH first attempt failed or unavailable', errRestFirst && (errRestFirst.stack || errRestFirst.message || String(errRestFirst)))
-      errors.push({ step: 'rest-first', err: errRestFirst && (errRestFirst.stack || errRestFirst.message || String(errRestFirst)) })
-      // next: try modular named update
-      try {
-        if (typeof dbUpdate === 'function') {
-          await dbUpdate(roomRef, updates)
-          console.log('attemptReset: named dbUpdate succeeded')
-          return true
-        } else {
-          throw new Error('named dbUpdate not available')
-        }
-      } catch (errA) {
-        console.warn('attemptReset: named dbUpdate failed or unavailable', errA && (errA.stack || errA.message || String(errA)))
-        errors.push({ step: 'named dbUpdate', err: errA && (errA.stack || errA.message || String(errA)) })
-        try {
-          if (roomRef && typeof roomRef.update === 'function') {
-            await roomRef.update(updates)
-            console.log('attemptReset: roomRef.update succeeded')
-            return true
-          } else {
-            throw new Error('roomRef.update not available')
-          }
-        } catch (errB) {
-          console.warn('attemptReset: roomRef.update failed or unavailable', errB && (errB.stack || errB.message || String(errB)))
-          errors.push({ step: 'ref.update', err: errB && (errB.stack || errB.message || String(errB)) })
-          try {
-            const mod = await import('firebase/database')
-            const updateFn = (mod && typeof mod.update === 'function') ? mod.update : (mod && mod.default && typeof mod.default.update === 'function') ? mod.default.update : null
-            if (typeof updateFn === 'function') {
-              await updateFn(roomRef, updates)
-              console.log('attemptReset: dynamic import update succeeded')
-              return true
-            } else {
-              throw new Error('dynamic import did not expose a callable update()')
-            }
-          } catch (errC) {
-            console.warn('attemptReset: dynamic import approach failed', errC && (errC.stack || errC.message || String(errC)))
-            errors.push({ step: 'dynamic import', err: errC && (errC.stack || errC.message || String(errC)) })
-          }
-        }
+    } catch (errRest) {
+      console.warn('attemptReset: REST PATCH failed or unavailable', errRest && (errRest.stack || errRest.message || String(errRest)))
+      errors.push({ step: 'rest-patch', err: errRest && (errRest.stack || errRest.message || String(errRest)) })
+    }
+
+    // Final fallback: dynamic import of firebase update function
+    try {
+      const mod = await import('firebase/database')
+      const updateFn = (mod && typeof mod.update === 'function') ? mod.update : (mod && mod.default && typeof mod.default.update === 'function') ? mod.default.update : null
+      if (typeof updateFn === 'function') {
+        await updateFn(roomRef, updates)
+        console.log('attemptReset: dynamic import update succeeded')
+        return true
+      } else {
+        throw new Error('dynamic import did not expose a callable update()')
       }
+    } catch (errC) {
+      console.warn('attemptReset: dynamic import approach failed', errC && (errC.stack || errC.message || String(errC)))
+      errors.push({ step: 'dynamic import', err: errC && (errC.stack || errC.message || String(errC)) })
     }
 
     console.error('attemptReset: all update strategies failed', errors)
