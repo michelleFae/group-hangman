@@ -55,31 +55,29 @@ export default function PlayerCircle({
     if (!r || !r.result) return
     const res = r.result
     const sourceId = r.from
-    // Only map letters that actually belong to this player's word. This prevents
-    // reveals produced for the other participant (buyer/target) from appearing
-    // in the wrong player's tile.
-    const ownerWordLocal = (player && player.word) ? (player.word || '') : ''
-    const ownerLower = (ownerWordLocal || '').toLowerCase()
-    const tryMap = (ch) => {
-      if (!ch) return
-      const lower = (ch || '').toLowerCase()
-      if (ownerLower && ownerLower.indexOf(lower) !== -1) {
-        privateLetterSource[lower] = sourceId
+    const toId = r.to
+    // Only map letters that were revealed for this player (r.to === player.id).
+    // Do NOT map buyer-side letters (res.letterFromBuyer) into target tiles.
+    if (toId === player.id) {
+      if (res.letterFromTarget) {
+        const lower = (res.letterFromTarget || '').toLowerCase()
+        if (lower) privateLetterSource[lower] = sourceId
       }
-    }
-    tryMap(res.letterFromTarget)
-    tryMap(res.letterFromBuyer)
-    tryMap(res.letter)
-    tryMap(res.last)
-    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => tryMap(ch))
-    // capture overridePublicColor flag per-letter so we can color public reveals by the revealer
-    if (res.overridePublicColor) {
-      const letter = (res.letterFromTarget || res.letterFromBuyer || res.letter || res.last)
-      if (letter) {
-        const lower = (letter || '').toLowerCase()
-        if (ownerLower && ownerLower.indexOf(lower) !== -1) {
-          // mark a special key to prefer source color even when letter is public
-          privateLetterSource[`__override__${lower}`] = sourceId
+      if (res.letter) {
+        const lower = (res.letter || '').toLowerCase()
+        if (lower) privateLetterSource[lower] = sourceId
+      }
+      if (res.last) {
+        const lower = (res.last || '').toLowerCase()
+        if (lower) privateLetterSource[lower] = sourceId
+      }
+      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
+      // capture overridePublicColor flag per-letter so we can color public reveals by the revealer
+      if (res.overridePublicColor) {
+        const letter = (res.letterFromTarget || res.letter || res.last)
+        if (letter) {
+          const lower = (letter || '').toLowerCase()
+          if (lower) privateLetterSource[`__override__${lower}`] = sourceId
         }
       }
     }
@@ -117,16 +115,18 @@ export default function PlayerCircle({
     // expanding by occurrence count in the owner's word.
     const arr = []
     const collectedElems = []
-    _allPrivateReveals.forEach(r => {
-        const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
-        const res = r.result || {}
-        const pushLetter = (s) => { if (s) collectedElems.push({ letter: (s||'').toString().toLowerCase(), ts }) }
-        if (res.letterFromTarget) pushLetter(res.letterFromTarget)
-        if (res.letterFromBuyer) pushLetter(res.letterFromBuyer)
-        if (res.letter) pushLetter(res.letter)
-        if (res.last) pushLetter(res.last)
-        if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetter(ch))
-
+    // Only process private power reveals that targeted this player. Using the
+    // previously computed `privatePowerRevealsList` prevents mixing reveals
+    // from other players into this player's revealedPositions.
+    privatePowerRevealsList.forEach(r => {
+      const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
+      const res = r.result || {}
+      const pushLetter = (s) => { if (s) collectedElems.push({ letter: (s||'').toString().toLowerCase(), ts }) }
+      if (res.letterFromTarget) pushLetter(res.letterFromTarget)
+      if (res.letterFromBuyer) pushLetter(res.letterFromBuyer)
+      if (res.letter) pushLetter(res.letter)
+      if (res.last) pushLetter(res.last)
+      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetter(ch))
     })
     // include privateHits entries (viewer-private hits on this player)
     let ph = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
