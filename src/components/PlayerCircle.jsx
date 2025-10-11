@@ -22,6 +22,8 @@ export default function PlayerCircle({
   onOpenPowerUps = null,
   powerUpDisabledReason = null,
   starterApplied = false
+  , ddActive = false,
+  ddTarget = null
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -560,7 +562,16 @@ export default function PlayerCircle({
               {isSelf ? (
                 <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
               ) : (
-                <button className="action-button" title={isEliminated ? 'Player eliminated' : 'Guess this word'} disabled={!canGuess || isEliminated} onClick={() => { if (canGuess && !isEliminated) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
+                  (() => {
+                    // When viewer has an active Double Down on someone else, visually lock other players' Guess buttons
+                    const ddLocked = !!(ddActive && ddTarget && ddTarget !== player.id && !isSelf)
+                    const targetName = (playerIdToName && playerIdToName[ddTarget]) || ddTarget || 'the selected player'
+                    const titleText = isEliminated ? 'Player eliminated' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word')
+                    const className = `action-button ${ddLocked ? 'dd-locked' : ''}`
+                    return (
+                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked} onClick={() => { if (canGuess && !isEliminated && !ddLocked) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
+                    )
+                  })()
               )}
 
               {!isSelf && onOpenPowerUps && !player.eliminated && (
@@ -697,6 +708,8 @@ try {
   /* double-down badge */
   .double-down-badge { display: inline-block; margin-top: 6px; padding: 2px 6px; border-radius: 8px; background: #ffcc00; color: #2b2b2b; font-size: 11px; font-weight: 800; }
   .player .double-down-badge { position: relative; z-index: 10; }
+  /* when viewer has active Double Down and this tile is not the target, visually lock guess button */
+  .dd-locked { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
     `
     document.head.appendChild(s)
   }

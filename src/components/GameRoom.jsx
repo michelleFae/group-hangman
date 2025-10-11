@@ -687,10 +687,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (powerId === 'double_down') {
         try {
           const stake = Number(opts && opts.stake) || 0
-          // server/client guard: do not allow staking more than (current wordmoney + 1)
-          const maxStake = (Number(me.wordmoney) || 0) + 1
+          // server/client guard: do not allow staking more than (current wordmoney - 1)
+          // e.g. if wordmoney is 3, max stake is 2
+          const maxStake = Math.max(0, (Number(me.wordmoney) || 0) - 1)
           if (stake > maxStake) {
-            setToasts(t => [...t, { id: `pup_err_stake_${Date.now()}`, text: `Stake cannot exceed $${maxStake}` }])
+            setToasts(t => [...t, { id: `pup_err_stake_${Date.now()}`, text: `Stake cannot exceed $${maxStake} (your current wordmoney - 1)` }])
             setPowerUpLoading(false)
             return
           }
@@ -1964,6 +1965,36 @@ try {
 
           const playerWithViewer = { ...p, _viewer: viewerPrivate }
 
+          // If the viewer has an active Double Down, only allow guessing the target they doubled-down on.
+          // The purchase flow writes a privatePowerReveals entry under the buyer's node keyed by targetId.
+          // Find the most-recent double_down entry to determine the intended target.
+          const viewerDDActive = !!(viewerNode && viewerNode.doubleDown && viewerNode.doubleDown.active)
+          let viewerDDTarget = null
+          try {
+            if (viewerDDActive) {
+              const ppr = viewerNode.privatePowerReveals || {}
+              let latestTs = 0
+              Object.keys(ppr).forEach(tid => {
+                const bucket = ppr[tid] || {}
+                Object.values(bucket).forEach(entry => {
+                  if (!entry) return
+                  // accept either top-level ts or nested result.ts
+                  const isDD = entry && (entry.powerId === 'double_down' || (entry.result && entry.result.powerId === 'double_down'))
+                  if (!isDD) return
+                  const ts = Number(entry.ts || (entry.result && entry.result.ts) || 0)
+                  if (ts >= latestTs) {
+                    latestTs = ts
+                    viewerDDTarget = tid
+                  }
+                })
+              })
+            }
+          } catch (e) { viewerDDTarget = null }
+
+          const baseCanGuess = phase === 'playing' && myId === currentTurnId && p.id !== myId
+          // if viewer has an active DD and a known target, only that target is guessable.
+          const canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id)
+
           const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
           // determine why the power-up button should be disabled (if anything)
           const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
@@ -1989,7 +2020,9 @@ try {
                           viewerId={myId}
                           phase={phase}
                           hasSubmitted={!!p.hasWord}
-                          canGuess={phase === 'playing' && myId === currentTurnId && p.id !== myId}
+                          canGuess={canGuessComputed}
+                          ddActive={viewerDDActive}
+                          ddTarget={viewerDDTarget}
                           onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
                           onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue('') }}
