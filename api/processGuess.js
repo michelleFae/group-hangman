@@ -141,7 +141,10 @@ module.exports = async (req, res) => {
                 // consume the doubleDown entry after use
                 updates[`players/${from}/doubleDown`] = null
                 // subtract the original stake once (buyer pays the stake on resolution)
-                award = award - stake
+                if (toAdd == 0) {
+                  //nothing guessed
+                  award = award - stake
+              }
               }
             }
             updates[`players/${from}/wordmoney`] = prevHang + award

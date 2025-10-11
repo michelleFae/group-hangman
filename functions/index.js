@@ -144,6 +144,8 @@ exports.processGuess = functions.database
                   // consume the doubleDown entry after use
                   updates[`players/${from}/doubleDown`] = null
                   // subtract the original stake once (buyer pays the stake on resolution)
+                if (toAdd == 0) {
+                  //nothing guessed
                   award = award - stake
               }
             }

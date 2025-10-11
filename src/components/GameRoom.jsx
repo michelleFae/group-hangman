@@ -30,6 +30,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [powerUpTarget, setPowerUpTarget] = useState(null)
   const [powerUpChoiceValue, setPowerUpChoiceValue] = useState('')
   const [powerUpLoading, setPowerUpLoading] = useState(false)
+  // Locally lock the power-up shop for the viewer after buying Double Down until they make a guess
+  const [ddShopLocked, setDdShopLocked] = useState(false)
   const powerUpChoiceRef = useRef(null)
   const multiHitSeenRef = useRef({})
   const [recentPenalty, setRecentPenalty] = useState({})
@@ -1362,6 +1364,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // auto-hide the tip after the same interval as other toasts (fade then remove)
         setTimeout(() => setToasts(t => t.map(x => x.id === tipId ? { ...x, removing: true } : x)), 3200)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== tipId)), 4200)
+        // lock the shop UI for this viewer until they make their guess
+        try { setDdShopLocked(true) } catch (e) {}
       }
       // schedule fade + removal after a short interval
       setTimeout(() => {
@@ -1478,7 +1482,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeVal = (powerUpChoiceValue || '').toString().trim()
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
-                        // Max stake is your current wordmoney + 1 (you may stake up to your current balance plus the base price)
+                        // Max stake is your current wordmoney - 1 (you may stake up to your current balance minus the base price)
                         const maxStake = (Number(me.wordmoney) || 0) - 1
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
@@ -2003,6 +2007,7 @@ try {
           else if (p.id === myId) pupReason = 'Cannot target yourself'
           else if (p.eliminated) pupReason = 'Player is eliminated'
           else if (myId !== currentTurnId) pupReason = 'Not your turn'
+          else if (ddShopLocked) pupReason = 'Double Down placed — make your guess first'
           else {
             const me = (state?.players || []).find(x => x.id === myId) || {}
             const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
@@ -2023,7 +2028,7 @@ try {
                           canGuess={canGuessComputed}
                           ddActive={viewerDDActive}
                           ddTarget={viewerDDTarget}
-                          onGuess={(targetId, guess) => sendGuess(targetId, guess)} 
+                          onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
                           onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue('') }}
                           playerIdToName={playerIdToName}
