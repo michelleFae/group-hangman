@@ -106,6 +106,25 @@ module.exports = async (req, res) => {
               noScore = true
             }
           } catch (e) {}
+          // Also treat as no-score if the guesser previously received this letter via a privatePowerReveals entry
+          try {
+            const pphr = (guesser.privatePowerReveals && guesser.privatePowerReveals[targetId]) ? Object.values(guesser.privatePowerReveals[targetId]) : []
+            if (Array.isArray(pphr) && pphr.some(r => {
+              try {
+                if (!r || !r.result) return false
+                const res = r.result
+                const check = s => (s || '').toString().toLowerCase() === letter
+                if (check(res.letterFromTarget)) return true
+                if (check(res.letterFromBuyer)) return true
+                if (check(res.letter)) return true
+                if (res.last && check(res.last)) return true
+                if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(letter)) return true
+                return false
+              } catch (e) { return false }
+            })) {
+              noScore = true
+            }
+          } catch (e) {}
           if (!noScore) {
             // Base award for correct letter(s)
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
