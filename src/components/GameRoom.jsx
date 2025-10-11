@@ -15,6 +15,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
   const [starterEnabled, setStarterEnabled] = useState(false)
+  const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
+  const [revealShowBlanks, setRevealShowBlanks] = useState(false)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
   const [minWordSize, setMinWordSize] = useState(2)
@@ -77,6 +79,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (typeof state?.startingWordmoney === 'number') {
       setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)));
     }
+    // sync reveal settings
+    if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
+    if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
 
   }, [
     state?.timed,
@@ -294,6 +299,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const expectedAfter = currentHang - e.deducted
           expectedHangRef.current[playerIdTimed] = expectedAfter
           setPendingDeducts(prev => ({ ...prev, [playerIdTimed]: (prev[playerIdTimed] || 0) - e.deducted }))
+          // Also persist a local hang-history entry and dispatch a local event so
+          // PlayerCircle tooltips update immediately to show the -2 deduction.
+          try {
+            const entry = { ts: Number(e.ts || Date.now()), delta: -Math.abs(Number(e.deducted || 0)), reason: 'timeout', prev: Math.max(0, currentHang) }
+            const key = `gh_hang_history_${playerIdTimed}`
+            try {
+              const existingRaw = localStorage.getItem(key)
+              const existing = existingRaw ? JSON.parse(existingRaw) : []
+              const next = [entry].concat(Array.isArray(existing) ? existing : []).slice(0,3)
+              try { localStorage.setItem(key, JSON.stringify(next)) } catch (e2) {}
+            } catch (e2) {}
+            try {
+              if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                try { window.dispatchEvent(new CustomEvent('gh_hang_history_update', { detail: { playerId: playerIdTimed, entry } })) } catch (e3) {}
+              }
+            } catch (e3) {}
+          } catch (e3) {}
         }
       })
     } catch (e) {}
@@ -491,6 +513,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
               <div style={{ fontSize: 12, color: '#B4A3A3' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
             </label>
+                <label htmlFor="revealPreserveOrder" title="When on, revealed letters are shown in their positions within the word (helps when combined with blanks).">
+                  <input id="revealPreserveOrder" name="revealPreserveOrder" type="checkbox" checked={revealPreserveOrder} onChange={e => { const nv = e.target.checked; setRevealPreserveOrder(nv); updateRoomSettings({ revealPreserveOrder: !!nv }) }} /> Preserve reveal order
+                </label>
+                <label htmlFor="revealShowBlanks" title="Show blanks (underscores) for unrevealed letters. Enabling this will also enable Preserve reveal order.">
+                  <input id="revealShowBlanks" name="revealShowBlanks" type="checkbox" checked={revealShowBlanks} onChange={e => { const nv = e.target.checked; setRevealShowBlanks(nv); if (nv) { setRevealPreserveOrder(true); updateRoomSettings({ revealShowBlanks: !!nv, revealPreserveOrder: true }) } else { updateRoomSettings({ revealShowBlanks: !!nv }) } }} /> Show blanks
+                </label>
               <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
                 Min word length:
                 <input
@@ -1430,12 +1458,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setIsResetting(false)
       }
     }
-
-    if (!isHost) {
-      // Non-hosts only see a passive message
-      return <div style={{ color: '#2e7d32' }}>Waiting for the host to restart the room.</div>
-    }
-
     return (
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={restartForAll} disabled={submitting || isResetting}>{submitting || isResetting ? 'Restarting…' : 'Play again (restart)'} </button>
@@ -1821,7 +1843,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           flashPenalty={wasPenalized}
                           pendingDeduct={pendingDeducts[p.id] || 0}
                           isWinner={p.id === state?.winnerId}
-                          powerUpDisabledReason={pupReason} />
+                          powerUpDisabledReason={pupReason}
+                          revealPreserveOrder={revealPreserveOrder}
+                          revealShowBlanks={revealShowBlanks} />
           )
           })
         })()}
