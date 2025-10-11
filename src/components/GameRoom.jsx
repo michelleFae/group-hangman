@@ -1479,7 +1479,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
                         // Max stake is your current wordmoney + 1 (you may stake up to your current balance plus the base price)
-                        const maxStake = (Number(me.wordmoney) || 0) + 1
+                        const maxStake = (Number(me.wordmoney) || 0) - 1
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1491,7 +1491,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
                             )}
                             {stakeTooLarge && (
-                              <div style={{ color: '#900', fontSize: 12 }}>Stake cannot exceed ${maxStake} (your current wordmoney + 1)</div>
+                              <div style={{ color: '#900', fontSize: 12 }}>Stake cannot exceed ${maxStake} (your current wordmoney - 1 (cost of this power up))</div>
                             )}
                           </div>
                         )
