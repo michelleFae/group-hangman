@@ -655,6 +655,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const updates = {}
       // deduct buyer wordmoney
       updates[`players/${myId}/wordmoney`] = myHang - cost
+      // if buying Double Down, record the stake and keep turn active so the buyer can guess
+      if (powerId === 'double_down') {
+        try {
+          const stake = Number(opts && opts.stake) || 0
+          updates[`players/${myId}/doubleDown`] = { active: true, stake }
+        } catch (e) {}
+      }
       // write a private entry for buyer and target so only they see the result
       const key = `pu_${Date.now()}`
       // store under players/{buyer}/privatePowerReveals/{targetId}/{key} = { powerId, data }
@@ -1226,32 +1233,36 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
 
       // Also advance the turn immediately after a power-up is applied (end the buyer's turn)
+      // Exception: when the buyer purchases 'double_down' we intentionally DO NOT advance the turn
+      // so the buyer can make their guess while the doubleDown is active.
       try {
-        // determine effective turn order (prefer any turnOrder we already modified)
-        const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (state.turnOrder || [])
-        const currentIndexLocal = typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex : 0
-        if (effectiveTurnOrder && effectiveTurnOrder.length > 0) {
-          const nextIndex = (currentIndexLocal + 1) % effectiveTurnOrder.length
-          updates[`currentTurnIndex`] = nextIndex
-          updates[`currentTurnStartedAt`] = Date.now()
-          try {
-            const nextPlayer = effectiveTurnOrder[nextIndex]
-            const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
-            const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
-            // If a previous staged update already adjusted this player's wordmoney (e.g. from a power-up), add to it
-            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
-            updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
-            // clear any frozen flags when their turn begins
-            updates[`players/${nextPlayer}/frozen`] = null
-            updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
-            // Add a lastGain entry to indicate the +1 starter award (clients will show this in tooltip)
+        if (powerId !== 'double_down') {
+          // determine effective turn order (prefer any turnOrder we already modified)
+          const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (state.turnOrder || [])
+          const currentIndexLocal = typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex : 0
+          if (effectiveTurnOrder && effectiveTurnOrder.length > 0) {
+            const nextIndex = (currentIndexLocal + 1) % effectiveTurnOrder.length
+            updates[`currentTurnIndex`] = nextIndex
+            updates[`currentTurnStartedAt`] = Date.now()
             try {
-              // only add when starter bonus is enabled in room state
-              if (state && state.starterBonus && state.starterBonus.enabled) {
-                updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
-              }
+              const nextPlayer = effectiveTurnOrder[nextIndex]
+              const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
+              const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+              // If a previous staged update already adjusted this player's wordmoney (e.g. from a power-up), add to it
+              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+              updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+              // clear any frozen flags when their turn begins
+              updates[`players/${nextPlayer}/frozen`] = null
+              updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              // Add a lastGain entry to indicate the +1 starter award (clients will show this in tooltip)
+              try {
+                // only add when starter bonus is enabled in room state
+                if (state && state.starterBonus && state.starterBonus.enabled) {
+                  updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                }
+              } catch (e) {}
             } catch (e) {}
-          } catch (e) {}
+          }
         }
       } catch (e) {}
 
@@ -1305,6 +1316,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         ? `${pu.name}: ${playerIdToName[resultPayload.winner] || resultPayload.winner} +${resultPayload.amount}`
         : `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}`
       setToasts(t => [...t, { id: pupToastId, text: pupText }])
+      if (powerId === 'double_down') {
+        // remind the buyer they can still guess while the double-down is active
+        setToasts(t => [...t, { id: `pup_tip_double_${Date.now()}`, text: `Double Down active — make a guess now to earn your stake per occurrence.` }])
+      }
       // schedule fade + removal after a short interval
       setTimeout(() => {
         setToasts(t => t.map(x => x.id === pupToastId ? { ...x, removing: true } : x))
@@ -1411,10 +1426,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : p.id === 'double_down' ? (
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
-                      </div>
+                      (() => {
+                        const stakeVal = (powerUpChoiceValue || '').toString().trim()
+                        const stakeNum = Number(stakeVal)
+                        const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                            </div>
+                            {stakeInvalid && (
+                              <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
+                            )}
+                          </div>
+                        )
+                      })()
                       ) : (
                       <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                     )}
@@ -1816,6 +1843,36 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             try { console.warn('GameRoom: filtered invalid player entries from state.players', { rawPlayers: players, stateSnapshot: state }) } catch (e) {}
           }
           return sanitized.map(p => {
+          // host-only remove API for player tiles
+          const removePlayer = async (pid) => {
+            if (!isHost) return false
+            try {
+              const playerRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
+              // attempt SDK delete via update to null
+              try {
+                await dbUpdate(playerRef, null)
+                try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e) {}
+                setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_ok_${pid}_`) ? { ...x, removing: true } : x)), 2200)
+                setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_ok_${pid}_`)))), 3000)
+                return true
+              } catch (e) {
+                try {
+                  const roomRef = dbRef(db, `rooms/${roomId}`)
+                  await dbUpdate(roomRef, { [`players/${pid}`]: null })
+                  try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e2) {}
+                  setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_ok_${pid}_`) ? { ...x, removing: true } : x)), 2200)
+                  setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_ok_${pid}_`)))), 3000)
+                  return true
+                } catch (e2) {
+                  console.warn('removePlayer: fallback failed', e2)
+                }
+              }
+            } catch (err) { console.error('removePlayer failed', err) }
+            try { setToasts(t => [...t, { id: `remove_err_${pid}_${Date.now()}`, text: `Could not remove ${playerIdToName[pid] || pid}`, removing: false }]) } catch (e) {}
+            setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_err_${pid}_`) ? { ...x, removing: true } : x)), 4200)
+            setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_err_${pid}_`)))), 5200)
+            return false
+          }
           // derive viewer-specific private data. viewer's node lives under state.players keyed by id — we need to find viewer's full object
           const viewerNode = players.find(x => x.id === myId) || {}
           // viewerNode may contain privateWrong, privateHits, privateWrongWords and private powerup data
@@ -1857,6 +1914,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           player={playerWithViewer}
                           isSelf={p.id === myId}
                           hostId={hostId}
+                          isHost={isHost}
+                          onRemove={removePlayer}
                           viewerId={myId}
                           phase={phase}
                           hasSubmitted={!!p.hasWord}

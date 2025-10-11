@@ -6,6 +6,7 @@ export default function PlayerCircle({
   onGuess,
   canGuess = false,
   isSelf = false,
+  isHost = false,
   revealPreserveOrder = false,
   revealShowBlanks = false,
   viewerId = null,
@@ -22,9 +23,11 @@ export default function PlayerCircle({
   powerUpDisabledReason = null,
   starterApplied = false
 }) {
+  // hostId prop supported for safety (may be passed in by parent)
+  const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
+  const onRemove = arguments[0] && arguments[0].onRemove ? arguments[0].onRemove : null
   // hostId is optional prop; when provided, ensure the host's own revealed area shows public reveals
   // so the host and other players can see letters guessed for the host's word.
-  const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
   const revealed = player.revealed || []
   const [showWord, setShowWord] = useState(false)
   const [soundedLow, setSoundedLow] = useState(false)
@@ -472,6 +475,10 @@ export default function PlayerCircle({
 
   return (
     <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
+      {/* Host remove control (red X) shown only to host during lobby or ended phases */}
+      {isHost && (phase === 'lobby' || phase === 'ended') && onRemove && !isSelf && (
+        <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: 'transparent', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
           <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
@@ -491,6 +498,10 @@ export default function PlayerCircle({
             </span>
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, background: 'rgba(0,0,0,0.06)', fontSize: 11, fontWeight: 700 }}>YOU</div>}
+          {/* Double Down active badge: shows when this player has a pending doubleDown */}
+          {player && player.doubleDown && player.doubleDown.active && (
+            <div className="double-down-badge" title="Double Down active" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#ffcc00', color: '#2b2b2b', fontSize: 11, fontWeight: 800 }}>DD</div>
+          )}
         </div>
 
         <div style={{ flex: 1 }}>
@@ -666,6 +677,9 @@ try {
       .player.player-eliminated { opacity: 0.5; filter: grayscale(60%); }
       .player.player-eliminated .action-button { pointer-events: none; opacity: 0.6; }
       .player.player-eliminated button { pointer-events: none; }
+  /* double-down badge */
+  .double-down-badge { display: inline-block; margin-top: 6px; padding: 2px 6px; border-radius: 8px; background: #ffcc00; color: #2b2b2b; font-size: 11px; font-weight: 800; }
+  .player .double-down-badge { position: relative; z-index: 10; }
     `
     document.head.appendChild(s)
   }

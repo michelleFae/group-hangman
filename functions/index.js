@@ -138,14 +138,16 @@ exports.processGuess = functions.database
             if (dd && dd.active) {
               const stake = Number(dd.stake) || 0
               if (stake > 0) {
-                const extraMultiplier = (toAdd >= 4) ? 4 : 2
-                const extra = stake * extraMultiplier
+                // award the stake per newly revealed occurrence
+                const extra = stake * toAdd
                 award += extra
                 // consume the doubleDown entry after use
                 updates[`players/${from}/doubleDown`] = null
               }
             }
             hangDeltas[from] = (hangDeltas[from] || 0) + award
+            // record a visible recent gain so clients show the correct wordmoney delta
+            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
             // record or aggregate private hit for guesser
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
