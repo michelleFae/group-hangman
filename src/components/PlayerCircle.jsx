@@ -50,11 +50,11 @@ export default function PlayerCircle({
   })
   const privatePowerRevealsList = Array.isArray(_allPrivateReveals) ? _allPrivateReveals.filter(r => r && (r.to === player.id)) : []
 
-  // Also collect reveals that were originated by the viewer (r.from === viewerId).
-  // These are important so the viewer (buyer) can see letters they caused to be revealed
-  // on other players' tiles. Use viewerId rather than player.id to avoid mis-attributing
-  // buyer-origin reveals to the tile owner.
-  const privatePowerRevealsByPlayer = Array.isArray(_allPrivateReveals) ? _allPrivateReveals.filter(r => r && (viewerId && r.from === viewerId)) : []
+  // Also collect reveals that were originated by the viewer (r.from === viewerId)
+  // but only when the reveal targeted this player (r.to === player.id). This
+  // ensures we only include buyer-origin reveals that actually apply to the
+  // current player's tile and prevents leaking buyer reveals into unrelated tiles.
+  const privatePowerRevealsByPlayer = Array.isArray(_allPrivateReveals) ? _allPrivateReveals.filter(r => r && viewerId && r.from === viewerId && r.to === player.id) : []
 
   const privateLetterSource = {}
   // Build privateLetterSource with clear precedence: reveals that targeted this player
@@ -156,6 +156,9 @@ export default function PlayerCircle({
     // to avoid mixing letters across tiles.
     const ownerLower = (ownerWord || '').toLowerCase()
     // Collect reveal events (with timestamp and optional count and sourceId)
+  // Combine targeted reveals (for this player) with reveals that originated
+  // from the viewer but also target this player. Both lists are scoped so they
+  // only contain records relevant to this player's tile.
   const combinedReveals = [].concat(targetedReveals || [], byPlayerReveals || [])
     combinedReveals.forEach(r => {
       const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
