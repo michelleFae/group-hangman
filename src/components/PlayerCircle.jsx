@@ -83,14 +83,14 @@ export default function PlayerCircle({
     }
     const sourceId = privateLetterSource[lower]
     if (sourceId && playerColors && playerColors[sourceId]) return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: 700 }}>{ch}</span>
-    return <span key={idx} style={{ color: '#333' }}>{ch}</span>
+    return <span key={idx} style={{ color: '#9aa47f' }}>{ch}</span>
   })
 
   const showMasked = !!(player && player._viewer && player._viewer.showMasked)
   const maskedRendered = showMasked ? ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
     if (revealedSet.has(lower)) return <span key={idx} style={{ color: '#000', fontWeight: 700, marginRight: 4 }}>{ch}</span>
-    return <span key={idx} style={{ color: '#999', marginRight: 4 }}>_</span>
+    return <span key={idx} style={{ color: '#9aa47f', marginRight: 4 }}>_</span>
   }) : null
 
   const revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
@@ -367,7 +367,7 @@ export default function PlayerCircle({
           )}
 
               {privatePowerRevealsList.length > 0 && (
-            <div style={{ marginTop: 8, background: '#eef6ff', padding: 6, borderRadius: 4 }}>
+            <div style={{ marginTop: 8, background: '#132b56', padding: 6, borderRadius: 4 }}>
               <strong>Power-up results:</strong>
               <ul style={{ margin: '6px 0 0 12px' }}>
                 {privatePowerRevealsList.map((r, idx) => {
@@ -534,13 +534,13 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   const powerLabel = isPower ? 'from letter-for-letter played on you' : (isStart ? 'from start of turn' : entry.reason || '')
                   return (
                     <div style={{ marginBottom: 6 }}>
-                      <div style={{ color: '#333' }}>
+                      <div style={{ color: '#9aa47f' }}>
                         <span style={{ fontWeight: 800 }}>current wordmoney = </span>
                         <span style={{ color: 'green', fontWeight: 800 }}>${currentTotal}</span>
                         <span style={{ marginLeft: 8 }}>
                           ({powerLabel} {amt >= 0 ? `+${amt}` : `${amt}`})
                         </span>
-                        <span style={{ marginLeft: 8, color: '#333' }}>+ ${prev} (previous wordmoney)</span>
+                        <span style={{ marginLeft: 8, color: '#9aa47f' }}>+ ${prev} (previous wordmoney)</span>
                         {starterApplied ? (
                           <span style={{ marginLeft: 8, color: 'green' }}>+ $1 (start of next turn)</span>
                         ) : null}
@@ -556,7 +556,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   return (
                     <div key={idx} className="line">
                       <div className="delta" style={{ color }}>{sign}${abs}</div>
-                      <div style={{ color: '#333' }}>{h.reason || 'Adjustment'}</div>
+                      <div style={{ color: '#9aa47f' }}>{h.reason || 'Adjustment'}</div>
                     </div>
                   )
                 })
@@ -575,7 +575,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                       return (
                         <div key={`ls_${idx}`} className="line">
                           <div className="delta" style={{ color }}>{sign}${abs}</div>
-                          <div style={{ color: '#333' }}>{h.reason || 'Adjustment'}</div>
+                          <div style={{ color: '#9aa47f' }}>{h.reason || 'Adjustment'}</div>
                         </div>
                       )
                     })

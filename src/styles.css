@@ -11,7 +11,7 @@
 
 /* Full-page money theme when winner-by-wordmoney is selected */
 body.money-theme-body {
-  background: linear-gradient(180deg, #e8f5e9, #d0f0d6);
+  background: linear-gradient(180deg, #052708, #022204);
 }
 
 *{box-sizing:border-box}
@@ -143,7 +143,7 @@ button[disabled] {
 .meta { margin-left: 76px; margin-top: -56px }
 .name { font-weight:700 }
 .wordmoney { color: var(--accent-2); font-weight:700 }
-.revealed { margin-top: 6px; color: var(--muted); font-size: 13px }
+.revealed { margin-top: 6px; color: var(--highlight); font-size: 13px }
 
 .turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:var(--accent); }
 
@@ -378,8 +378,8 @@ button[disabled] {
 @keyframes pulse { 0% { transform: translateY(0) } 50% { transform: translateY(-3px) } 100% { transform: translateY(0) } }
 
 /* Money theme: keep green background and values intact (money mode should remain green) */
-.money-theme { background: linear-gradient(180deg,#e8f5e9,#d0f0d6); color: #0b3d0b }
-.money-theme .wordmoney { color: #1b5e20 }
+.money-theme { color: #23e923 }
+.money-theme .wordmoney { color: #ccfacf }
 .money-anim { position: absolute; pointer-events: none }
 @keyframes cash-float { 0% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-16px) rotate(-8deg) } 100% { transform: translateY(0) rotate(0) } }
 .cash-piece { width: 18px; height: 10px; background: linear-gradient(90deg,#a5d6a7,#66bb6a); border-radius:3px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); animation: cash-float 2.2s ease-in-out infinite }
@@ -402,7 +402,7 @@ button[disabled] {
 body.my-turn-body {
   transition: background 300ms ease, color 300ms ease;
   /* Use a moody amber gradient to signal your turn but keep noir vibe */
-  background: linear-gradient(135deg, #1a130f 0%, #2b221a 100%) !important;
+  background: linear-gradient(135deg, #1a130f 0%, #615205db 100%) !important;
   color: #e6e1dc !important;
 }
 
@@ -478,7 +478,7 @@ body.my-turn-body .shop-modal .shop-modal-dialog,
 body.my-turn-body .shop-modal {
   background: rgba(0,0,0,0.65) !important; /* overlay stays dark */
 }
-body.my-turn-body .player .avatar { color: var(--text) !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
+body.my-turn-body .player .avatar { color: var(--darktext) !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
 
 /* Submit bar and other controls should remain prominent */
 body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.8) !important }

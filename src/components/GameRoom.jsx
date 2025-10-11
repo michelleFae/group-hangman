@@ -808,9 +808,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const lower = buyerLetter.toLowerCase()
           const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === lower).length
           // Only count award if the target did not already have this letter publicly revealed
+          // and the buyer hasn't already privately revealed this same letter to the target.
           const targetExisting = (targetNode && targetNode.revealed) ? targetNode.revealed : []
           const targetExistingSet = new Set((targetExisting || []).map(x => (x || '').toLowerCase()))
-          buyerAward = (count > 0 && !targetExistingSet.has(lower)) ? 2 * count : 0
+          // check buyer's previous private reveals sent to this target
+          const buyerNodeForCheck = (state?.players || []).find(p => p.id === myId) || {}
+          const buyerPrivateBucket = (buyerNodeForCheck.privatePowerReveals && buyerNodeForCheck.privatePowerReveals[powerUpTarget]) ? Object.values(buyerNodeForCheck.privatePowerReveals[powerUpTarget]) : []
+          const letterWasPrivatelyRevealedByBuyer = (function() {
+            try {
+              for (const r of buyerPrivateBucket) {
+                if (!r || !r.result) continue
+                const res = r.result
+                const check = (s) => (s || '').toString().toLowerCase() === lower
+                if (res.letterFromTarget && check(res.letterFromTarget)) return true
+                if (res.letterFromBuyer && check(res.letterFromBuyer)) return true
+                if (res.letter && check(res.letter)) return true
+                if (res.last && check(res.last)) return true
+                if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(lower)) return true
+              }
+            } catch (e) {}
+            return false
+          })()
+
+          buyerAward = (count > 0 && !targetExistingSet.has(lower) && !letterWasPrivatelyRevealedByBuyer) ? 2 * count : 0
         }
         // For target: if targetResult.letterFromBuyer exists, compute occurrences in buyer's word
         let targetAward = 0
@@ -822,9 +842,28 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerWord = buyerNode.word || ''
           const countB = (buyerWord || '').split('').filter(ch => (ch || '').toLowerCase() === lowerB).length
           // Only award target if the buyer's letter wasn't already publicly revealed
+          // and the target hasn't already privately revealed this same letter (in any way) to the buyer.
           const buyerExisting = (buyerNode && buyerNode.revealed) ? buyerNode.revealed : []
           const buyerExistingSet = new Set((buyerExisting || []).map(x => (x || '').toLowerCase()))
-          targetAward = (countB > 0 && !buyerExistingSet.has(lowerB)) ? 2 * countB : 0
+          const targetNodeForCheck = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+          const targetPrivateBucket = (targetNodeForCheck.privatePowerReveals && targetNodeForCheck.privatePowerReveals[myId]) ? Object.values(targetNodeForCheck.privatePowerReveals[myId]) : []
+          const letterWasPrivatelyRevealedByTarget = (function() {
+            try {
+              for (const r of targetPrivateBucket) {
+                if (!r || !r.result) continue
+                const res = r.result
+                const check = (s) => (s || '').toString().toLowerCase() === lowerB
+                if (res.letterFromTarget && check(res.letterFromTarget)) return true
+                if (res.letterFromBuyer && check(res.letterFromBuyer)) return true
+                if (res.letter && check(res.letter)) return true
+                if (res.last && check(res.last)) return true
+                if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(lowerB)) return true
+              }
+            } catch (e) {}
+            return false
+          })()
+
+          targetAward = (countB > 0 && !buyerExistingSet.has(lowerB) && !letterWasPrivatelyRevealedByTarget) ? 2 * countB : 0
         }
 
   // Build messages according to user's requested phrasing.
