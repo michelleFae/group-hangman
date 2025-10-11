@@ -141,18 +141,21 @@ exports.processGuess = functions.database
                 // award the stake per newly revealed occurrence
                 const extra = stake * toAdd
                 award += extra
-                // consume the doubleDown entry after use
-                updates[`players/${from}/doubleDown`] = null
+                  // consume the doubleDown entry after use
+                  updates[`players/${from}/doubleDown`] = null
+                  // subtract the original stake once (buyer pays the stake on resolution)
+                  award = award - stake
               }
             }
-            hangDeltas[from] = (hangDeltas[from] || 0) + award
-            // record a visible recent gain so clients show the correct wordmoney delta
-            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
+              // apply net delta (award already reduced by original stake if applicable)
+              hangDeltas[from] = (hangDeltas[from] || 0) + award
+              // record a visible recent gain so clients show the correct wordmoney delta (net)
+              updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
             // write a private power-up result entry for the guesser so only they see the double-down result
             try {
               const ddKey = `double_down_${Date.now()}`
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: award, message: `Double Down: guessed '${letter}' and earned +$${award}` } }
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: award, message: `Double Down: guessed '${letter}' and netted +$${award}` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
             } catch (e) {}
 

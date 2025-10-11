@@ -687,6 +687,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (powerId === 'double_down') {
         try {
           const stake = Number(opts && opts.stake) || 0
+          // server/client guard: do not allow staking more than (current wordmoney + 1)
+          const maxStake = (Number(me.wordmoney) || 0) + 1
+          if (stake > maxStake) {
+            setToasts(t => [...t, { id: `pup_err_stake_${Date.now()}`, text: `Stake cannot exceed $${maxStake}` }])
+            setPowerUpLoading(false)
+            return
+          }
           updates[`players/${myId}/doubleDown`] = { active: true, stake }
         } catch (e) {}
       }
@@ -1347,6 +1354,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (powerId === 'double_down') {
         // remind the buyer they can still guess while the double-down is active
         const tipId = `pup_tip_double_${Date.now()}`
+        // remove any existing double-down tips first to avoid duplicates
+        setToasts(t => (t || []).filter(x => !(x && typeof x.text === 'string' && x.text.startsWith && x.text.startsWith('Double Down active'))))
+        // add the new tip
         setToasts(t => [...t, { id: tipId, text: `Double Down active — make a guess now to earn your stake per occurrence.` }])
         // auto-hide the tip after the same interval as other toasts (fade then remove)
         setTimeout(() => setToasts(t => t.map(x => x.id === tipId ? { ...x, removing: true } : x)), 3200)
