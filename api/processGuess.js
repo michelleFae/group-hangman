@@ -98,7 +98,14 @@ module.exports = async (req, res) => {
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
           // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
-          const noScore = target.noScoreReveals && target.noScoreReveals[letter]
+          let noScore = target.noScoreReveals && target.noScoreReveals[letter]
+          // Also treat as no-score if the guesser already had this letter privately recorded
+          try {
+            const prevHitsForTarget = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId] : []
+            if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toLowerCase() === letter))) {
+              noScore = true
+            }
+          } catch (e) {}
           if (!noScore) {
             // Base award for correct letter(s)
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
@@ -190,7 +197,9 @@ module.exports = async (req, res) => {
         updates[`players/${targetId}/revealed`] = uniqueLetters
         const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
         updates[`players/${from}/wordmoney`] = prevHang + 5
-        updates[`players/${targetId}/eliminated`] = true
+  updates[`players/${targetId}/eliminated`] = true
+  // record elimination timestamp for client ordering
+  updates[`players/${targetId}/eliminatedAt`] = Date.now()
         const prevWordGuessedBy = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
         if (!prevWordGuessedBy.includes(from)) prevWordGuessedBy.push(from)
         updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy

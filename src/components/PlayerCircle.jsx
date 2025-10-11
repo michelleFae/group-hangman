@@ -461,8 +461,17 @@ export default function PlayerCircle({
     } catch (e) {}
   }, [phase, player.id])
 
+  // Determine elimination UI state
+  const isEliminated = !!player.eliminated
+  // Determine who guessed this player out (prefer guessedBy.__word array last actor)
+  let eliminatedByName = null
+  try {
+    const gb = player.guessedBy && player.guessedBy['__word'] ? player.guessedBy['__word'] : null
+    if (Array.isArray(gb) && gb.length > 0) eliminatedByName = (playerIdToName && playerIdToName[gb[gb.length-1]]) || gb[gb.length-1]
+  } catch (e) { eliminatedByName = null }
+
   return (
-    <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
+    <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
           <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
@@ -523,11 +532,18 @@ export default function PlayerCircle({
               {isSelf ? (
                 <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
               ) : (
-                <button className="action-button" title="Guess this word" disabled={!canGuess} onClick={() => { if (canGuess) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
+                <button className="action-button" title={isEliminated ? 'Player eliminated' : 'Guess this word'} disabled={!canGuess || isEliminated} onClick={() => { if (canGuess && !isEliminated) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
               )}
 
               {!isSelf && onOpenPowerUps && !player.eliminated && (
-                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason}>{'⚡ Power-up'}</button>
+                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'⚡ Power-up'}</button>
+              )}
+              {/* show who eliminated this player when applicable */}
+              {isEliminated && eliminatedByName && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#6b6b6b' }} aria-hidden>{`Out by: ${eliminatedByName}`}</div>
+              )}
+              {isEliminated && !eliminatedByName && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#6b6b6b' }} aria-hidden>{`Out`}</div>
               )}
             </div>
           </div>
@@ -646,6 +662,10 @@ try {
       .player .revealed { word-break: break-word; white-space: normal; }
       .player .revealed span { flex: 0 0 auto; }
       .player .word-tooltip { max-width: 360px; word-break: break-word; }
+      /* eliminated player styling: greyed out and non-interactive */
+      .player.player-eliminated { opacity: 0.5; filter: grayscale(60%); }
+      .player.player-eliminated .action-button { pointer-events: none; opacity: 0.6; }
+      .player.player-eliminated button { pointer-events: none; }
     `
     document.head.appendChild(s)
   }

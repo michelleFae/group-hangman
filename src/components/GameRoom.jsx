@@ -397,8 +397,37 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // consider the viewer a winner if the room's winnerId matches their id,
   // or if the stored winnerName equals their effective name (covers legacy rooms)
   const isWinner = (state?.winnerId && myId && state.winnerId === myId) || (state?.winnerName && state.winnerName === myName)
-  // compute standings by wordmoney desc as a best-effort ranking
-  const standings = (state?.players || []).slice().sort((a,b) => (b.wordmoney || 0) - (a.wordmoney || 0))
+  // compute standings:
+  // - if winnerByWordmoney is true, sort by wordmoney desc
+  // - otherwise (last-one-standing), order by elimination: winner first, then players
+  //   who were eliminated most recently, with the earliest-eliminated placed last.
+  let standings = (state?.players || []).slice()
+  try {
+    if (state && state.winnerByWordmoney) {
+      standings.sort((a,b) => (b.wordmoney || 0) - (a.wordmoney || 0))
+    } else {
+      // last-one-standing: derive order using eliminatedAt timestamps
+      // winner should be first
+      const winnerIdLocal = state && state.winnerId ? state.winnerId : null
+      standings.sort((a,b) => {
+        // winner first
+        if (a.id === winnerIdLocal && b.id !== winnerIdLocal) return -1
+        if (b.id === winnerIdLocal && a.id !== winnerIdLocal) return 1
+        // survivors (not eliminated) come before eliminated players (but winner handling above)
+        const aElim = !!a.eliminated
+        const bElim = !!b.eliminated
+        if (aElim !== bElim) return aElim ? 1 : -1
+        // both eliminated or both active: sort by eliminatedAt desc so that most recently eliminated appears higher
+        const aTs = a.eliminatedAt ? Number(a.eliminatedAt) : 0
+        const bTs = b.eliminatedAt ? Number(b.eliminatedAt) : 0
+        // newer timestamps first
+        return bTs - aTs
+      })
+    }
+  } catch (e) {
+    // fallback: wordmoney desc
+    standings.sort((a,b) => (b.wordmoney || 0) - (a.wordmoney || 0))
+  }
 
   // defensive: ensure standings are valid objects before rendering (prevents invalid element type errors)
   const sanitizedStandings = (standings || []).filter(p => p && typeof p === 'object' && (p.id || p.name))
@@ -557,7 +586,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. You can't guess the revealed letter in your opponent's word for points, but if the letter appears more than once, you can still guess the other occurrences for points. Your opponent can guess the letter revealed from your word.", powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
     { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
     { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
     { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!', powerupType: 'singleOpponentPowerup' },
@@ -569,18 +598,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
     { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' }
-  ]
-
-  // add self-targeted powerups (available when target is yourself)
-  POWER_UPS.push(
+    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
     { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' }
-  )
+  ]
 
   // Ensure the UI shows power-ups ordered by price (ascending)
   try { POWER_UPS.sort((a,b) => (Number(a.price) || 0) - (Number(b.price) || 0)) } catch (e) {}
@@ -1425,6 +1450,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
+          updates[`players/${p.id}/eliminatedAt`] = null
+          updates[`players/${p.id}/eliminatedAt`] = null
           // apply configured starting wordmoney
           updates[`players/${p.id}/wordmoney`] = resetStart
           // Clear viewer-specific guess tracking so old guesses don't persist

@@ -101,22 +101,52 @@ exports.processGuess = functions.database
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
 
-          // award 2 wordmoney per newly revealed occurrence (as a delta)
-          hangDeltas[from] = (hangDeltas[from] || 0) + (2 * toAdd)
-
-          // record or aggregate private hit for guesser
-          const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-          let merged = false
-          for (let i = 0; i < prevHits.length; i++) {
-            const h = prevHits[i]
-            if (h && h.type === 'letter' && h.letter === letter) {
-              prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
-              merged = true
-              break
+          // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
+          let noScore = target.noScoreReveals && target.noScoreReveals[letter]
+          // Also treat as no-score if the guesser already had this letter privately recorded
+          try {
+            const prevHitsForTarget = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId] : []
+            if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toLowerCase() === letter))) {
+              noScore = true
             }
+          } catch (e) {}
+
+          if (!noScore) {
+            // award 2 wordmoney per newly revealed occurrence (as a delta)
+            // include any doubleDown extra if active
+            const dd = guesser.doubleDown
+            let award = (2 * toAdd)
+            if (dd && dd.active) {
+              const stake = Number(dd.stake) || 0
+              if (stake > 0) {
+                const extraMultiplier = (toAdd >= 4) ? 4 : 2
+                const extra = stake * extraMultiplier
+                award += extra
+                // consume the doubleDown entry after use
+                updates[`players/${from}/doubleDown`] = null
+              }
+            }
+            hangDeltas[from] = (hangDeltas[from] || 0) + award
+
+            // record or aggregate private hit for guesser
+            const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+            let merged = false
+            for (let i = 0; i < prevHits.length; i++) {
+              const h = prevHits[i]
+              if (h && h.type === 'letter' && h.letter === letter) {
+                prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
+                merged = true
+                break
+              }
+            }
+            if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
+            updates[`players/${from}/privateHits/${targetId}`] = prevHits
+          } else {
+            // still reveal publicly but don't award points; add a private note for the guesser
+            const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+            prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
+            updates[`players/${from}/privateHits/${targetId}`] = prevHits
           }
-          if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
-          updates[`players/${from}/privateHits/${targetId}`] = prevHits
         } else {
           // letter was already fully revealed — treat this as a wrong guess
           const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
@@ -160,8 +190,10 @@ exports.processGuess = functions.database
   // correct word: award +5 as a delta.
   hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
-        // mark eliminated and add guessedBy for word
-        updates[`players/${targetId}/eliminated`] = true
+  // mark eliminated and add guessedBy for word
+  updates[`players/${targetId}/eliminated`] = true
+  // record elimination timestamp so clients can order final standings by elimination order
+  updates[`players/${targetId}/eliminatedAt`] = Date.now()
         const prevWordGuessedBy = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
         if (!prevWordGuessedBy.includes(from)) prevWordGuessedBy.push(from)
         updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy
