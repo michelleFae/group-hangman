@@ -146,6 +146,14 @@ module.exports = async (req, res) => {
             // record a visible recent gain so clients show the correct wordmoney delta
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
+            // Also write a private power-up result entry so only the guesser sees the double-down result
+            try {
+              const ddKey = `double_down_${Date.now()}`
+              const letterStr = letter
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' and earned +$${award}` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
+            } catch (e) {}
+
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
             for (let i = 0; i < prevHits.length; i++) {
@@ -163,6 +171,13 @@ module.exports = async (req, res) => {
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
             updates[`players/${from}/privateHits/${targetId}`] = prevHits
+            // Inform the guesser that no points were awarded due to no-score
+            try {
+              const ddKey2 = `double_down_noscore_${Date.now()}`
+              const letterStr2 = letter
+              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr2, amount: 0, message: `Double Down: guessed '${letterStr2}', no points awarded (no-score)` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+            } catch (e) {}
           }
         } else {
           // letter was already fully revealed — treat this as a wrong guess
@@ -187,6 +202,13 @@ module.exports = async (req, res) => {
               if (stake > 0) {
                 const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
                 updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
+                // write a private power-up result entry indicating the loss
+                try {
+                  const ddKey3 = `double_down_loss_${Date.now()}`
+                  const letterStr3 = letter
+                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, message: `Double Down: guessed '${letterStr3}' and lost -$${stake}` } }
+                  updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                } catch (e) {}
               }
               updates[`players/${from}/doubleDown`] = null
             }
@@ -247,6 +269,12 @@ module.exports = async (req, res) => {
           if (stake > 0) {
             const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
             updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
+            // write a private power-up result entry indicating the loss on word guess
+            try {
+              const ddKey4 = `double_down_loss_word_${Date.now()}`
+              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `Double Down: wrong word guess — lost -$${stake}` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey4}`] = ddPayload4
+            } catch (e) {}
           }
           updates[`players/${from}/doubleDown`] = null
         }

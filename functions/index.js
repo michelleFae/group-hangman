@@ -149,6 +149,13 @@ exports.processGuess = functions.database
             // record a visible recent gain so clients show the correct wordmoney delta
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
+            // write a private power-up result entry for the guesser so only they see the double-down result
+            try {
+              const ddKey = `double_down_${Date.now()}`
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: award, message: `Double Down: guessed '${letter}' and earned +$${award}` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
+            } catch (e) {}
+
             // record or aggregate private hit for guesser
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
@@ -167,6 +174,12 @@ exports.processGuess = functions.database
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
             updates[`players/${from}/privateHits/${targetId}`] = prevHits
+            // Inform the guesser privately about the no-score result for double-down
+            try {
+              const ddKey2 = `double_down_noscore_${Date.now()}`
+              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: 0, message: `Double Down: guessed '${letter}', no points awarded (no-score)` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+            } catch (e) {}
           }
         } else {
           // letter was already fully revealed — treat this as a wrong guess
@@ -178,6 +191,19 @@ exports.processGuess = functions.database
             hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
             // write a visible recent gain event so the target client can show a toast
             updates[`players/${targetId}/lastGain`] = { amount: 2, by: from, reason: 'wrongGuess', value: letter, ts: Date.now() }
+            // If the guesser had an active doubleDown, they lose their stake on a wrong guess; record private loss entry
+            try {
+              const ddFail = guesser.doubleDown
+              if (ddFail && ddFail.active) {
+                const stake = Number(ddFail.stake) || 0
+                if (stake > 0) {
+                  // indicate loss privately to guesser
+                  const ddKey3 = `double_down_loss_${Date.now()}`
+                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: -stake, message: `Double Down: guessed '${letter}' and lost -$${stake}` } }
+                  updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                }
+              }
+            } catch (e) {}
           }
         }
         // update guessedBy for owner visibility (only add guesser once)

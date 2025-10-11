@@ -217,6 +217,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // viewer id (derived from hook or firebase auth) — declare early to avoid TDZ in effects
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
 
+  // Track whether we've observed the current player in the room previously so we only
+  // redirect when we detect their removal after having been present.
+  const wasPresentRef = useRef(false)
+
+  // If the current viewer's player entry disappears from state.players after
+  // previously being present, assume they were removed and redirect them to '/'.
+  useEffect(() => {
+    try {
+      if (!state || !Array.isArray(state.players) || !myId) return
+      const present = state.players.some(p => p && p.id === myId)
+      if (present) {
+        wasPresentRef.current = true
+        return
+      }
+      if (!present && wasPresentRef.current) {
+        // we were present before and now we aren't — redirect to main page
+        try {
+          // attempt a replace so back button doesn't return to removed room
+          window.location.replace('/')
+        } catch (e) {
+          try { window.location.href = '/' } catch (ee) {}
+        }
+      }
+    } catch (e) {}
+  }, [state && state.players, myId])
+
   // Notify players when host changes
   useEffect(() => {
   if (!state) return
@@ -600,7 +626,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
     { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
     { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
-    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake (or quadruple for 4 occurrences). Lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
+    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
@@ -1412,8 +1438,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 }
               } catch (e) { }
 
+              // compute a visual style/class to distinguish power-up types
+              const isSelfType = p.powerupType === 'selfPowerup'
+              const isSingleOpponent = p.powerupType === 'singleOpponentPowerup'
+              const rowClass = `powerup-row ${isSelfType ? 'powerup-type-self' : isSingleOpponent ? 'powerup-type-opponent' : ''} ${(isSelfType && powerUpTarget === myId) ? 'self-powerup' : ''}`
+              const rowStyle = isSelfType ? { background: '#fff9e6', border: '1px solid rgba(204,170,60,0.12)' } : (isSingleOpponent ? { background: '#f0f7ff', border: '1px solid rgba(30,120,220,0.08)' } : {})
               return (
-                <div key={p.id} className={`powerup-row ${(p.powerupType === 'selfPowerup' && powerUpTarget === myId) ? 'self-powerup' : ''}`}>
+                <div key={p.id} className={rowClass} style={rowStyle}>
                   <div className="powerup-meta">
                     <div className="title">{p.name} <small className="desc">{p.desc}</small></div>
                     <div className="powerup-price">{displayPrice} 🪙{displayPrice !== p.price ? <small className="surge">(+ surge)</small> : null}</div>
@@ -1454,6 +1485,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       </div>
     )
   }
+
+// inject small styling for power-up types if not present
+try {
+  const styleId = 'gh-powerup-type-style'
+  if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
+    const s = document.createElement('style')
+    s.id = styleId
+    s.innerHTML = `
+      .powerup-row { padding: 10px; border-radius: 8px; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center }
+      .powerup-type-self { background: #fff9e6; border: 1px solid rgba(204,170,60,0.12) }
+      .powerup-type-opponent { background: #f0f7ff; border: 1px solid rgba(30,120,220,0.08) }
+      .powerup-row .title { font-weight: 700 }
+      .powerup-row.self-powerup { box-shadow: 0 2px 8px rgba(0,0,0,0.03) }
+    `
+    document.head.appendChild(s)
+  }
+} catch (e) {}
 
   
 
