@@ -50,35 +50,64 @@ export default function PlayerCircle({
   })
   const privatePowerRevealsList = _allPrivateReveals.filter(r => r && (r.to === player.id))
 
+  // Also collect reveals that were originated by this player (r.from === player.id).
+  // These are important for showing the buyer's own private reveals on their own tile
+  // even when the reveal record's `to` was the other participant.
+  const privatePowerRevealsByPlayer = _allPrivateReveals.filter(r => r && (r.from === player.id))
+
   const privateLetterSource = {}
+  // Map letters revealed for this player's word (records where r.to === player.id)
   privatePowerRevealsList.forEach(r => {
     if (!r || !r.result) return
     const res = r.result
     const sourceId = r.from
-    const toId = r.to
-    // Only map letters that were revealed for this player (r.to === player.id).
-    // Do NOT map buyer-side letters (res.letterFromBuyer) into target tiles.
-    if (toId === player.id) {
-      if (res.letterFromTarget) {
-        const lower = (res.letterFromTarget || '').toLowerCase()
-        if (lower) privateLetterSource[lower] = sourceId
+    if (res.letterFromTarget) {
+      const lower = (res.letterFromTarget || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.letter) {
+      const lower = (res.letter || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.last) {
+      const lower = (res.last || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
+    if (res.overridePublicColor) {
+      const letter = (res.letterFromTarget || res.letter || res.last)
+      if (letter) {
+        const lower = (letter || '').toLowerCase()
+        if (lower) privateLetterSource[`__override__${lower}`] = sourceId
       }
-      if (res.letter) {
-        const lower = (res.letter || '').toLowerCase()
-        if (lower) privateLetterSource[lower] = sourceId
-      }
-      if (res.last) {
-        const lower = (res.last || '').toLowerCase()
-        if (lower) privateLetterSource[lower] = sourceId
-      }
-      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
-      // capture overridePublicColor flag per-letter so we can color public reveals by the revealer
-      if (res.overridePublicColor) {
-        const letter = (res.letterFromTarget || res.letter || res.last)
-        if (letter) {
-          const lower = (letter || '').toLowerCase()
-          if (lower) privateLetterSource[`__override__${lower}`] = sourceId
-        }
+    }
+  })
+
+  // Map letters revealed that originated from this player (r.from === player.id).
+  // These entries allow the buyer to see letters they caused to be revealed from their
+  // own word even when the reveal record targeted another player.
+  privatePowerRevealsByPlayer.forEach(r => {
+    if (!r || !r.result) return
+    const res = r.result
+    const sourceId = r.from
+    if (res.letterFromBuyer) {
+      const lower = (res.letterFromBuyer || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.letter) {
+      const lower = (res.letter || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.last) {
+      const lower = (res.last || '').toLowerCase()
+      if (lower) privateLetterSource[lower] = sourceId
+    }
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
+    if (res.overridePublicColor) {
+      const letter = (res.letterFromBuyer || res.letter || res.last)
+      if (letter) {
+        const lower = (letter || '').toLowerCase()
+        if (lower) privateLetterSource[`__override__${lower}`] = sourceId
       }
     }
   })
@@ -115,18 +144,26 @@ export default function PlayerCircle({
     // expanding by occurrence count in the owner's word.
     const arr = []
     const collectedElems = []
-    // Only process private power reveals that targeted this player. Using the
-    // previously computed `privatePowerRevealsList` prevents mixing reveals
-    // from other players into this player's revealedPositions.
-    privatePowerRevealsList.forEach(r => {
+    // Process private power reveals relevant to this player. We include both
+    // reveals that targeted this player and reveals that originated from this
+    // player (so the buyer can see letters they caused to be revealed from
+    // their own word). Only push letters that actually exist in the owner's word
+    // to avoid mixing letters across tiles.
+    const ownerLower = (ownerWord || '').toLowerCase()
+    const combinedReveals = [].concat(privatePowerRevealsList || [], privatePowerRevealsByPlayer || [])
+    combinedReveals.forEach(r => {
       const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
       const res = r.result || {}
-      const pushLetter = (s) => { if (s) collectedElems.push({ letter: (s||'').toString().toLowerCase(), ts }) }
-      if (res.letterFromTarget) pushLetter(res.letterFromTarget)
-      if (res.letterFromBuyer) pushLetter(res.letterFromBuyer)
-      if (res.letter) pushLetter(res.letter)
-      if (res.last) pushLetter(res.last)
-      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetter(ch))
+      const pushLetterIfOwnerHas = (s) => {
+        if (!s) return
+        const lower = (s||'').toString().toLowerCase()
+        if (ownerLower && ownerLower.indexOf(lower) !== -1) collectedElems.push({ letter: lower, ts })
+      }
+      pushLetterIfOwnerHas(res.letterFromTarget)
+      pushLetterIfOwnerHas(res.letterFromBuyer)
+      pushLetterIfOwnerHas(res.letter)
+      pushLetterIfOwnerHas(res.last)
+      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetterIfOwnerHas(ch))
     })
     // include privateHits entries (viewer-private hits on this player)
     let ph = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
