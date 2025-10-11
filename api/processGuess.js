@@ -140,6 +140,8 @@ module.exports = async (req, res) => {
                 award += extra
                 // consume the doubleDown entry after use
                 updates[`players/${from}/doubleDown`] = null
+                // subtract the original stake once (buyer pays the stake on resolution)
+                award = award - stake
               }
             }
             updates[`players/${from}/wordmoney`] = prevHang + award
@@ -150,7 +152,8 @@ module.exports = async (req, res) => {
             try {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' and earned +$${award}` } }
+              // message reflects netted amount (award already reduced by original stake if applicable)
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' and netted +$${award}` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
             } catch (e) {}
 
