@@ -48,66 +48,71 @@ export default function PlayerCircle({
   Object.values(privatePowerRevealsObj || {}).forEach(bucket => {
     Object.values(bucket || {}).forEach(r => { if (r) _allPrivateReveals.push(r) })
   })
-  const privatePowerRevealsList = _allPrivateReveals.filter(r => r && (r.to === player.id))
+  const privatePowerRevealsList = Array.isArray(_allPrivateReveals) ? _allPrivateReveals.filter(r => r && (r.to === player.id)) : []
 
-  // Also collect reveals that were originated by this player (r.from === player.id).
-  // These are important for showing the buyer's own private reveals on their own tile
-  // even when the reveal record's `to` was the other participant.
-  const privatePowerRevealsByPlayer = _allPrivateReveals.filter(r => r && (r.from === player.id))
+  // Also collect reveals that were originated by the viewer (r.from === viewerId).
+  // These are important so the viewer (buyer) can see letters they caused to be revealed
+  // on other players' tiles. Use viewerId rather than player.id to avoid mis-attributing
+  // buyer-origin reveals to the tile owner.
+  const privatePowerRevealsByPlayer = Array.isArray(_allPrivateReveals) ? _allPrivateReveals.filter(r => r && (viewerId && r.from === viewerId)) : []
 
   const privateLetterSource = {}
-  // Map letters revealed for this player's word (records where r.to === player.id)
-  privatePowerRevealsList.forEach(r => {
+  // Build privateLetterSource with clear precedence: reveals that targeted this player
+  // take priority. Then include reveals that originated from this player but do not
+  // overwrite existing mappings. Also preserve overridePublicColor entries.
+  const assignIfMissing = (key, src) => { if (!privateLetterSource[key]) privateLetterSource[key] = src }
+
+  // process targeted reveals first (highest precedence)
+  const targetedReveals = Array.isArray(privatePowerRevealsList) ? privatePowerRevealsList : (privatePowerRevealsList ? Object.values(privatePowerRevealsList) : [])
+  targetedReveals.forEach(r => {
     if (!r || !r.result) return
     const res = r.result
     const sourceId = r.from
-    if (res.letterFromTarget) {
-      const lower = (res.letterFromTarget || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
+    const push = (s) => {
+      if (!s) return
+      const lower = (s||'').toLowerCase()
+      if (lower) assignIfMissing(lower, sourceId)
     }
-    if (res.letter) {
-      const lower = (res.letter || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
-    }
-    if (res.last) {
-      const lower = (res.last || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
-    }
-    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
+    push(res.letterFromTarget)
+  // also map letterFromBuyer when this reveal targeted this player so that
+  // buyer-side private reveals (letters revealed on the buyer's own word)
+  // are attributed to the revealer (r.from) and therefore render in their color
+  // on the buyer's screen when not publicly revealed.
+  push(res.letterFromBuyer)
+    push(res.letter)
+    push(res.last)
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) assignIfMissing((ch||'').toLowerCase(), sourceId) })
     if (res.overridePublicColor) {
       const letter = (res.letterFromTarget || res.letter || res.last)
       if (letter) {
         const lower = (letter || '').toLowerCase()
-        if (lower) privateLetterSource[`__override__${lower}`] = sourceId
+        if (lower) assignIfMissing(`__override__${lower}`, sourceId)
       }
     }
   })
 
-  // Map letters revealed that originated from this player (r.from === player.id).
-  // These entries allow the buyer to see letters they caused to be revealed from their
-  // own word even when the reveal record targeted another player.
-  privatePowerRevealsByPlayer.forEach(r => {
+  // now process reveals that originated from this player but only set keys that
+  // are not already set by targeted reveals (we don't want to overwrite the actor
+  // who actually revealed letters on this tile).
+  const byPlayerReveals = Array.isArray(privatePowerRevealsByPlayer) ? privatePowerRevealsByPlayer : (privatePowerRevealsByPlayer ? Object.values(privatePowerRevealsByPlayer) : [])
+  byPlayerReveals.forEach(r => {
     if (!r || !r.result) return
     const res = r.result
     const sourceId = r.from
-    if (res.letterFromBuyer) {
-      const lower = (res.letterFromBuyer || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
+    const push = (s) => {
+      if (!s) return
+      const lower = (s||'').toLowerCase()
+      if (lower) assignIfMissing(lower, sourceId)
     }
-    if (res.letter) {
-      const lower = (res.letter || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
-    }
-    if (res.last) {
-      const lower = (res.last || '').toLowerCase()
-      if (lower) privateLetterSource[lower] = sourceId
-    }
-    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) privateLetterSource[(ch||'').toLowerCase()] = sourceId })
+    push(res.letterFromBuyer)
+    push(res.letter)
+    push(res.last)
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) assignIfMissing((ch||'').toLowerCase(), sourceId) })
     if (res.overridePublicColor) {
       const letter = (res.letterFromBuyer || res.letter || res.last)
       if (letter) {
         const lower = (letter || '').toLowerCase()
-        if (lower) privateLetterSource[`__override__${lower}`] = sourceId
+        if (lower) assignIfMissing(`__override__${lower}`, sourceId)
       }
     }
   })
@@ -142,33 +147,42 @@ export default function PlayerCircle({
   if (!isSelf && !revealPreserveOrder) {
     // Show letters in guessed order (derived from private reveals and privateHits),
     // expanding by occurrence count in the owner's word.
-    const arr = []
-    const collectedElems = []
+  const arr = []
+  const collectedElems = []
     // Process private power reveals relevant to this player. We include both
     // reveals that targeted this player and reveals that originated from this
     // player (so the buyer can see letters they caused to be revealed from
     // their own word). Only push letters that actually exist in the owner's word
     // to avoid mixing letters across tiles.
     const ownerLower = (ownerWord || '').toLowerCase()
-    const combinedReveals = [].concat(privatePowerRevealsList || [], privatePowerRevealsByPlayer || [])
+    // Collect reveal events (with timestamp and optional count and sourceId)
+  const combinedReveals = [].concat(targetedReveals || [], byPlayerReveals || [])
     combinedReveals.forEach(r => {
       const ts = Number(r.ts || (r.result && r.result.ts) || Date.now()) || Date.now()
       const res = r.result || {}
-      const pushLetterIfOwnerHas = (s) => {
+      const src = r.from
+      // pushIfOwnerHas optionally accepts explicitSource to override src for
+      // special cases (e.g. letterFromBuyer on the buyer's own view should be
+      // colored as the tile owner). explicitSource === null/undefined uses src.
+      const pushIfOwnerHas = (s, count, explicitSource) => {
         if (!s) return
         const lower = (s||'').toString().toLowerCase()
-        if (ownerLower && ownerLower.indexOf(lower) !== -1) collectedElems.push({ letter: lower, ts })
+        if (ownerLower && ownerLower.indexOf(lower) !== -1) collectedElems.push({ letter: lower, ts, count: Number(count||1), sourceId: (typeof explicitSource !== 'undefined' ? explicitSource : src) })
       }
-      pushLetterIfOwnerHas(res.letterFromTarget)
-      pushLetterIfOwnerHas(res.letterFromBuyer)
-      pushLetterIfOwnerHas(res.letter)
-      pushLetterIfOwnerHas(res.last)
-      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushLetterIfOwnerHas(ch))
+      pushIfOwnerHas(res.letterFromTarget, res.count || res.occurrences || res.hits)
+      // If this reveal is a side-effect (letterFromBuyer) and the viewer is the buyer
+      // (viewerId === src), prefer coloring it with the tile owner's color (player.id)
+      // so the buyer sees the target's color on their own screen.
+      const buyerSideEffectSource = (viewerId && src && viewerId === src) ? player.id : undefined
+      pushIfOwnerHas(res.letterFromBuyer, res.count || res.occurrences || res.hits, buyerSideEffectSource)
+      pushIfOwnerHas(res.letter, res.count || res.occurrences || res.hits)
+      pushIfOwnerHas(res.last, res.count || res.occurrences || res.hits)
+      if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => pushIfOwnerHas(ch, 1))
     })
     // include privateHits entries (viewer-private hits on this player)
     let ph = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
     ph = Array.isArray(ph) ? ph : []
-    ph.forEach(h => { if (h && h.letter) collectedElems.push({ letter: (h.letter||'').toString().toLowerCase(), ts: Number(h.ts || Date.now()) || Date.now(), count: Number(h.count||1) }) })
+    ph.forEach(h => { if (h && h.letter) collectedElems.push({ letter: (h.letter||'').toString().toLowerCase(), ts: Number(h.ts || Date.now()) || Date.now(), count: Number(h.count||1), sourceId: h.by || undefined }) })
 
     // ensure collectedElems is an array before operating on it
     // sort by ts
@@ -177,26 +191,86 @@ export default function PlayerCircle({
     try {
       // Force a real array copy (break proxy links)
       const safeCollected = Array.from(collectedElems)
+      // track how many of each letter we've already added so we don't exceed
+      // the actual occurrences in the owner's word
+      const addedCounts = {}
       safeCollected.forEach(c => {
         const letter = (c.letter || '').toLowerCase()
         if (!letter) return
-        const occurrences = (wordLower.split('').filter(ch => ch === letter).length) || 1
-        for (let i = 0; i < occurrences; i++) arr.push(letter)
+        const occurrencesInWord = (wordLower.split('').filter(ch => ch === letter).length) || 1
+        const already = Number(addedCounts[letter] || 0)
+        const want = Number(c.count || 1)
+        const canAdd = Math.max(0, Math.min(want, occurrencesInWord - already))
+        for (let i = 0; i < canAdd; i++) arr.push({ letter, sourceId: c.sourceId })
+        if (canAdd > 0) addedCounts[letter] = already + canAdd
       })
     } catch (err) {
       console.error("🔥 collectedElems broke here:", collectedElems, err)
     }
-    // append any publicly revealed letters not already present
-    (revealed || []).forEach(l => {
+    // append any publicly revealed letters not already present (cap to occurrences)
+    // First compute presentCounts from a defensive copy of `arr` (so we know how many
+    // letters are already present). Then append missing public reveals to `arr`.
+    const presentCounts = {}
+    let snapshot = []
+    try {
+      snapshot = Array.isArray(arr) ? arr.slice() : (arr && typeof arr[Symbol.iterator] === 'function' ? Array.from(arr) : (arr ? [arr] : []))
+    } catch (e) {
+      snapshot = Array.isArray(arr) ? arr.slice() : (arr ? [arr] : [])
+    }
+    snapshot.forEach(x => { const L = x.letter || x; presentCounts[L] = (presentCounts[L] || 0) + 1 })
+
+    ;(revealed || []).forEach(l => {
       const lower = (l||'').toLowerCase()
       const countInWord = (ownerWord || '').split('').filter(ch => ch.toLowerCase() === lower).length || 1
-      const present = arr.filter(x => x === lower).length
-      for (let i = 0; i < countInWord - present; i++) arr.push(lower)
+      const present = Number(presentCounts[lower] || 0)
+      const need = Math.max(0, countInWord - present)
+      // For public reveals we must not accidentally use buyer/other private source mappings.
+      // Only apply a sourceId when there's an explicit override mapping for this letter.
+      const overrideKey = `__override__${lower}`
+      const overrideSrc = privateLetterSource[overrideKey]
+      for (let i = 0; i < need; i++) {
+        if (overrideSrc) arr.push({ letter: lower, sourceId: overrideSrc })
+        else arr.push({ letter: lower })
+      }
+      if (need > 0) presentCounts[lower] = present + need
     })
-    // render letters with any private color if available
+    // render letters with any private color if available. Each arr item may be
+    // an object { letter, sourceId } (from reveals) or a string for older flows.
     const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
-    revealedPositions = arr.map((letter, idx) => {
-      const sourceId = privateLetterSource[letter]
+    // Make a final defensive plain-array copy for rendering
+    let safeArrFinal = []
+    try {
+      safeArrFinal = Array.isArray(arr) ? arr.slice() : (arr && typeof arr[Symbol.iterator] === 'function' ? Array.from(arr) : (arr ? [arr] : []))
+    } catch (e) {
+      safeArrFinal = Array.isArray(arr) ? arr.slice() : (arr ? [arr] : [])
+    }
+    // Debugging aid: enable by setting window.__GH_DEBUG_REVEALS = true in the browser console.
+    try {
+      if (typeof window !== 'undefined' && window.__GH_DEBUG_REVEALS) {
+        console.debug('gh:PlayerCircle reveals debug', {
+          playerId: player.id,
+          viewerId,
+          targetedReveals: targetedReveals && targetedReveals.length ? targetedReveals.map(r => ({ from: r.from, to: r.to, powerId: r.powerId, result: r.result })) : targetedReveals,
+          byPlayerReveals: byPlayerReveals && byPlayerReveals.length ? byPlayerReveals.map(r => ({ from: r.from, to: r.to, powerId: r.powerId, result: r.result })) : byPlayerReveals,
+          collectedElems,
+          snapshot,
+          safeArrFinal,
+          privateLetterSource,
+          revealedSet: Array.from(revealedSet || [])
+        })
+      }
+    } catch (e) {}
+    revealedPositions = safeArrFinal.map((item, idx) => {
+      const letter = (typeof item === 'string') ? item : (item.letter || '')
+      const lower = (letter || '').toString().toLowerCase()
+      const instanceSource = (typeof item === 'string') ? undefined : item.sourceId
+      const overrideSource = privateLetterSource[`__override__${lower}`]
+      // Publicly revealed letters should render red unless an override source exists
+      if (revealedSet.has(lower)) {
+        if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[overrideSource] }}>{letter}</span>
+        return <span key={`g_${idx}`} style={{ marginRight: 6, color: 'red', fontWeight: 700 }}>{letter}</span>
+      }
+      const sourceId = instanceSource || privateLetterSource[lower]
       if (sourceId && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
       return <span key={`g_${idx}`} style={{ marginRight: 6 }}>{letter}</span>
     })
