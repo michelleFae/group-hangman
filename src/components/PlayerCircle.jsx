@@ -557,13 +557,13 @@ export default function PlayerCircle({
       {expanded && (
         <div style={{ marginTop: 10 }}>
           {privateWrong.length > 0 && (
-            <div style={{ marginTop: 8, background: '#ffe6e6', padding: 6, borderRadius: 4, color: '#900' }}>
+            <div style={{ marginTop: 8, background: '#f9b9b9ff', padding: 6, borderRadius: 4, color: '#900' }}>
               <strong>Your wrong letters:</strong> {privateWrong.join(', ')}
             </div>
           )}
 
           {(player._viewer && player._viewer.privateWrongWords && player._viewer.privateWrongWords[player.id] && player._viewer.privateWrongWords[player.id].length > 0) && (
-            <div style={{ marginTop: 8, background: '#fff3e6', padding: 6, borderRadius: 4 }}>
+            <div style={{ marginTop: 8, background: '#fc816eff', padding: 6, borderRadius: 4 }}>
               <strong>Your wrong words:</strong>
               <div style={{ marginTop: 6 }}>{(player._viewer.privateWrongWords[player.id] || []).join(', ')}</div>
             </div>
