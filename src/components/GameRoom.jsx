@@ -720,19 +720,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // tracker for one_random award so we can write a friendly message into the
   // buyer/target privatePowerReveals after we compute awards below
   let oneRandomAward = 0
-      // compute some client-side results for immediate write when possible
-      const targetNode = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-      const targetWord = targetNode.word || ''
+  // compute some client-side results for immediate write when possible
+  const targetNode = (state?.players || []).find(p => p.id === powerUpTarget) || {}
+  const targetWord = targetNode.word || ''
+  
+  const buyerName = playerIdToName[myId] || myId
+  const targetName = playerIdToName[powerUpTarget] || powerUpTarget
+  const buyerBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+  const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+  
       if (powerId === 'letter_scope') {
         const letters = (targetWord || '').length
         resultPayload = { letters, message: `Letter Scope: there are ${letters} letter${letters === 1 ? '' : 's'} in the word` }
         
-        const buyerName = playerIdToName[myId] || myId
-        const targetName = playerIdToName[powerUpTarget] || powerUpTarget
         const buyerMsg = `Letter Scope: Including duplicates, there are ${letters} letter${letters === 1 ? '' : 's'} in the word`
         const targetMsg = `${buyerName} used Letter Scope on you`
-        const buyerBase = { powerId: powerId, ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
-        const targetBase = { powerId: powerId, ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
         const buyerData = { ...buyerBase, result: { letters, message: buyerMsg } }
         const targetData = { ...targetBase, result: { letters, message: targetMsg } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
@@ -742,10 +744,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         resultPayload = { last }
       } else if (powerId === 'one_random') {
         const letters = (targetWord || '').split('')
-        if (letters.length > 0) {
-          const ch = letters[Math.floor(Math.random() * letters.length)]
-          resultPayload = { letter: ch }
-        } else resultPayload = { letter: null }
+        // letters.length > 0 guaranteed since minWordSize >= 2
+        const ch = letters[Math.floor(Math.random() * letters.length)]
+        resultPayload = { letter: ch }
+        const buyerMsg = `One Random Letter: ${ch} in ${targetName}'s word`
+        const targetMsg = `${buyerName} used One Random Letter on you; they revealed ${ch}`
+        const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { letter: ch, message: targetMsg } }
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'letter_peek') {
         const pos = Number(opts.pos) || 0
         // human-readable short messages; explicitly report no letter at position when invalid
@@ -903,13 +910,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // recognizes the entry as a power-up result (same pattern as letter_for_letter).
     const vowels = (targetWord.match(/[aeiou]/ig) || []).length
     resultPayload = { vowels }
-    // const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
-    const buyerName = playerIdToName[myId] || myId
-    const targetName = playerIdToName[powerUpTarget] || powerUpTarget
     const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word`
     const targetMsg = `${buyerName} used Vowel Vision on you; they saw ${vowels} vowel${vowels === 1 ? '' : 's'}`
-    const buyerBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
-    const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
     const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
     const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
     updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
