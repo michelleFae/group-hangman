@@ -372,6 +372,8 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({ ok: true })
   }
+    // If we get here the guess was processed and the game continues — return success
+    return res.status(200).json({ ok: true })
   } catch (err) {
     console.error('processGuess error', err)
     return res.status(500).json({ error: err.message })
