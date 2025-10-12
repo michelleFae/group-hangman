@@ -741,8 +741,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
-        resultPayload = { last }
-        
+        // Intentionally do NOT set resultPayload.last here. We want Zeta Drop to be
+        // informational only: buyer sees the last letter via privatePowerReveals but
+        // the letter should NOT be added to the target's revealed set or marked
+        // as a no-score reveal. The buyer must still guess the letter on a later
+        // turn to earn points.
 
         const buyerMsg = `Zeta Drop: last letter is ${last}`
         const targetMsg = `${buyerName} used Zeta Drop on you to find out the last letter is ${last}`
@@ -798,17 +801,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const q = encodeURIComponent(targetWord || '')
           const url = `https://api.datamuse.com/words?rel_trg=${q}&max=6`
+          let buyerMsg = `Related Word: no result found`
+          let targetMsg = `${buyerName} used Related Word on you; they revealed no related word`
           const res = await fetch(url)
           if (res && res.ok) {
             const list = await res.json()
             const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
             const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
-            if (candidate) resultPayload = { message: `Related word: '${candidate}'` }
-            else resultPayload = { message: 'Related word: no result' }
-          } else resultPayload = { message: 'Related word: no result' }
+            
+            if (candidate) {
+              buyerMsg = `Related Word: '${candidate}'`
+              targetMsg = `${buyerName} used Related Word on you; they revealed '${candidate}' as a related word`
+            }
+          }
         } catch (e) {
-          resultPayload = { message: 'Related word: no result' }
+          // resultPayload = { message: 'Related word: no result' }
         }
+
+        resultPayload = { message: buyerMsg }
+
+
+        const buyerData = { ...buyerBase, result: { message: buyerMsg } }
+        const targetData = { ...targetBase, result: { message: targetMsg } }
+
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
         const letters = (targetWord || '').split('')
