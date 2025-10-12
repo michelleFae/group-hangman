@@ -887,7 +887,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
         // (buyerNode.guessedBy keys) to simulate those same guesses against the target's word.
-        try {
+
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const guessedBy = buyerNode.guessedBy || {}
           // keys in guessedBy map are letters (or '__word'); ignore '__word'
@@ -901,9 +901,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             if (count > 0) found.push({ letter: l, count })
           })
           resultPayload = { found, attempted: Array.from(attemptedSet) }
-        } catch (e) {
-          resultPayload = { found: [], attempted: [] }
-        }
+          
+        
       } else if (powerId === 'vowel_vision') {
     // Include a human-readable message for buyer and target, visible only to them.
     // Explicitly include powerId, from and by fields so PlayerCircle's visiblePrivatePowerReveals
