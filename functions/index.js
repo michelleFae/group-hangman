@@ -157,7 +157,7 @@ exports.processGuess = functions.database
             // write a private power-up result entry for the guesser so only they see the double-down result
             try {
               const ddKey = `double_down_${Date.now()}`
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: award, message: `Double Down: guessed '${letter}' and netted +$${award}` } }
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake)).` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
             } catch (e) {}
 

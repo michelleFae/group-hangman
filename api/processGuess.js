@@ -53,6 +53,8 @@ module.exports = async (req, res) => {
   const from = decoded.uid
 
   try {
+    // Track whether this guess resulted in a correct reveal/elimination for the guesser
+    let guessWasCorrect = false
     const roomRef = db.ref(`/rooms/${roomId}`)
     const [roomSnap, playersSnap] = await Promise.all([roomRef.once('value'), roomRef.child('players').once('value')])
     const room = roomSnap.val() || {}
@@ -93,7 +95,7 @@ module.exports = async (req, res) => {
         const existing = prevRevealed.filter(x => x === letter).length
         const toAdd = Math.max(0, count - existing)
 
-        if (toAdd > 0) {
+  if (toAdd > 0) {
           // reveal newly found occurrences only and award for those
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
@@ -125,7 +127,7 @@ module.exports = async (req, res) => {
               noScore = true
             }
           } catch (e) {}
-          if (!noScore) {
+            if (!noScore) {
             // Base award for correct letter(s)
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
             let award = (2 * toAdd)
@@ -147,7 +149,9 @@ module.exports = async (req, res) => {
               }
               }
             }
-            updates[`players/${from}/wordmoney`] = prevHang + award
+              updates[`players/${from}/wordmoney`] = prevHang + award
+              // mark that this guess produced a correct reveal and award
+              guessWasCorrect = true
             // record a visible recent gain so clients show the correct wordmoney delta
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
@@ -156,7 +160,7 @@ module.exports = async (req, res) => {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' and netted +$${award}` } }
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake))` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
             } catch (e) {}
 
@@ -248,6 +252,8 @@ module.exports = async (req, res) => {
         updates[`players/${targetId}/revealed`] = uniqueLetters
         const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
         updates[`players/${from}/wordmoney`] = prevHang + 5
+        // mark that a correct word guess happened
+        guessWasCorrect = true
   updates[`players/${targetId}/eliminated`] = true
   // record elimination timestamp for client ordering
   updates[`players/${targetId}/eliminatedAt`] = Date.now()
@@ -307,6 +313,41 @@ module.exports = async (req, res) => {
     }
 
     if (Object.keys(updates).length > 0) await roomRef.update(updates)
+
+    // Fallback safety: if the guess ultimately was wrong but an active doubleDown remains on the
+    // guesser's record (for any reason the earlier branches missed clearing it), consume it now
+    // and deduct the original stake. This ensures the DD badge and stake don't persist incorrectly.
+    try {
+      const ddStillActive = guesser && guesser.doubleDown && guesser.doubleDown.active
+      if (!guessWasCorrect && ddStillActive) {
+        const stake = Number((guesser.doubleDown && guesser.doubleDown.stake) || 0)
+        if (stake > 0) {
+          // Only apply if we haven't already scheduled a deduction for this guesser
+          const deductionKey = `players/${from}/wordmoney`
+          const ddKeyBase = `players/${from}/privatePowerReveals/${from}`
+          if (!Object.prototype.hasOwnProperty.call(updates, deductionKey)) {
+            const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+            const fix = {}
+            fix[deductionKey] = Math.max(0, prevGHang - stake)
+            const lossKey = `double_down_loss_fallback_${Date.now()}`
+            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
+            fix[`${ddKeyBase}/${lossKey}`] = ddPayload
+            fix[`players/${from}/doubleDown`] = null
+            await roomRef.update(fix)
+          } else if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {
+            // If we already adjusted wordmoney but didn't clear doubleDown, just clear it
+            await roomRef.update({ [`players/${from}/doubleDown`]: null })
+          }
+        } else {
+          // If stake is zero, just clear the flag to remove the badge
+          if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {
+            await roomRef.update({ [`players/${from}/doubleDown`]: null })
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('doubleDown fallback cleanup failed', e && (e.stack || e.message || String(e)))
+    }
 
     // Check if only one player remains uneliminated
     const freshPlayersSnap = await roomRef.child('players').once('value')

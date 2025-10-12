@@ -19,6 +19,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [revealShowBlanks, setRevealShowBlanks] = useState(false)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
+  const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
   const [startingWordmoney, setStartingWordmoney] = useState(2)
@@ -63,6 +64,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     setWinnerByWordmoney(!!state?.winnerByWordmoney);
     setStarterEnabled(!!state?.starterBonus?.enabled);
     setPowerUpsEnabled(!!state?.powerUpsEnabled);
+    // showWordsOnEnd controls whether players' secret words are displayed on final standings
+    if (typeof state?.showWordsOnEnd === 'boolean') setShowWordsOnEnd(!!state.showWordsOnEnd)
 
     // ✅ update min word size only if that specific field changes
     const syncedMin = typeof state?.minWordSize === 'number'
@@ -571,6 +574,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
               <div style={{ fontSize: 12, color: '#B4A3A3' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
+            </label>
+            <label htmlFor="showWordsOnEnd" title="When enabled, each player's submitted secret word is shown on the final standings screen">
+              <input id="showWordsOnEnd" name="showWordsOnEnd" type="checkbox" checked={showWordsOnEnd} onChange={e => { const nv = e.target.checked; setShowWordsOnEnd(nv); updateRoomSettings({ showWordsOnEnd: !!nv }) }} /> Show words on end screen
             </label>
                 <label htmlFor="revealPreserveOrder" title="When on, revealed letters are shown in their positions within the word (helps when combined with blanks).">
                   <input id="revealPreserveOrder" name="revealPreserveOrder" type="checkbox" checked={revealPreserveOrder} onChange={e => { const nv = e.target.checked; setRevealPreserveOrder(nv); updateRoomSettings({ revealPreserveOrder: !!nv }) }} /> Preserve reveal order
@@ -2159,6 +2165,9 @@ try {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                         <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                        {showWordsOnEnd && p.word && (
+                          <span style={{ marginLeft: 8, background: '#eef5ff', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                        )}
                       </div>
                       <div style={{ fontWeight: 800 }}>
                         <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
