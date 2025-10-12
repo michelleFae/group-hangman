@@ -887,7 +887,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
         // (buyerNode.guessedBy keys) to simulate those same guesses against the target's word.
-
+        try {
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const guessedBy = buyerNode.guessedBy || {}
           // keys in guessedBy map are letters (or '__word'); ignore '__word'
@@ -900,9 +900,89 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const count = letters.filter(ch => ch === l).length
             if (count > 0) found.push({ letter: l, count })
           })
-          resultPayload = { found, attempted: Array.from(attemptedSet) }
-          
-        
+
+          // Build human-friendly messages
+          const buyerMsg = (found && found.length > 0)
+            ? `Mind Leech: found ${found.map(f => `${f.letter} (${f.count})`).join(', ')} in ${targetName}'s word`
+            : `Mind Leech: no letters from your word matched ${targetName}'s word`
+          const targetMsg = (found && found.length > 0)
+            ? `${buyerName} used Mind Leech on you; they found ${found.map(f => `${f.letter} (${f.count})`).join(', ')}`
+            : `${buyerName} used Mind Leech on you; no letters matched`
+
+          // write privatePowerReveals entries for buyer and target so UI can show the results
+          const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const buyerData = { ...buyerBase, result: { found, attempted: Array.from(attemptedSet), message: buyerMsg } }
+          const targetData = { ...targetBase, result: { found, attempted: Array.from(attemptedSet), message: targetMsg } }
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+
+          // Award buyer points for any newly-revealed occurrences (2 per occurrence) that were not
+          // already publicly revealed or privately revealed to this buyer previously.
+          try {
+            const targetExisting = (targetNode && targetNode.revealed) ? targetNode.revealed : []
+            const targetExistingSet = new Set((targetExisting || []).map(x => (x || '').toLowerCase()))
+
+            // check buyer's previous private reveals sent to this target
+            const buyerPrivateBucket = (buyerNode.privatePowerReveals && buyerNode.privatePowerReveals[powerUpTarget]) ? Object.values(buyerNode.privatePowerReveals[powerUpTarget]) : []
+            const wasPrivatelyRevealed = (letterLower) => {
+              try {
+                for (const r of buyerPrivateBucket) {
+                  if (!r || !r.result) continue
+                  const res = r.result
+                  const check = (s) => (s || '').toString().toLowerCase() === letterLower
+                  if (res.letterFromTarget && check(res.letterFromTarget)) return true
+                  if (res.letterFromBuyer && check(res.letterFromBuyer)) return true
+                  if (res.letter && check(res.letter)) return true
+                  if (res.last && check(res.last)) return true
+                  if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(letterLower)) return true
+                  if (res.found && Array.isArray(res.found) && res.found.map(x => (x && x.letter || '').toString().toLowerCase()).includes(letterLower)) return true
+                }
+              } catch (e) {}
+              return false
+            }
+
+            let awardTotal = 0
+            const meNow = (state?.players || []).find(p => p.id === myId) || {}
+            const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
+            for (const f of (found || [])) {
+              try {
+                const letter = (f && f.letter) ? (f.letter || '').toString() : null
+                if (!letter) continue
+                const lower = letter.toLowerCase()
+                if (targetExistingSet.has(lower)) continue
+                if (wasPrivatelyRevealed(lower)) continue
+                const count = Number(f.count) || 0
+                if (count <= 0) continue
+                const add = 2 * count
+                awardTotal += add
+                // merge into privateHits for buyer
+                let mergedNow = false
+                for (let i = 0; i < prevHitsNow.length; i++) {
+                  const h = prevHitsNow[i]
+                  if (h && h.type === 'letter' && h.letter === lower) {
+                    prevHitsNow[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                    mergedNow = true
+                    break
+                  }
+                }
+                if (!mergedNow) prevHitsNow.push({ type: 'letter', letter: lower, count, ts: Date.now() })
+              } catch (e) {}
+            }
+
+            if (awardTotal > 0) {
+              const myHangCurrentNow = Number(meNow.wordmoney) || 0
+              const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrentNow - cost)
+              updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+              updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
+              updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
+            }
+          } catch (e) {}
+        } catch (e) {
+          // fall back to a simple message-only result if something went wrong
+          resultPayload = { found: [], attempted: [] }
+        }
+
       } else if (powerId === 'vowel_vision') {
     // Include a human-readable message for buyer and target, visible only to them.
     // Explicitly include powerId, from and by fields so PlayerCircle's visiblePrivatePowerReveals
