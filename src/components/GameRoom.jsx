@@ -742,6 +742,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
         resultPayload = { last }
+        
+
+        const buyerMsg = `Zeta Drop: last letter is ${last}`
+        const targetMsg = `${buyerName} used Zeta Drop on you to find out the last letter is ${last}`
+        // write privatePowerReveals entries for buyer and target so UI can show the results
+        const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+        const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+        const buyerData = { ...buyerBase, result: { last, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { last, message: targetMsg } }
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+
       } else if (powerId === 'one_random') {
         const letters = (targetWord || '').split('')
         // letters.length > 0 guaranteed since minWordSize >= 2
@@ -757,12 +769,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const pos = Number(opts.pos) || 0
         // human-readable short messages; explicitly report no letter at position when invalid
         if (!pos || pos < 1) {
+          const buyerMsg = `Letter peek: no letter at position ${opts.pos || pos}`
+          const targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${opts.pos || pos}`
           resultPayload = { message: `Letter peek: no letter at position ${opts.pos || pos}`, pos }
+
         } else {
           const letter = (targetWord && targetWord[pos-1]) ? targetWord[pos-1] : null
-          if (!letter) resultPayload = { message: `Letter peek: no letter at position ${pos}`, pos }
-          else resultPayload = { message: `Letter peek: '${letter}' at position ${pos}`, letter, pos }
+          if (!letter) {
+            resultPayload = { message: `Letter peek: no letter at position ${pos}`, pos }
+            const buyerMsg = `Letter peek: no letter at position ${pos}`
+            const targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${pos}`
+          }
+          else {
+            resultPayload = { message: `Letter peek: '${letter}' at position ${pos}`, letter, pos }
+            const buyerMsg = `Letter peek: '${letter}' at position ${pos}`
+            const targetMsg = `${buyerName} used Letter Peek on you; they revealed '${letter}' letter at position ${pos}`
+          
+          }
         }
+
+        const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { letter: ch, message: targetMsg } }
+
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'related_word') {
         // Related word: use Datamuse rel_trg (related target words) and return a short word word
         try {
@@ -887,7 +917,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
         // (buyerNode.guessedBy keys) to simulate those same guesses against the target's word.
-        try {
+        
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const guessedBy = buyerNode.guessedBy || {}
           // keys in guessedBy map are letters (or '__word'); ignore '__word'
@@ -978,10 +1008,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
             }
           } catch (e) {}
-        } catch (e) {
-          // fall back to a simple message-only result if something went wrong
-          resultPayload = { found: [], attempted: [] }
-        }
+       
 
       } else if (powerId === 'vowel_vision') {
     // Include a human-readable message for buyer and target, visible only to them.
@@ -1127,13 +1154,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
   // include both the human-friendly message for the buyer and the raw private letter reveal so PlayerCircle can color it
   const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
-  console.log("michelle buyerdata letter_for_letter", buyerData)
-  console.log("michelle myId, powerUpTarget, key", myId, powerUpTarget, key)
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
   // Immediately apply buyer award here to ensure their wordmoney reflects the +2 per newly revealed occurrence
-  try {
-    if (buyerAward && buyerAward > 0) {
+  if (buyerAward && buyerAward > 0) {
       const meNow = (state?.players || []).find(p => p.id === myId) || {}
       const myHangCurrentNow = Number(meNow.wordmoney) || 0
       const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrentNow - cost)
@@ -1161,7 +1185,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // mark that we've already applied the buyer award so generic reveal branches skip awarding again
       skipBuyerLetterAward = true
     }
-  } catch (e) {}
 
   // (buyer-side message will be written below together with the target-side payload so we avoid overwriting buyer's
   // view of the opponent's div. See consolidated write later that includes letterFromBuyer for coloring.)
@@ -1300,11 +1323,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
                 updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
                 // zeta_drop special-case: if only one occurrence, still mark no-score per rules
-                try {
-                  if (powerId === 'zeta_drop') {
+                if (powerId === 'zeta_drop') {
                     if (count === 1) updates[`players/${powerUpTarget}/noScoreReveals/${add}`] = true
-                  }
-                } catch (e) {}
+                }
                 // mark visible gain
                 updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
