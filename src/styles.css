@@ -397,6 +397,12 @@ button[disabled] {
   font-size: 14px;
 }
 
+/* Ensure power-up prices are dark inside modal/shop cards (override inherited light color) */
+.modal-dialog.card .powerup-price,
+.powerup-row .powerup-price {
+  color: #1f2937; /* dark slate for reliable contrast */
+}
+
 /* adjust cash piece animation for confetti-like drop */
 .victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 3.0s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
 @keyframes cash-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(100vh) rotate(540deg); opacity: 1 } }
