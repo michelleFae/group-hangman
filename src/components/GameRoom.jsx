@@ -632,6 +632,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
     { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
     { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.', powerupType: 'singleOpponentPowerup' },
+  { id: 'split_15', name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
     { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
     { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
@@ -840,18 +841,113 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // convert indices to the actual letters so payload exposes letters instead of numeric indices
         const revealedLetters = indices.map(i => (targetWord[i] || '').toLowerCase()).filter(Boolean)
         resultPayload = { roll, letters: revealedLetters }
+        // write explicit buyer/target privatePowerReveals so buyer always sees result
+        try {
+          const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const buyerMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `Dice of Doom: revealed ${revealedLetters.join(', ')}` : `Dice of Doom: no letters could be revealed`
+          const targetMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `${buyerName} used Dice of Doom on you; they revealed ${revealedLetters.join(', ')}` : `${buyerName} used Dice of Doom on you; no letters were revealed`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+        } catch (e) {}
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
         // also reveal all letters publicly (but shuffled order is kept in private payload)
         const existingAll = targetNode.revealed || []
         const allLetters = Array.from(new Set(((targetWord || '').toLowerCase().split('').filter(Boolean))))
         updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existingAll || []), ...allLetters]))
+        // buyer/target private messages for all_letter_reveal
+        try {
+          const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const buyerMsgLocal = `All Letters: revealed all letters from ${targetName}'s word`
+          const targetMsgLocal = `${buyerName} revealed all letters of your word publicly`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+        } catch (e) {}
+        } else if (powerId === 'split_15') {
+          // If the target word has 15+ letters, reveal the first half publicly and
+          // award the buyer for any newly-unrevealed occurrences in that half.
+          try {
+            const w = (targetWord || '')
+            if (w && w.length >= 15) {
+              const half = Math.floor(w.length / 2)
+              const firstHalf = w.slice(0, half).toLowerCase().split('').filter(Boolean)
+              // prepare resultPayload exposing the letters (unique)
+              const letters = Array.from(new Set(firstHalf))
+              resultPayload = { letters }
+
+              // write buyer/target privatePowerReveals
+              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const buyerMsgLocal = `Split 15: revealed first ${half} letters of ${targetName}'s word`
+              const targetMsgLocal = `${buyerName} used Split 15 on you; the first ${half} letters were revealed publicly`
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letters, message: buyerMsgLocal } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letters, message: targetMsgLocal } }
+
+              // add letters to revealed set (preserve any existing revealed letters)
+              const existing = targetNode.revealed || []
+              const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
+              const toAdd = letters.map(ch => (ch || '').toLowerCase()).filter(Boolean)
+              const newRevealed = Array.from(new Set([...(existing || []), ...toAdd]))
+              updates[`players/${powerUpTarget}/revealed`] = newRevealed
+
+              // Award buyer for newly revealed occurrences (2 per occurrence)
+              try {
+                const meNow = (state?.players || []).find(p => p.id === myId) || {}
+                const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost
+                let awardTotal = 0
+                const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
+                toAdd.forEach(letter => {
+                  try {
+                    if (!existingSet.has(letter)) {
+                      const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === letter).length
+                      if (count > 0) {
+                        awardTotal += 2 * count
+                        // merge into privateHits
+                        let merged = false
+                        for (let i = 0; i < prevHitsNow.length; i++) {
+                          const h = prevHitsNow[i]
+                          if (h && h.type === 'letter' && h.letter === letter) {
+                            prevHitsNow[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                            merged = true
+                            break
+                          }
+                        }
+                        if (!merged) prevHitsNow.push({ type: 'letter', letter, count, ts: Date.now() })
+                      }
+                    }
+                  } catch (e) {}
+                })
+                if (awardTotal > 0) {
+                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+                  updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
+                  updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
+                }
+              } catch (e) {}
+            } else {
+              // word too short: write buyer/target messages indicating nothing happened
+              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Split 15: target word is shorter than 15 letters; no effect` } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Split 15 on you; word is too short` } }
+            }
+          } catch (e) {}
       } else if (powerId === 'full_reveal') {
         resultPayload = { full: targetWord }
         // reveal whole word publicly
         const existingFull = targetNode.revealed || []
         const allLettersFull = Array.from(new Set(((targetWord || '').toLowerCase().split('').filter(Boolean))))
         updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existingFull || []), ...allLettersFull]))
+        // buyer/target private messages for full_reveal
+        try {
+          const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const buyerMsgLocal = `Full Reveal: revealed ${targetName}'s word`
+          const targetMsgLocal = `${buyerName} used Full Reveal on you; your word was revealed publicly`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+        } catch (e) {}
       } else if (powerId === 'sound_check' || powerId === 'what_do_you_mean') {
         // sound_check: return exactly one rhyming word (Datamuse rel_rhy) that isn't the exact target
         // what_do_you_mean: return similar-meaning suggestions (ml) as before
@@ -931,6 +1027,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } catch (e) {
           resultPayload = { suggestions: [] }
         }
+        // Write buyer/target messages for sound_check / definition lookup so buyer sees a friendly result
+        try {
+          const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          const buyerMsgLocal = (powerId === 'sound_check')
+            ? `Sound Check: suggestions ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).join(', ') || 'none'}`
+            : `Definition: ${((resultPayload && resultPayload.message) || "I don't know the definition.")}`
+          const targetMsgLocal = (powerId === 'sound_check')
+            ? `${buyerName} used Sound Check on you` : `${buyerName} used What Do You Mean on you`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+        } catch (e) {}
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
         // (buyerNode.guessedBy keys) to simulate those same guesses against the target's word.
@@ -1257,6 +1365,104 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = data
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = data
       }
+
+      // Ensure buyer/target privatePowerReveals entries exist for this purchase so the
+      // "Power-up results" UI always updates. Some branches write explicit buyer/target
+      // entries (e.g. vowel_vision, letter_for_letter); for branches that didn't, write
+      // a generic entry here without overwriting any explicit payloads.
+      try {
+        const buyerKey = `players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`
+        const targetKey = `players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`
+        if (!updates[buyerKey]) {
+          updates[buyerKey] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: (resultPayload || {}) }
+        }
+        if (!updates[targetKey]) {
+          // For the target's view prefer a short message if resultPayload is complex
+          const targetResult = (resultPayload && typeof resultPayload === 'object') ? { ...(resultPayload || {}), message: (resultPayload && resultPayload.message) ? resultPayload.message : `${playerIdToName[myId] || myId} used ${powerId}` } : { message: (resultPayload || '') }
+          updates[targetKey] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: targetResult }
+        }
+      } catch (e) {}
+
+      // Additional explicit per-power handling for some self power-ups and effects
+      try {
+        if (powerId === 'crowd_hint') {
+          // Reveal one random letter from everyone's word, mark as no-score, and notify buyer
+          try {
+            const picks = {}
+            ;(state?.players || []).forEach(pp => {
+              try {
+                const w = (pp && pp.word) ? pp.word.toLowerCase().split('') : []
+                if (w && w.length > 0) {
+                  const ch = w[Math.floor(Math.random() * w.length)]
+                  if (ch) {
+                    const existing = pp.revealed || []
+                    updates[`players/${pp.id}/revealed`] = Array.from(new Set([...(existing || []), ch]))
+                    updates[`players/${pp.id}/noScoreReveals/${ch}`] = true
+                    picks[pp.id] = picks[pp.id] || []
+                    picks[pp.id].push(ch)
+                  }
+                }
+              } catch (e) {}
+            })
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const summary = Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].join(', ')}`).join('; ')
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Crowd Hint: revealed ${summary || 'no letters'}`, picks } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Crowd Hint` } }
+          } catch (e) {}
+        }
+
+        if (powerId === 'longest_word_bonus') {
+          try {
+            const playersArr = (state?.players || [])
+            let winner = null
+            let best = -1
+            playersArr.forEach(pp => { try { const l = (pp.word || '').toString().length || 0; if (l > best) { best = l; winner = pp.id } } catch (e) {} })
+            const amount = 10
+            if (winner) {
+              const prev = (state?.players || []).find(p => p.id === winner) || {}
+              const prevHang = Number(prev.wordmoney) || 0
+              const baseNow = (typeof updates[`players/${winner}/wordmoney`] !== 'undefined') ? Number(updates[`players/${winner}/wordmoney`]) : prevHang
+              updates[`players/${winner}/wordmoney`] = Math.max(0, Number(baseNow) + amount)
+              updates[`players/${winner}/lastGain`] = { amount, by: myId, reason: powerId, ts: Date.now() }
+            }
+            updates[`usedLongestWordBonus/${myId}`] = true
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}` } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { winner, amount, message: `${buyerName} used Longest Word Bonus` } }
+          } catch (e) {}
+        }
+
+        if (powerId === 'word_freeze') {
+          try {
+            const expires = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
+            updates[`players/${powerUpTarget}/frozen`] = true
+            updates[`players/${powerUpTarget}/frozenUntilTurnIndex`] = expires
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Word Freeze: ${targetName} is frozen for one round` } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Word Freeze on you` } }
+          } catch (e) {}
+        }
+
+        if (powerId === 'hang_shield') {
+          try {
+            updates[`players/${myId}/privatePowerUps/hang_shield`] = { active: true, ts: Date.now() }
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Hang Shield: active — blocks the next attack against you` } }
+          } catch (e) {}
+        }
+
+        if (powerId === 'price_surge') {
+          try {
+            const expiresAt = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
+            updates[`priceSurge`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 for the next round` } }
+          } catch (e) {}
+        }
+      } catch (e) {}
 
       // For some reveal types we should also update the target's revealed array so letters are visible to both
       if (resultPayload && resultPayload.letters && Array.isArray(resultPayload.letters)) {
