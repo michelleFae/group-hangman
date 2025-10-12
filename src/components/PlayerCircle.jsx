@@ -619,7 +619,9 @@ export default function PlayerCircle({
                   const actorIsViewer = viewerId && actorId && viewerId === actorId
                   return (
                     <li key={idx} style={{ marginTop: 6 }}>
-                      {res && res.message ? (
+                      {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
+                        <div>{`Letter Scope: there are ${Number(res.letters)} letter${Number(res.letters) === 1 ? '' : 's'} in the word`}</div>
+                      ) : res && res.message ? (
                         // Special-case: when the viewer is the actor (buyer) and the power-up is vowel_vision,
                         // render a concise, target-local message that shows the vowel count (including duplicates).
                         // This ensures the buyer sees "Vowel Vision: There are N vowels" inside the target's tile.
@@ -663,10 +665,10 @@ export default function PlayerCircle({
                         (() => {
                           try {
                             // If the viewer is the buyer (actorIsViewer), render concise English
-                            if (actorIsViewer) {
-                              if (r.powerId === 'letter_scope' && typeof res.letters === 'number') {
-                                return <div>{`Letter Scope: there are ${res.letters} letter${res.letters === 1 ? '' : 's'} in the word`}</div>
-                              }
+                              if (actorIsViewer) {
+                                if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {
+                            return <div>{`Letter Scope: ${Number(res.letters)} letter${Number(res.letters) === 1 ? ' is' : 's are'} in the word`}</div>
+                                  }
                                 if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
                                   return <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
                                 }
@@ -741,7 +743,7 @@ try {
     const s = document.createElement('style')
     s.id = styleId
     s.innerHTML = `
-      .hang-tooltip-inner { box-shadow: 0 10px 30px rgba(0,0,0,0.2); background: white; border-radius: 10px; }
+      .hang-tooltip-inner { box-shadow: 0 10px 30px rgba(0,0,0,0.2); background: white; border-radius: 10px; color: #1f2937; }
       .hang-tooltip-inner .plus { color: green }
       .hang-tooltip-inner .minus { color: red }
       /* make sure tooltip content is readable */
@@ -836,13 +838,13 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   const powerLabel = isPower ? 'from letter-for-letter played on you' : (isStart ? 'from start of turn' : entry.reason || '')
                   return (
                     <div style={{ marginBottom: 6 }}>
-                      <div style={{ color: '#9aa47f' }}>
+                      <div style={{ color: '#1f2937' }}>
                         <span style={{ fontWeight: 800 }}>current wordmoney = </span>
                         <span style={{ color: 'green', fontWeight: 800 }}>${currentTotal}</span>
                         <span style={{ marginLeft: 8 }}>
                           ({powerLabel} {amt >= 0 ? `+${amt}` : `${amt}`})
                         </span>
-                        <span style={{ marginLeft: 8, color: '#9aa47f' }}>+ ${prev} (previous wordmoney)</span>
+                        <span style={{ marginLeft: 8, color: '#4b5563' }}>+ ${prev} (previous wordmoney)</span>
                         {starterApplied ? (
                           <span style={{ marginLeft: 8, color: 'green' }}>+ $1 (start of next turn)</span>
                         ) : null}
@@ -858,7 +860,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   return (
                     <div key={idx} className="line">
                       <div className="delta" style={{ color }}>{sign}${abs}</div>
-                      <div style={{ color: '#9aa47f' }}>{h.reason || 'Adjustment'}</div>
+                      <div style={{ color: '#4b5563' }}>{h.reason || 'Adjustment'}</div>
                     </div>
                   )
                 })
@@ -884,7 +886,7 @@ function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied
                   }
                 }
               } catch (e) {}
-              return <div style={{ color: '#B4A3A3' }}>No recent changes</div>
+              return <div style={{ color: '#4b5563' }}>No recent changes</div>
             })()}
           </div>
         </div>
