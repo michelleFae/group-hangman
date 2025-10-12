@@ -729,9 +729,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
         resultPayload = { last }
-      } else if (powerId === 'vowel_vision') {
-        const vowels = (targetWord.match(/[aeiou]/ig) || []).length
-        resultPayload = { vowels }
       } else if (powerId === 'one_random') {
         const letters = (targetWord || '').split('')
         if (letters.length > 0) {
@@ -889,6 +886,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } catch (e) {
           resultPayload = { found: [], attempted: [] }
         }
+      } else if (powerId === 'vowel_vision') {
+    // Include a human-readable message for buyer and target, visible only to them.
+    // Explicitly include powerId, from and by fields so PlayerCircle's visiblePrivatePowerReveals
+    // recognizes the entry as a power-up result (same pattern as letter_for_letter).
+    const vowels = (targetWord.match(/[aeiou]/ig) || []).length
+    resultPayload = { vowels }
+    // const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
+    const buyerName = playerIdToName[myId] || myId
+    const targetName = playerIdToName[powerUpTarget] || powerUpTarget
+    const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word`
+    const targetMsg = `${buyerName} used Vowel Vision on you; they saw ${vowels} vowel${vowels === 1 ? '' : 's'}`
+    const buyerBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+    const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+    const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
+    const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
+    console.log("michelle2 buyerdata vowel_vision", buyerData)
+    console.log("michelle2 vowel_vision myId, powerUpTarget, key", myId, powerUpTarget, key)
+    updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+    updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
   } else if (powerId === 'letter_for_letter') {
         // reveal one random letter from the target's word publicly,
         // AND privately reveal one random letter from the buyer's own word to the target.
@@ -1021,6 +1037,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
   // include both the human-friendly message for the buyer and the raw private letter reveal so PlayerCircle can color it
   const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
+  console.log("michelle buyerdata letter_for_letter", buyerData)
+  console.log("michelle myId, powerUpTarget, key", myId, powerUpTarget, key)
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
   // Immediately apply buyer award here to ensure their wordmoney reflects the +2 per newly revealed occurrence
@@ -1105,14 +1123,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           }
         } catch (e) {}
       } else if (powerId === 'vowel_vision') {
-        // Include a human-readable message for buyer and target, visible only to them
+        // Include a human-readable message for buyer and target, visible only to them.
+        // Explicitly include powerId, from and by fields so PlayerCircle's visiblePrivatePowerReveals
+        // recognizes the entry as a power-up result (same pattern as letter_for_letter).
         const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
         const buyerName = playerIdToName[myId] || myId
         const targetName = playerIdToName[powerUpTarget] || powerUpTarget
-        const msg = `${buyerName} used Vowel Vision on ${targetName} to see that there are ${vowels} vowel${vowels === 1 ? '' : 's'}`
-        const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-        const buyerData = { ...base, result: { vowels, message: msg } }
-        const targetData = { ...base, result: { vowels, message: msg } }
+        const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word`
+        const targetMsg = `${buyerName} used Vowel Vision on you; they saw ${vowels} vowel${vowels === 1 ? '' : 's'}`
+        const buyerBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+        const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+        const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
+        console.log("michelle buyerdata vowel_vision", buyerData)
+        console.log("michelle vowel_vision myId, powerUpTarget, key", myId, powerUpTarget, key)
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else {
