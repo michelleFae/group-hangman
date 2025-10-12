@@ -726,6 +726,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (powerId === 'letter_scope') {
         const letters = (targetWord || '').length
         resultPayload = { letters, message: `Letter Scope: there are ${letters} letter${letters === 1 ? '' : 's'} in the word` }
+        
+        const buyerName = playerIdToName[myId] || myId
+        const targetName = playerIdToName[powerUpTarget] || powerUpTarget
+        const buyerMsg = `Letter Scope: Including duplicates, there are ${letters} letter${letters === 1 ? '' : 's'} in the word`
+        const targetMsg = `${buyerName} used Letter Scope on you`
+        const buyerBase = { powerId: powerId, ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+        const targetBase = { powerId: powerId, ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
+        const buyerData = { ...buyerBase, result: { letters, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { letters, message: targetMsg } }
+        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
         resultPayload = { last }
@@ -901,8 +912,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
     const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
     const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
-    console.log("michelle2 buyerdata vowel_vision", buyerData)
-    console.log("michelle2 vowel_vision myId, powerUpTarget, key", myId, powerUpTarget, key)
     updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
     updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
   } else if (powerId === 'letter_for_letter') {
@@ -1122,23 +1131,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`players/${powerUpTarget}/lastGain`] = { amount: stagedTargetAwardDelta, by: myId, reason: 'letter_for_letter', ts: Date.now() }
           }
         } catch (e) {}
-      } else if (powerId === 'vowel_vision') {
-        // Include a human-readable message for buyer and target, visible only to them.
-        // Explicitly include powerId, from and by fields so PlayerCircle's visiblePrivatePowerReveals
-        // recognizes the entry as a power-up result (same pattern as letter_for_letter).
-        const vowels = (resultPayload && typeof resultPayload.vowels === 'number') ? resultPayload.vowels : (targetWord.match(/[aeiou]/ig) || []).length
-        const buyerName = playerIdToName[myId] || myId
-        const targetName = playerIdToName[powerUpTarget] || powerUpTarget
-        const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word`
-        const targetMsg = `${buyerName} used Vowel Vision on you; they saw ${vowels} vowel${vowels === 1 ? '' : 's'}`
-        const buyerBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
-        const targetBase = { powerId: 'vowel_vision', ts: Date.now(), from: myId, by: myId, to: powerUpTarget }
-        const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
-        console.log("michelle buyerdata vowel_vision", buyerData)
-        console.log("michelle vowel_vision myId, powerUpTarget, key", myId, powerUpTarget, key)
-        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
-        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else {
         data.result = resultPayload
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = data
