@@ -639,7 +639,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
-    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round.', powerupType: 'selfPowerup' },
+    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' }
   ]
@@ -799,11 +799,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'related_word') {
         // Related word: use Datamuse rel_trg (related target words) and return a short word word
+        let buyerMsg = `Related Word: no result found`
+        let targetMsg = `${buyerName} used Related Word on you; they revealed no related word`
         try {
           const q = encodeURIComponent(targetWord || '')
           const url = `https://api.datamuse.com/words?rel_trg=${q}&max=6`
-          let buyerMsg = `Related Word: no result found`
-          let targetMsg = `${buyerName} used Related Word on you; they revealed no related word`
           const res = await fetch(url)
           if (res && res.ok) {
             const list = await res.json()
