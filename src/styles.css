@@ -390,6 +390,13 @@ button[disabled] {
  /* small rocket badge used to indicate power-ups are enabled in the room */
 .powerup-rocket { display: inline-block; padding: 4px 6px; border-radius: 8px; background: linear-gradient(90deg,#3b2b1f,#2e271f); box-shadow: 0 6px 14px rgba(0,0,0,0.6) }
 
+/* Power-up shop: price display should be high-contrast/dark for readability */
+.powerup-price {
+  color: var(--darktext);
+  font-weight: 700;
+  font-size: 14px;
+}
+
 /* adjust cash piece animation for confetti-like drop */
 .victory-screen .cash-piece { width: 22px; height: 12px; border-radius: 3px; animation: cash-drop 3.0s cubic-bezier(.2,.7,0,1) forwards; will-change: transform }
 @keyframes cash-drop { 0% { transform: translateY(-20px) rotate(0deg); opacity: 0 } 20% { opacity: 1 } 100% { transform: translateY(100vh) rotate(540deg); opacity: 1 } }

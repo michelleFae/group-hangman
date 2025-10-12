@@ -667,6 +667,9 @@ export default function PlayerCircle({
                               if (r.powerId === 'letter_scope' && typeof res.letters === 'number') {
                                 return <div>{`Letter Scope: there are ${res.letters} letter${res.letters === 1 ? '' : 's'} in the word`}</div>
                               }
+                                if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
+                                  return <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
+                                }
                               if (r.powerId === 'zeta_drop') {
                                 // last letter info
                                 const last = res && res.last ? res.last : null

@@ -715,13 +715,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // flag to avoid double-awarding buyer when a power-up-specific award was already applied
   let skipBuyerLetterAward = false
       // attach additional results after computing
-      // perform server-side or client-side compute for power-up results
-      let resultPayload = null
+  // perform server-side or client-side compute for power-up results
+  let resultPayload = null
+  // tracker for one_random award so we can write a friendly message into the
+  // buyer/target privatePowerReveals after we compute awards below
+  let oneRandomAward = 0
       // compute some client-side results for immediate write when possible
       const targetNode = (state?.players || []).find(p => p.id === powerUpTarget) || {}
       const targetWord = targetNode.word || ''
       if (powerId === 'letter_scope') {
-        resultPayload = { letters: (targetWord || '').length }
+        const letters = (targetWord || '').length
+        resultPayload = { letters, message: `Letter Scope: there are ${letters} letter${letters === 1 ? '' : 's'} in the word` }
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
         resultPayload = { last }
@@ -1240,9 +1244,37 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
                 updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
                 updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
+                // remember award so we can include it in the buyer/target privatePowerReveals message
+                if (powerId === 'one_random') oneRandomAward = award
               }
             }
           }
+        } catch (e) {}
+      }
+
+      // If this was a one_random reveal, ensure the privatePowerReveals entries include
+      // a human-readable message that indicates what letter was revealed and whether
+      // the buyer earned points. Overwrite the earlier generic payload with an enriched
+      // one so PlayerCircle shows a friendly sentence (and buyer sees the amount).
+      if (powerId === 'one_random') {
+        try {
+          const ch = (resultPayload && resultPayload.letter) ? String(resultPayload.letter) : null
+          const letterDisplay = ch ? String(ch).slice(0,1) : null
+          const base = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+          let buyerMsg = null
+          if (letterDisplay) {
+            if (oneRandomAward && oneRandomAward > 0) {
+              buyerMsg = { message: `One Random Letter: revealed '${letterDisplay}' — you earned +${oneRandomAward}`, letter }
+            } else {
+              buyerMsg = { message: `One Random Letter: revealed '${letterDisplay}', no points awarded (already revealed)`, letter }
+            }
+          } else {
+            buyerMsg = { message: `One Random Letter: no letter could be revealed`, letter: null }
+          }
+          const buyerData = { ...base, result: { ...(resultPayload || {}), ...(buyerMsg || {}) } }
+          const targetData = { ...base, result: { ...(resultPayload || {}), message: `One Random Letter was used on you by ${playerIdToName[myId] || myId}` } }
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
         } catch (e) {}
       }
 

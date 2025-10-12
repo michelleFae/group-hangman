@@ -162,6 +162,11 @@ module.exports = async (req, res) => {
               // message reflects netted amount (award already reduced by original stake if applicable)
               const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake))` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
+              // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
+              try {
+                const ddKeyTarget = `double_down_target_${Date.now()}`
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' and netted +$${award}` } }
+              } catch (e) {}
             } catch (e) {}
 
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
@@ -187,6 +192,10 @@ module.exports = async (req, res) => {
               const letterStr2 = letter
               const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr2, amount: 0, message: `Double Down: guessed '${letterStr2}', no points awarded (no-score)` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+              try {
+                const ddKey2Target = `double_down_noscore_target_${Date.now()}`
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr2, amount: 0, message: `Double Down: guessed '${letterStr2}', no points awarded (no-score)` } }
+              } catch (e) {}
             } catch (e) {}
           }
         } else {
@@ -219,6 +228,10 @@ module.exports = async (req, res) => {
                   const letterStr3 = letter
                   const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, message: `Double Down: guessed '${letterStr3}' and lost -$${stake}` } }
                   updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                  try {
+                    const ddKey3Target = `double_down_loss_target_${Date.now()}`
+                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, message: `Double Down: guessed '${letterStr3}' and lost -$${stake}` } }
+                  } catch (e) {}
                 } catch (e) {}
                 // consume/clear the doubleDown entry so the DD badge is removed
                 updates[`players/${from}/doubleDown`] = null
@@ -288,6 +301,10 @@ module.exports = async (req, res) => {
               const ddKey4 = `double_down_loss_word_${Date.now()}`
               const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `Double Down: wrong word guess — lost -$${stake}` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey4}`] = ddPayload4
+              try {
+                const ddKey4Target = `double_down_loss_word_target_${Date.now()}`
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `Double Down: wrong word guess — lost -$${stake}` } }
+              } catch (e) {}
             } catch (e) {}
           }
           updates[`players/${from}/doubleDown`] = null
@@ -332,6 +349,11 @@ module.exports = async (req, res) => {
             const lossKey = `double_down_loss_fallback_${Date.now()}`
             const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
             fix[`${ddKeyBase}/${lossKey}`] = ddPayload
+              try {
+                // also add a buyer-targeted fallback entry so buyer sees this in the target tile
+                const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
+                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
+              } catch (e) {}
             fix[`players/${from}/doubleDown`] = null
             await roomRef.update(fix)
           } else if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {
