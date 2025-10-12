@@ -620,7 +620,14 @@ export default function PlayerCircle({
                   return (
                     <li key={idx} style={{ marginTop: 6 }}>
                       {res && res.message ? (
-                        <div>{res.message}</div>
+                        // Special-case: when the viewer is the actor (buyer) and the power-up is vowel_vision,
+                        // render a concise, target-local message that shows the vowel count (including duplicates).
+                        // This ensures the buyer sees "Vowel Vision: There are N vowels" inside the target's tile.
+                        (r.powerId === 'vowel_vision' && actorIsViewer && typeof res.vowels === 'number') ? (
+                          <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
+                        ) : (
+                          <div>{res.message}</div>
+                        )
                       ) : r.powerId === 'letter_for_letter' ? (
                         (() => {
                           // buyer revealed a letter from the target's word
@@ -652,7 +659,48 @@ export default function PlayerCircle({
                           return <div>{r.powerId}: {JSON.stringify(res)}</div>
                         })()
                       ) : (
-                        <div>{r.powerId}: {JSON.stringify(res)}</div>
+                        // For other power-ups, show a friendly English message when possible.
+                        (() => {
+                          try {
+                            // If the viewer is the buyer (actorIsViewer), render concise English
+                            if (actorIsViewer) {
+                              if (r.powerId === 'letter_scope' && typeof res.letters === 'number') {
+                                return <div>{`Letter Scope: there are ${res.letters} letter${res.letters === 1 ? '' : 's'} in the word`}</div>
+                              }
+                              if (r.powerId === 'zeta_drop') {
+                                // last letter info
+                                const last = res && res.last ? res.last : null
+                                return <div>{`Zeta Drop: last letter is ${last ? `'${last}'` : 'unknown'}`}</div>
+                              }
+                              if (r.powerId === 'one_random' && res.letter) {
+                                return <div>{`One Random Letter: revealed '${String(res.letter).slice(0,1)}'`}</div>
+                              }
+                              if (r.powerId === 'letter_peek') {
+                                if (res && res.message) return <div>{res.message}</div>
+                                if (res && res.letter && typeof res.pos !== 'undefined') return <div>{`Letter Peek: '${res.letter}' at position ${res.pos}`}</div>
+                              }
+                              if (r.powerId === 'related_word' && res && res.message) return <div>{res.message}</div>
+                              if (r.powerId === 'dice_of_doom' && res && typeof res.roll === 'number') {
+                                const letters = Array.isArray(res.letters) ? res.letters.join(', ') : ''
+                                return <div>{`Dice of Doom: rolled ${res.roll}${letters ? ` — revealed: ${letters}` : ''}`}</div>
+                              }
+                              if (r.powerId === 'all_letter_reveal' && res && Array.isArray(res.letters)) {
+                                return <div>{`All Letter Reveal: revealed ${res.letters.length} unique letter${res.letters.length === 1 ? '' : 's'}`}</div>
+                              }
+                              if (r.powerId === 'full_reveal' && res && typeof res.full === 'string') {
+                                return <div>{`Full Reveal: the word was revealed`}</div>
+                              }
+                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div>{`Sound Check: suggestions — ${Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}`}</div>
+                              if (r.powerId === 'what_do_you_mean' && res && res.message) return <div>{`Definition: ${res.message}`}</div>
+                              if (r.powerId === 'mind_leech' && res && Array.isArray(res.found)) {
+                                const found = res.found.map(f => `${f.letter}×${f.count}`).join(', ')
+                                return <div>{`Mind Leech: found ${found || 'no letters'}`}</div>
+                              }
+                            }
+                          } catch (e) {}
+                          // last resort: dump JSON
+                          return <div>{r.powerId}: {JSON.stringify(res)}</div>
+                        })()
                       )}
                     </li>
                   )
