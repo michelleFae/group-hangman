@@ -29,7 +29,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [toasts, setToasts] = useState([])
   const [powerUpOpen, setPowerUpOpen] = useState(false)
   const [powerUpTarget, setPowerUpTarget] = useState(null)
+  // separate inputs: one for generic choice (e.g. letter position) and one for double-down stake
   const [powerUpChoiceValue, setPowerUpChoiceValue] = useState('')
+  const [powerUpStakeValue, setPowerUpStakeValue] = useState('')
   const [powerUpLoading, setPowerUpLoading] = useState(false)
   // Locally lock the power-up shop for the viewer after buying Double Down until they make a guess
   const [ddShopLocked, setDdShopLocked] = useState(false)
@@ -1850,7 +1852,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     <div className="powerup-price">{displayPrice} 🪙{displayPrice !== p.price ? <small className="surge">(+ surge)</small> : null}</div>
                   </div>
                   <div className="powerup-actions">
-                    {p.id === 'letter_peek' ? (
+                        {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
@@ -1867,8 +1869,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge} onClick={() => purchasePowerUp(p.id, { stake: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby} />
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -2409,7 +2411,7 @@ try {
                           ddTarget={viewerDDTarget}
                           onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
-                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue('') }}
+                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
                           playerIdToName={playerIdToName}
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                           starterApplied={!!state?.starterBonus?.applied}
