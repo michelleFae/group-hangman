@@ -1,0 +1,55 @@
+/* Word Spy theme: high-contrast pink-on-black for secret/spy mood */
+body.wordspy-theme-body {
+  background: #2a0310 !important; /* dark background for max contrast */
+  color: #ffd6f0 !important; /* soft light pink text */
+}
+
+/* Cards should be slightly lifted but remain very dark so pink accents stand out */
+body.wordspy-theme-body .card,
+body.wordspy-theme-body .modal-dialog,
+body.wordspy-theme-body .shop-modal-dialog {
+  background: linear-gradient(180deg, #0b0b0b, #0b0b0b) !important;
+  color: #ffd6f0 !important;
+  border: 1px solid rgba(255,182,193,0.06) !important;
+}
+
+/* Accent color for interactive controls in Word Spy mode */
+:root {
+  --wordspy-accent: #7b1146; /* vibrant pink */
+  --wordspy-accent-2: #ff77c9; /* lighter pink */
+  --wordspy-muted: #b88ca3; /* muted pink for secondary text */
+}
+
+body.wordspy-theme-body button {
+  background: linear-gradient(90deg, var(--wordspy-accent), var(--wordspy-accent-2)) !important;
+  color: #0b0b0b !important;
+}
+
+body.wordspy-theme-body .mode-badge { background: rgba(255,77,166,0.06) !important }
+
+/* Ensure inputs remain readable */
+body.wordspy-theme-body input,
+body.wordspy-theme-body select,
+body.wordspy-theme-body textarea {
+  background: rgba(255,255,255,0.04) !important;
+  color: #ffd6f0 !important;
+  border: 1px solid rgba(255,182,193,0.06) !important;
+}
+
+body.wordspy-theme-body .wordmoney { color: var(--wordspy-accent-2) !important }
+body.wordspy-theme-body .avatar { background: linear-gradient(135deg, #ff77c9, #ff4da6); color: #0b0b0b !important }
+
+/* Toasts should be clearly readable */
+body.wordspy-theme-body .toast { background: rgba(20,0,10,0.92) !important; color: #ffd6f0 !important }
+
+/* Ensure player tiles are legible */
+body.wordspy-theme-body .player { background: linear-gradient(180deg, #070507, #0b0b0b) !important; color: #ffd6f0 !important }
+
+/* Make revealed letters pop with pink accents */
+body.wordspy-theme-body .revealed { color: var(--wordspy-accent-2) !important }
+
+/* Focus outlines for accessibility */
+body.wordspy-theme-body a:focus, body.wordspy-theme-body button:focus, body.wordspy-theme-body input:focus, body.wordspy-theme-body select:focus {
+  outline: 3px solid rgba(255,77,166,0.22) !important;
+  outline-offset: 2px !important;
+}

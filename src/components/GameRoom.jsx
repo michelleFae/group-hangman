@@ -7,7 +7,10 @@ import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/databas
 import { buildRoomUrl } from '../utils/url'
 
 export default function GameRoom({ roomId, playerName, password }) { // Added password as a prop
-  const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId } = useGameRoom(roomId, playerName)
+  const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId,
+    // Word Spy hooks
+    startWordSpy, markWordSpyReady, beginWordSpyPlaying, endWordSpyPlaying, voteForPlayer, tallyWordSpyVotes, submitSpyGuess, playNextWordSpyRound
+  } = useGameRoom(roomId, playerName)
   const [word, setWord] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [wordError, setWordError] = useState('')
@@ -18,6 +21,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
   const [revealShowBlanks, setRevealShowBlanks] = useState(false)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
+  // multi-mode support: 'money' | 'lastOneStanding' | 'wordSpy'
+  const [gameMode, setGameMode] = useState('lastOneStanding')
+  const [wordSpyTimerSeconds, setWordSpyTimerSeconds] = useState(120)
+  const [wordSpyRounds, setWordSpyRounds] = useState(3)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
   const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
@@ -54,16 +61,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Pause the tick when the power-up modal is open to avoid frequent re-renders that
   // can interfere with modal scroll position.
   useEffect(() => {
-    if (powerUpOpen) return undefined
+    // Also pause the tick while the settings modal is open so dropdowns inside
+    // the modal (e.g. the gameMode <select>) aren't closed by rapid re-renders.
+    if (powerUpOpen || showSettings) return undefined
     const id = setInterval(() => setTick(t => t + 1), 300)
     return () => clearInterval(id)
-  }, [powerUpOpen])
+  }, [powerUpOpen, showSettings])
 
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
     if (state?.timed !== undefined) setTimedMode(!!state.timed);
     if (state?.turnTimeoutSeconds !== undefined) setTurnSeconds(state.turnTimeoutSeconds || 30);
-    setWinnerByWordmoney(!!state?.winnerByWordmoney);
+    // legacy support: if gameMode exists, prefer it; otherwise derive from winnerByWordmoney
+    if (state?.gameMode) setGameMode(state.gameMode)
+    else setWinnerByWordmoney(!!state?.winnerByWordmoney);
+  // sync new gameMode and Word Spy settings when present
+  if (state?.gameMode) setGameMode(state.gameMode)
+  if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
+  if (typeof state?.wordSpyRounds === 'number') setWordSpyRounds(Math.max(1, Math.min(20, Number(state.wordSpyRounds))))
     setStarterEnabled(!!state?.starterBonus?.enabled);
     setPowerUpsEnabled(!!state?.powerUpsEnabled);
     // showWordsOnEnd controls whether players' secret words are displayed on final standings
@@ -90,6 +105,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
 
+  // sync Word Spy settings if present
+  if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
+  if (typeof state?.wordSpyRounds === 'number') setWordSpyRounds(Math.max(1, Math.min(20, Number(state.wordSpyRounds))))
+
   }, [
     state?.timed,
     state?.turnTimeoutSeconds,
@@ -109,6 +128,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => {}
   }, [state?.winnerByWordmoney])
 
+  // Toggle Word Spy theme (pink/black) when the room's gameMode is 'wordSpy'
+  useEffect(() => {
+    try {
+      if (state?.gameMode === 'wordSpy') {
+        document.body.classList.add('wordspy-theme-body')
+      } else {
+        document.body.classList.remove('wordspy-theme-body')
+      }
+    } catch (e) {}
+    return () => {}
+  }, [state?.gameMode])
+
   // highlight when it's the viewer's turn by adding/removing a body-level class
   useEffect(() => {
     try {
@@ -127,6 +158,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       await dbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(300, Number(seconds) || 30)) : null })
     } catch (e) {
       console.warn('Could not update room timing preview', e)
+    }
+  }
+
+  async function updateRoomGameMode(mode, opts = {}) {
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const safeMode = (mode === 'money' || mode === 'lastOneStanding' || mode === 'wordSpy') ? mode : 'lastOneStanding'
+      const updates = { gameMode: safeMode }
+      // keep legacy boolean in sync
+      updates['winnerByWordmoney'] = safeMode === 'money'
+      if (safeMode === 'wordSpy') {
+        if (opts.timerSeconds) updates['wordSpyTimerSeconds'] = Math.max(10, Math.min(600, Number(opts.timerSeconds)))
+        if (opts.rounds) updates['wordSpyRounds'] = Math.max(1, Math.min(20, Number(opts.rounds)))
+      }
+      await dbUpdate(roomRef, updates)
+    } catch (e) {
+      console.warn('Could not update room game mode', e)
     }
   }
 
@@ -204,7 +252,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomWinnerMode(enabled) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      await dbUpdate(roomRef, { winnerByWordmoney: !!enabled })
+      // preserve backwards compatibility by setting winnerByWordmoney, but also set gameMode when toggled
+      const updates = { winnerByWordmoney: !!enabled }
+      // if enabled, set mode to 'money'
+      updates['gameMode'] = enabled ? 'money' : (state?.gameMode || 'lastOneStanding')
+      await dbUpdate(roomRef, updates)
     } catch (e) {
       console.warn('Could not update winner mode', e)
     }
@@ -501,10 +553,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
       <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
   <span style={{ fontSize: 16 }}>{state?.winnerByWordmoney ? '💸' : '🛡️'}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-            <strong style={{ fontSize: 13 }}>{state?.winnerByWordmoney ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
-            <small style={{ color: '#B4A3A3', fontSize: 12 }}>{state?.winnerByWordmoney ? 'Money wins' : 'Elimination wins'}</small>
+            <strong style={{ fontSize: 13 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
+            <small style={{ color: '#B4A3A3', fontSize: 12 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : 'Elimination wins'}</small>
           </div>
           {/* show a rocket badge when power-ups are enabled and visible to all players in the lobby */}
           {state?.powerUpsEnabled && phase === 'lobby' && (
@@ -538,7 +590,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // immediate update: write minWordSize on change to avoid spinner revert issues
 
     return (
-      <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }}>
+      <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }} onMouseDown={e => { try { e.stopPropagation() } catch (er) {} }} onClick={e => { try { e.stopPropagation() } catch (er) {} }}>
         <div className="card" style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
@@ -570,9 +622,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus wordmoney.">
               <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
             </label>
-            <label htmlFor="winnerByWordmoney" title="Choose how the winner is determined: Last one standing, or player with most wordmoney.">
-              <input id="winnerByWordmoney" name="winnerByWordmoney" type="checkbox" checked={winnerByWordmoney} onChange={e => { const nv = e.target.checked; setWinnerByWordmoney(nv); updateRoomWinnerMode(nv); updateRoomSettings({ winnerByWordmoney: !!nv }) }} /> Winner by money
+            <label htmlFor="gameMode" title="Choose the game mode for this room">
+              Mode:
+              <select id="gameMode" name="gameMode" value={gameMode} onChange={e => { const nv = e.target.value; setGameMode(nv); updateRoomGameMode(nv, { timerSeconds: wordSpyTimerSeconds, rounds: wordSpyRounds }); updateRoomSettings({ gameMode: nv }) }} style={{ marginLeft: 8 }}>
+                <option value="lastOneStanding">Last One Standing</option>
+                <option value="money">Money Wins</option>
+                <option value="wordSpy">Word Spy</option>
+              </select>
             </label>
+            {gameMode === 'wordSpy' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                <label htmlFor="wordSpyTimerSeconds">Word Spy timer (seconds):
+                  <input id="wordSpyTimerSeconds" type="number" min={10} max={600} value={wordSpyTimerSeconds} onChange={e => { const v = Math.max(10, Math.min(600, Number(e.target.value || 120))); setWordSpyTimerSeconds(v); updateRoomGameMode('wordSpy', { timerSeconds: v, rounds: wordSpyRounds }); updateRoomSettings({ wordSpyTimerSeconds: v }) }} style={{ width: 120, marginLeft: 8 }} />
+                </label>
+                <label htmlFor="wordSpyRounds">Rounds:
+                  <input id="wordSpyRounds" type="number" min={1} max={20} value={wordSpyRounds} onChange={e => { const v = Math.max(1, Math.min(20, Number(e.target.value || 1))); setWordSpyRounds(v); updateRoomGameMode('wordSpy', { timerSeconds: wordSpyTimerSeconds, rounds: v }); updateRoomSettings({ wordSpyRounds: v }) }} style={{ width: 120, marginLeft: 8 }} />
+                </label>
+              </div>
+            )}
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
               <div style={{ fontSize: 12, color: '#B4A3A3' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
@@ -1845,7 +1912,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const isSingleOpponent = p.powerupType === 'singleOpponentPowerup'
               const rowClass = `powerup-row ${isSelfType ? 'powerup-type-self' : isSingleOpponent ? 'powerup-type-opponent' : ''} ${(isSelfType && powerUpTarget === myId) ? 'self-powerup' : ''}`
               const rowStyle = isSelfType ? { background: '#fff9e6', border: '1px solid rgba(204,170,60,0.12)' } : (isSingleOpponent ? { background: '#f0f7ff', border: '1px solid rgba(30,120,220,0.08)' } : {})
-              return (
+                      return (
                 <div key={p.id} className={rowClass} style={rowStyle}>
                   <div className="powerup-meta">
                     <div className="title">{p.name} <small className="desc">{p.desc}</small></div>
@@ -1854,9 +1921,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   <div className="powerup-actions">
                         {p.id === 'letter_peek' ? (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby} />
+                        <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || state?.phase === 'wordspy_playing'} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : p.id === 'double_down' ? (
                       (() => {
@@ -1868,9 +1935,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing'} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -2059,7 +2126,7 @@ try {
     }
   }
 
-  function TimerWatcher({ roomId, state }) {
+  function TimerWatcher({ roomId, timed, turnTimeoutSeconds, currentTurnStartedAt, currentTurnIndex }) {
     const [tick, setTick] = useState(0)
     useEffect(() => {
       const id = setInterval(() => setTick(t => t + 1), 300)
@@ -2067,8 +2134,8 @@ try {
     }, [])
 
     useEffect(() => {
-      if (!state || !state.timed || !state.turnTimeoutSeconds || !state.currentTurnStartedAt) return
-      const msLeft = state.currentTurnStartedAt + (state.turnTimeoutSeconds*1000) - Date.now()
+      if (!timed || !turnTimeoutSeconds || !currentTurnStartedAt) return
+      const msLeft = currentTurnStartedAt + (turnTimeoutSeconds*1000) - Date.now()
       if (msLeft <= 0) {
         const roomRef = dbRef(db, `rooms/${roomId}`)
         dbGet(roomRef).then(async snap => {
@@ -2118,7 +2185,7 @@ try {
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
-    }, [tick, state, roomId])
+  }, [tick, timed, turnTimeoutSeconds, currentTurnStartedAt, currentTurnIndex, roomId])
 
     return null
   }
@@ -2172,7 +2239,7 @@ try {
             <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
           ))}
 
-          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state?.winnerName} Wins`}</h1>
+          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
           <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
 
           <div className="standings card" style={{ marginTop: 12 }}>
@@ -2231,7 +2298,19 @@ try {
           {isHost ? (
             <>
               <button
-                onClick={() => startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney })}
+                onClick={() => {
+                  if (gameMode === 'wordSpy') {
+                    // Word Spy requires at least 3 players
+                    if ((players || []).length < 3) {
+                      try { setToasts(t => [...t, { id: `ws_minplayers_${Date.now()}`, text: 'Word Spy requires at least 3 players to start' }]) } catch (e) {}
+                      setTimeout(() => setToasts(t => t.filter(x => !(x.id && String(x.id).startsWith('ws_minplayers_')))), 3500)
+                      return
+                    }
+                    try { startWordSpy({ timerSeconds: wordSpyTimerSeconds, rounds: wordSpyRounds }) } catch (e) { console.warn('startWordSpy failed', e) }
+                  } else {
+                    startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney })
+                  }
+                }}
                 disabled={players.length < 2}
                 title={players.length < 2 ? 'Need at least 2 players to start' : ''}
                 className={players.length >= 2 ? 'start-ready' : ''}
@@ -2239,6 +2318,241 @@ try {
               {players.length < 2 && <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for more players to join (need 2+ players)</div>}
             </>
           ) : null}
+        </div>
+      )}
+
+      {/* Word Spy specific UI flows */}
+      {state && state.gameMode === 'wordSpy' && state.wordSpy && (
+        (() => {
+          const ws = state.wordSpy || {}
+          const myId = playerId()
+          const isSpy = ws.spyId === myId
+          // waiting phase
+          if ((state.phase === 'wordspy_wait' || ws.state === 'waiting')) {
+            return (
+              <div className="notice card">
+                <h4>Word Spy — Round {ws.currentRound} / {ws.roundsRemaining + ws.currentRound - 1}</h4>
+                <div>
+                  {!isSpy ? (
+                    <>
+                      <p>The secret word is: <strong style={{ letterSpacing: 2 }}>{ws.word}</strong></p>
+                      <p>When you're ready, click Ready.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>You are the spy — keep the word secret. Your goal is to guess the word later.</p>
+                      <p>When others are ready, the host will start the playing phase.</p>
+                    </>
+                  )}
+
+                  {/* Ready button shown to everyone (including spy) */}
+                  <button onClick={() => { try { markWordSpyReady() } catch (e) { console.warn(e) } }}>Ready</button>
+                  {isHost && <button style={{ marginLeft: 8 }} onClick={() => { try { beginWordSpyPlaying() } catch (e) { console.warn('beginWordSpyPlaying failed', e) } }}>Force start</button>}
+                  {/* removed redundant Start playing button; Ready is sufficient and host can Force start */}
+                </div>
+              </div>
+            )
+          }
+
+          // playing phase
+          if (state.phase === 'wordspy_playing' || ws.state === 'playing') {
+            const startedAt = ws.playingStartedAt || ws.startedAt || state.currentTurnStartedAt || Date.now()
+            const totalMs = (ws.timerSeconds || 120) * 1000
+            const msLeft = Math.max(0, (startedAt + totalMs) - Date.now())
+            const sLeft = Math.ceil(msLeft / 1000)
+            return (
+              <div className="notice card">
+                <h4>Word Spy — Playing</h4>
+                {!isSpy ? (
+                  <div>
+                    <p>Word: <strong style={{ letterSpacing: 2 }}>{ws.word}</strong></p>
+                    <p>Time left: <strong>{sLeft}s</strong></p>
+                  </div>
+                ) : (
+                  <div>
+                    <p>You are the spy — you don't see the word. Watch the discussion and try to blend in.</p>
+                    <p>Time left: <strong>{sLeft}s</strong></p>
+                  </div>
+                )}
+                {/* Host can end playing early and move to voting regardless of whether they are the spy */}
+                {isHost && <div style={{ marginTop: 8 }}><button onClick={() => { try { endWordSpyPlaying() } catch (e) { console.warn(e) } }}>End playing / move to voting</button></div>}
+              </div>
+            )
+          }
+
+          // voting phase
+          if (state.phase === 'wordspy_voting' || ws.state === 'voting') {
+            // players can click a person to vote
+            const roundResults = (ws && ws.roundResults) ? Object.values(ws.roundResults).sort((a,b) => b.ts - a.ts) : []
+            const myNodeLocal = (players || []).find(p => p.id === myId) || {}
+            const myVoteLocal = myNodeLocal.wordSpyVote || null
+            const votersList = (players || []).filter(p => p.wordSpyVote).map(p => ({ id: p.id, name: p.name, votedFor: p.wordSpyVote }))
+            return (
+              <div className="notice card">
+                <h4>Vote for the spy</h4>
+                <p>Click a player you think is the spy. You may change your vote until the host tallies.</p>
+
+                {votersList.length > 0 && (
+                  <div style={{ marginBottom: 8, fontSize: 13 }}>
+                    <strong>Players who have voted:</strong> {votersList.map(v => v.name).join(', ')}
+                  </div>
+                )}
+
+                {/* If a tally was attempted and there's no clear majority, show an error so players can change votes */}
+                {ws && ws.lastTally && (() => {
+                  try {
+                    const totalPlayers = (players || []).length || 0
+                    const majorityNeeded = Math.floor(totalPlayers / 2) + 1
+                    const lt = ws.lastTally || {}
+                    if (lt && lt.top && lt.topCount < majorityNeeded) {
+                      return (
+                        <div style={{ marginTop: 8, color: '#fff', background: '#b02a37', padding: 8, borderRadius: 6 }}>
+                          No clear majority — change your vote until there is a clear majority (need {majorityNeeded} of {totalPlayers}).
+                        </div>
+                      )
+                    }
+                  } catch (e) {}
+                  return null
+                })()}
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {players.map(p => {
+                    const selected = myVoteLocal === p.id
+                    return (
+                      <button key={p.id}
+                              disabled={p.id === myId}
+                              onClick={() => { try { voteForPlayer(playerId(), p.id) } catch (e) { console.warn(e) } }
+                              }
+                              style={{ background: selected ? '#DFF0D8' : undefined, border: selected ? '2px solid #4CAF50' : undefined }}>
+                        {p.name}{p.wordSpyVote ? ' ✓' : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div style={{ marginTop: 8 }}>
+                  {myVoteLocal ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ fontSize: 13 }}>Your vote: <strong>{playerIdToName[myVoteLocal] || myVoteLocal}</strong></div>
+                      <button onClick={() => { try { voteForPlayer(playerId(), null) } catch (e) { console.warn(e) } }}>Clear vote</button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13 }}>You haven't voted yet.</div>
+                  )}
+                </div>
+
+                {isHost && <div style={{ marginTop: 8 }}><button onClick={async () => { try { await tallyWordSpyVotes() } catch (e) { console.warn('tally failed', e) } }}>Tally votes</button></div>}
+
+    
+              </div>
+            )
+          }
+
+          // spy guess phase
+          if (state.phase === 'wordspy_spyguess' || ws.state === 'spyGuess') {
+            const me = players.find(p => p.id === playerId()) || {}
+            const guessesObj = me.wordSpyGuesses || {}
+            const attempts = Object.keys(guessesObj || {}).length
+            const maxAttempts = 3
+            const lastReveal = ws.lastReveal || null
+            // build masked word view based on ws.revealed map
+            const revealedMap = ws.revealed || {}
+            const ownerWord = (ws.word || '')
+            const preserve = !!revealPreserveOrder
+            const masked = (() => {
+              try {
+                const arr = (ownerWord || '').split('')
+                // when preserve order is enabled, reveal letters according to word order
+                if (preserve) {
+                  const counts = {}
+                  Object.keys(revealedMap || {}).forEach(k => { counts[k] = Number(revealedMap[k] || 0) })
+                  return arr.map(ch => {
+                    const lower = (ch || '').toLowerCase()
+                    if (counts[lower] && counts[lower] > 0) {
+                      counts[lower] = counts[lower] - 1
+                      return ch
+                    }
+                    return '_'
+                  }).join('')
+                }
+                // otherwise, build masked view from revealSequence entries (guess-order)
+                const seq = ws.revealSequence || {}
+                // flatten sequence entries by timestamp order
+                const seqKeys = Object.keys(seq || {}).sort((a,b) => Number(a) - Number(b))
+                const counts = {}
+                seqKeys.forEach(k => {
+                  try { (seq[k].letters || []).forEach(ch => { counts[ch] = (counts[ch] || 0) + 1 }) } catch (e) {}
+                })
+                // fallback: also include any letters from revealed map
+                Object.keys(revealedMap || {}).forEach(k => { counts[k] = (counts[k] || 0) + Number(revealedMap[k] || 0) })
+                return arr.map(ch => {
+                  const lower = (ch || '').toLowerCase()
+                  if (counts[lower] && counts[lower] > 0) {
+                    counts[lower] = counts[lower] - 1
+                    return ch
+                  }
+                  return '_'
+                }).join('')
+              } catch (e) { return (ownerWord || '').split('').map(_ => '_').join('') }
+            })()
+
+            return (
+              <div className="notice card">
+                <h4>Spy Guess — Round {ws.currentRound || ws.current || 1}</h4>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Word length:</strong> {(ws.word || '').length} letters
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Revealed so far:</strong> <span style={{ letterSpacing: 2 }}>{masked}</span>
+                </div>
+                {isSpy ? (
+                  <div>
+                    <p>Guess the word. Attempts: {attempts} / {maxAttempts}</p>
+                    <input id="spy_guess_input" placeholder="exact-length guess" maxLength={(ws.word||'').length} />
+                    <button onClick={async () => {
+                      try {
+                        const el = document.getElementById('spy_guess_input')
+                        const val = el ? el.value.trim() : ''
+                        if (!val) return
+                        const res = await submitSpyGuess(val)
+                        if (res && res.correct) {
+                          setToasts(t => [...t, { id: `spy_win_${Date.now()}`, text: 'Spy guessed the word!' }])
+                        } else if (res && res.revealed) {
+                          setToasts(t => [...t, { id: `spy_reveal_${Date.now()}`, text: `Revealed letters: ${res.revealed}` }])
+                        }
+                      } catch (e) { console.warn('submitSpyGuess err', e) }
+                    }}>Submit guess</button>
+                    {lastReveal && <div style={{ marginTop: 8 }}>Last reveal: {lastReveal.revealed || lastReveal.guess}</div>}
+                  </div>
+                ) : (
+                  <div>
+                    <p>{ws.spyId ? `Discuss and then vote for who you think the spy is.` : 'Waiting...'}</p>
+                    <div style={{ marginTop: 8 }}>{isHost && <button onClick={() => { try { playNextWordSpyRound() } catch (e) { console.warn(e) } }}>Next round</button>}</div>
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          return null
+        })()
+      )}
+
+      {/* Word Spy round summary popup after tally */}
+      {state && state.wordSpy && state.wordSpy.lastRoundSummary && ((state.wordSpy.roundsRemaining || 0) > 0) && (
+        <div className="modal-backdrop">
+          <div className="modal card" style={{ maxWidth: 520 }}>
+            <h3>Round {state.wordSpy.lastRoundSummary.round || '?'} summary</h3>
+            <p>The spy for that round was: <strong>{playerIdToName[state.wordSpy.lastRoundSummary.spyId] || state.wordSpy.lastRoundSummary.spyId}</strong></p>
+            <p>The word was: <strong>{state.wordSpy.lastRoundSummary.word || '—'}</strong></p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              {isHost ? (
+                <button onClick={async () => { try { await playNextWordSpyRound(); } catch (e) { console.warn(e) } }}>Next round</button>
+              ) : (
+                <strong onClick={() => { /* non-host just dismiss */ }}>Wait for host</strong>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2399,6 +2713,8 @@ try {
           return (
             <PlayerCircle key={p.id}
                           player={playerWithViewer}
+                          gameMode={state?.gameMode}
+                          viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
                           isSelf={p.id === myId}
                           hostId={hostId}
                           isHost={isHost}
@@ -2447,7 +2763,7 @@ try {
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
-        <TimerWatcher roomId={roomId} state={state} />
+        <TimerWatcher roomId={roomId} timed={state?.timed} turnTimeoutSeconds={state?.turnTimeoutSeconds} currentTurnStartedAt={state?.currentTurnStartedAt} currentTurnIndex={state?.currentTurnIndex} />
       )}
 
       {/* Submit bar moved to bottom so it can be reused for power-ups later */}
@@ -2526,7 +2842,7 @@ try {
               <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
             ))}
 
-            <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${state?.winnerName} Wins`}</h1>
+            <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
             <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
 
             <div className="standings card" style={{ marginTop: 12 }}>

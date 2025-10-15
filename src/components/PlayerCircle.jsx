@@ -10,6 +10,7 @@ export default function PlayerCircle({
   revealPreserveOrder = false,
   revealShowBlanks = false,
   viewerId = null,
+  viewerIsSpy = false,
   playerIdToName = {},
   phase = 'lobby',
   hasSubmitted = false,
@@ -24,6 +25,7 @@ export default function PlayerCircle({
   starterApplied = false
   , ddActive = false,
   ddTarget = null
+  , gameMode = 'money'
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -43,6 +45,16 @@ export default function PlayerCircle({
   const [guessValue, setGuessValue] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [showOwnWord, setShowOwnWord] = useState(false)
+
+  useEffect(() => {
+    // When entering Word Spy mode, ensure interactive controls are closed/hidden
+    if (gameMode === 'wordSpy') {
+      setShowGuessDialog(false)
+      setExpanded(false)
+    }
+  }, [gameMode])
+
+  const hideInteractiveForWordSpy = (gameMode === 'wordSpy')
 
   const viewerPrivate = player._viewer || {}
   const privateWrong = (viewerPrivate.privateWrong && viewerPrivate.privateWrong[player.id]) || []
@@ -508,18 +520,25 @@ export default function PlayerCircle({
               ${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}
             </span>
             {/* info icon with hover tooltip showing last 3 updates */}
-            <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
-              {/* prettier-ignore */}
-              <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',  color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
-              {/* tooltip will be rendered into document.body to avoid z-index clipping */}
-              {/* we mount a hidden container here and populate it imperatively */}
-              <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
-            </span>
+            {/* hide the wordmoney details tooltip during Word Spy */}
+            {!hideInteractiveForWordSpy && (
+              <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
+                {/* prettier-ignore */}
+                <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',  color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
+                {/* tooltip will be rendered into document.body to avoid z-index clipping */}
+                {/* we mount a hidden container here and populate it imperatively */}
+                <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
+              </span>
+            )}
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, background: 'rgba(0,0,0,0.06)', fontSize: 11, fontWeight: 700 }}>YOU</div>}
           {/* Double Down active badge: shows when this player has a pending doubleDown */}
           {player && player.doubleDown && player.doubleDown.active && (
             <div className="double-down-badge" title="Double Down active" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#ffcc00', color: '#2b2b2b', fontSize: 11, fontWeight: 800 }}>DD</div>
+          )}
+          {/* Word Spy voted indicator: shows when this player has cast a vote in Word Spy */}
+          {player && player.wordSpyVote && (
+            <div className="voted-badge" title="Voted in Word Spy" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#4CAF50', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓ Voted</div>
           )}
         </div>
 
@@ -528,8 +547,13 @@ export default function PlayerCircle({
             <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'hidden' }}>
               {isSelf ? (
                 showOwnWord ? (
-                  // show the submitted word with private reveals colored by revealer and public reveals in red
-                  fullWordRendered
+                  // If in Word Spy and the viewer is the spy, don't reveal the word — show a neutral message
+                  (gameMode === 'wordSpy' && viewerIsSpy) ? (
+                    <span style={{ fontStyle: 'italic', color: '#cfcfcf' }}>you are the spy</span>
+                  ) : (
+                    // show the submitted word with private reveals colored by revealer and public reveals in red
+                    fullWordRendered
+                  )
                 ) : (
                   // when hidden show masked underscores
                   ownerWord.split('').map((ch, idx) => <span key={`mask_${idx}`} style={{ color: '#999', marginRight: 6 }}>_</span>)
@@ -560,21 +584,29 @@ export default function PlayerCircle({
 
             <div className="actions" style={{ marginBottom: 8 }}>
               {isSelf ? (
-                <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
-              ) : (
-                  (() => {
-                    // When viewer has an active Double Down on someone else, visually lock other players' Guess buttons
-                    const ddLocked = !!(ddActive && ddTarget && ddTarget !== player.id && !isSelf)
-                    const targetName = (playerIdToName && playerIdToName[ddTarget]) || ddTarget || 'the selected player'
-                    const titleText = isEliminated ? 'Player eliminated' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word')
-                    const className = `action-button ${ddLocked ? 'dd-locked' : ''}`
-                    return (
-                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked} onClick={() => { if (canGuess && !isEliminated && !ddLocked) { setShowGuessDialog(true); setGuessValue('') } }}>{canGuess ? 'Guess' : 'Guess'}</button>
-                    )
-                  })()
-              )}
+                // Hide the "Show my word" button during Word Spy mode
+                (gameMode === 'wordSpy') ? (
+                  <div style={{ fontSize: 13, color: '#999', fontStyle: 'italic' }}>{viewerIsSpy ? 'You are the spy' : ''}</div>
+                ) : (
+                  // For normal modes, allow toggling own word
+                  <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
+                )
+              ) : (() => {
+                // When viewer has an active Double Down on someone else, visually lock other players' Guess buttons
+                const ddLocked = !!(ddActive && ddTarget && ddTarget !== player.id && !isSelf)
+                const targetName = (playerIdToName && playerIdToName[ddTarget]) || ddTarget || 'the selected player'
+                const titleText = isEliminated ? 'Player eliminated' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word')
+                const className = `action-button ${ddLocked ? 'dd-locked' : ''}`
+                return (
+                  <>
+                    {!hideInteractiveForWordSpy && (
+                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked} onClick={() => { if (canGuess && !isEliminated && !ddLocked) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
+                    )}
+                  </>
+                )
+              })()}
 
-              {!isSelf && onOpenPowerUps && !player.eliminated && (
+              {!isSelf && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
                 <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'⚡ Power-up'}</button>
               )}
               {/* show who eliminated this player when applicable */}
@@ -588,7 +620,9 @@ export default function PlayerCircle({
           </div>
 
           <div style={{ marginTop: 8 }}>
-            <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>{expanded ? 'Hide info' : 'Expand info'}</button>
+            {!hideInteractiveForWordSpy && (
+              <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>{expanded ? 'Hide info' : 'Expand info'}</button>
+            )}
           </div>
         </div>
       </div>
@@ -610,7 +644,9 @@ export default function PlayerCircle({
 
               {visiblePrivatePowerReveals.length > 0 && (
             <div style={{ marginTop: 8, background: '#132b56', padding: 6, borderRadius: 4 }}>
+              {visiblePrivatePowerReveals.length > 0 && !hideInteractiveForWordSpy && (
               <strong>Power-up results:</strong>
+            )}
               <ul style={{ margin: '6px 0 0 12px' }}>
                 {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
