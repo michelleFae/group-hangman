@@ -419,6 +419,13 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
           curr.players[nextPlayerId].wordmoney = prev + 1
           // mark a small visible gain so they see the +1 (optional)
           curr.players[nextPlayerId].lastGain = { amount: 1, by: 'system', reason: 'turnStart', ts: Date.now() }
+          // Clear any transient effects that should expire when this player's turn begins
+          try {
+            if (!curr.players[nextPlayerId]) curr.players[nextPlayerId] = {}
+            curr.players[nextPlayerId].frozen = null
+            curr.players[nextPlayerId].frozenUntilTurnIndex = null
+          } catch (e) {}
+          try { if (curr.priceSurge) curr.priceSurge[nextPlayerId] = null } catch (e) {}
         }
 
   console.log(`advanceTimedTurns: applied timeout room=${roomId} key=${tkey} player=${timedOutPlayerId} expiredTurnStartedAt=${expiredTurnStartedAt} newHang=${newHang}`)

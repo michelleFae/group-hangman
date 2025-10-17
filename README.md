@@ -112,7 +112,7 @@ Frontend notes and behavior
 --
 - Anonymous players: an anonymous player id is stored in localStorage under `gh_anon_<roomId>` so a refresh will reattach the same player node if present server-side.
 - Pending timeout penalties: frontend displays temporary pending -2 deductions when timeouts are observed; the UI clears the pending marker only after the DB reflects the deduction.
-- Starter bonus: the host can enable a starter bonus when starting the game; the client awards and displays the starter bonus as part of the submit/start flow.
+- Word bonus: the host can enable a word bonus when starting the game; the client awards and displays the word bonus as part of the submit/start flow.
 
 Security & rules
 --

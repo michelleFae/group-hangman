@@ -760,6 +760,20 @@ export default function useGameRoom(roomId, playerName) {
       updates.starterBonus = null
     }
 
+    // Ensure every player has an explicit starting wordmoney set. Do not overwrite
+    // existing numeric values — only initialize missing entries so the first-player
+    // +1 award is always computed relative to the room-configured starting value.
+    try {
+      const startMoney = getStartMoneyFromRoom(room)
+      const playersObj = room.players || {}
+      Object.keys(playersObj).forEach(pid => {
+        const p = playersObj[pid] || {}
+        if (typeof p.wordmoney !== 'number') {
+          updates[`players/${pid}/wordmoney`] = startMoney
+        }
+      })
+    } catch (e) {}
+
     await update(roomRef, updates)
   }
 
@@ -838,6 +852,17 @@ export default function useGameRoom(roomId, playerName) {
         } catch (e) {
           console.warn('Could not award start +1 bonus', e)
         }
+        // Ensure any per-player transient effects (frozen flags and per-player price surges)
+        // are cleared when the first player's turn begins so surges expire on the author's
+        // next turn as intended.
+        try {
+          const first = (turnOrder && turnOrder.length > 0) ? turnOrder[0] : null
+          if (first) {
+            updates[`players/${first}/frozen`] = null
+            updates[`players/${first}/frozenUntilTurnIndex`] = null
+            updates[`priceSurge/${first}`] = null
+          }
+        } catch (e) {}
         await update(roomRootRef, updates)
       }
     } catch (e) {

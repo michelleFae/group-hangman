@@ -633,6 +633,8 @@ export default function PlayerCircle({
             </div>
           </div>
 
+
+
           <div style={{ marginTop: 8 }}>
             {!hideInteractiveForWordSpy && (
               <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>{expanded ? 'Hide info' : 'Expand info'}</button>
@@ -640,6 +642,22 @@ export default function PlayerCircle({
           </div>
         </div>
       </div>
+
+      {showGuessDialog && (
+        <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
+          <input id={`guess_for_${player.id}`} name={`guess_for_${player.id}`} placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={() => {
+              const val = (guessValue || '').trim()
+              if (!val) return
+              const isLetter = val.length === 1 && /^[a-zA-Z]$/.test(val)
+              onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val })
+              setShowGuessDialog(false)
+            }}>Submit</button>
+            <button onClick={() => setShowGuessDialog(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div style={{ marginTop: 10 }}>
@@ -766,21 +784,7 @@ export default function PlayerCircle({
         </div>
       )}
 
-      {showGuessDialog && (
-        <div className="guess-dialog card" role="dialog" aria-label={`Guess for ${player.name}`}>
-          <input id={`guess_for_${player.id}`} name={`guess_for_${player.id}`} placeholder="letter or full word" value={guessValue} onChange={e => setGuessValue(e.target.value)} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={() => {
-              const val = (guessValue || '').trim()
-              if (!val) return
-              const isLetter = val.length === 1 && /^[a-zA-Z]$/.test(val)
-              onGuess(player.id, { type: isLetter ? 'letter-guess' : 'word-guess', value: val })
-              setShowGuessDialog(false)
-            }}>Submit</button>
-            <button onClick={() => setShowGuessDialog(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
+      
 
     </div>
   )

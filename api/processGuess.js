@@ -284,6 +284,15 @@ module.exports = async (req, res) => {
         if (removedIndex !== -1 && removedIndex <= currentIndex) adjustedIndex = Math.max(0, adjustedIndex - 1)
   updates[`currentTurnIndex`] = adjustedIndex
   updates[`currentTurnStartedAt`] = Date.now()
+  // Clear transient effects for the player whose turn now begins
+  try {
+    const nextPlayer = newTurnOrder[adjustedIndex]
+    if (nextPlayer) {
+      updates[`players/${nextPlayer}/frozen`] = null
+      updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+      updates[`priceSurge/${nextPlayer}`] = null
+    }
+  } catch (e) {}
       } else {
         const prevWrongWords = (guesser.privateWrongWords && guesser.privateWrongWords[targetId]) ? guesser.privateWrongWords[targetId].slice() : []
         prevWrongWords.push(value)
@@ -325,6 +334,10 @@ module.exports = async (req, res) => {
           const nextPlayer = effectiveTurnOrder[nextIndex]
           const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
           updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+          // Clear transient effects that should expire when this player's turn begins
+          updates[`players/${nextPlayer}/frozen`] = null
+          updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+          updates[`priceSurge/${nextPlayer}`] = null
         } catch (e) {}
       }
     }

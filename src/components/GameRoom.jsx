@@ -619,8 +619,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <input id="turnSeconds" name="turnSeconds" type="number" min={10} max={300} value={turnSeconds} onChange={e => { const v = Math.max(10, Math.min(300, Number(e.target.value || 30))); setTurnSeconds(v); updateRoomTiming(timedMode, v); updateRoomSettings({ turnTimeoutSeconds: v }) }} style={{ width: 100, marginLeft: 8 }} />
               </label>
             )}
-            <label htmlFor="starterEnabled" title="When enabled, a single random 'starter' requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus wordmoney.">
-              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Starter bonus
+            <label htmlFor="starterEnabled" title="When enabled, a single random word requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus wordmoney.">
+              <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Word selection bonus
             </label>
             <label htmlFor="gameMode" title="Choose the game mode for this room">
               Mode:
@@ -700,12 +700,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
   { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
     { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word.', powerupType: 'singleOpponentPowerup' },
   { id: 'split_15', name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
     { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
     { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'word_freeze', name: 'Word Freeze', price: 1, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
+    { id: 'word_freeze', name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
@@ -727,15 +727,36 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const pu = POWER_UPS.find(p => p.id === powerId)
     if (!pu) return
     const baseCost = pu.price
-    // compute effective cost (account for global price surge set by another player)
+    // compute effective cost (account for global price surge(s) set by other player(s)).
+    // Support both legacy single-object shape and new per-player map shape.
     let cost = baseCost
     try {
-      const surge = state && state.priceSurge
-      if (surge && surge.amount && surge.by !== myId) {
-        const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
-        const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
-        if (active) cost = baseCost + Number(surge.amount || 0)
+      let totalSurgeAmount = 0
+      const ps = state && state.priceSurge
+      if (ps && typeof ps === 'object') {
+        // legacy single-object shape: { amount, by, expiresAtTurnIndex }
+        if (typeof ps.amount !== 'undefined' && (typeof ps.by !== 'undefined' || typeof ps.expiresAtTurnIndex !== 'undefined')) {
+          const surge = ps
+          if (surge && surge.amount && surge.by !== myId) {
+            const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+            const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+            if (active) totalSurgeAmount += Number(surge.amount || 0)
+          }
+        } else {
+          // new map shape: { [playerId]: { amount, by, expiresAtTurnIndex }, ... }
+          Object.keys(ps || {}).forEach(k => {
+            try {
+              const entry = ps[k]
+              if (!entry || !entry.amount) return
+              if (entry.by === myId) return // buyer's own surge does not affect them
+              const expires = typeof entry.expiresAtTurnIndex === 'number' ? entry.expiresAtTurnIndex : null
+              const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+              if (active) totalSurgeAmount += Number(entry.amount || 0)
+            } catch (e) {}
+          })
+        }
       }
+      if (totalSurgeAmount) cost = baseCost + totalSurgeAmount
     } catch (e) {}
     // check buyer wordmoney
     const me = (state?.players || []).find(p => p.id === myId) || {}
@@ -1013,7 +1034,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-          const buyerMsgLocal = `Full Reveal: revealed ${targetName}'s word`
+          const buyerMsgLocal = `Full Reveal: revealed ${targetName}'s word: ${targetWord}`
           const targetMsgLocal = `${buyerName} used Full Reveal on you; your word was revealed publicly`
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
@@ -1116,9 +1137,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerNode = (state?.players || []).find(p => p.id === myId) || {}
           const guessedBy = buyerNode.guessedBy || {}
           // keys in guessedBy map are letters (or '__word'); ignore '__word'
-          const attemptedLetters = Object.keys(guessedBy || {}).filter(k => k && k !== '__word').map(k => k.toLowerCase())
-          // de-dupe
-          const attemptedSet = new Set(attemptedLetters)
+          const attemptedSet = new Set(Object.keys(guessedBy || {}).filter(k => k && k !== '__word').map(k => k.toLowerCase()))
+
+          // ALSO include any letters revealed to the buyer via power-ups recorded in
+          // buyerNode.privatePowerReveals. These entries can include single-letter
+          // fields (letter, last, letterFromBuyer, letterFromTarget), arrays (letters),
+          // or found arrays (objects with .letter). Add all discovered letters to the
+          // attempted set so Mind Leech uses them when probing the target word.
+          try {
+            const ppr = buyerNode.privatePowerReveals || {}
+            Object.keys(ppr || {}).forEach(bucket => {
+              const entries = ppr[bucket] || {}
+              Object.values(entries || {}).forEach(entry => {
+                try {
+                  if (!entry || !entry.result) return
+                  const res = entry.result || {}
+                  const push = (v) => { try { if (v) attemptedSet.add(String(v).toLowerCase()) } catch (e) {} }
+                  if (res.letter) push(res.letter)
+                  if (res.last) push(res.last)
+                  if (res.letterFromBuyer) push(res.letterFromBuyer)
+                  if (res.letterFromTarget) push(res.letterFromTarget)
+                  if (Array.isArray(res.letters)) res.letters.forEach(ch => push(ch))
+                  if (Array.isArray(res.found)) res.found.forEach(f => { if (f && f.letter) push(f.letter) })
+                } catch (e) {}
+              })
+            })
+          } catch (e) {}
           const letters = (targetWord || '').toLowerCase().split('')
           const found = []
           attemptedSet.forEach(l => {
@@ -1522,7 +1566,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (powerId === 'price_surge') {
           try {
             const expiresAt = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
-            updates[`priceSurge`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
+            // store as a per-player entry so multiple surges can stack and each expires on the originator's next turn
+            updates[`priceSurge/${myId}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
             updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 for the next round` } }
           } catch (e) {}
@@ -1736,6 +1781,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // clear any frozen flags when their turn begins
               updates[`players/${nextPlayer}/frozen`] = null
               updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              // clear any per-player price surge authored by the player whose turn is beginning
+              updates[`priceSurge/${nextPlayer}`] = null
               // Add a lastGain entry to indicate the +1 starter award (clients will show this in tooltip)
               try {
                 // only add when starter bonus is enabled in room state
@@ -1895,12 +1942,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // compute effective price for display (show surge applied if it affects buyer)
               let displayPrice = p.price
               try {
-                const surge = state && state.priceSurge
-                if (surge && surge.amount && surge.by !== myId) {
-                  const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
-                  const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
-                  if (active) displayPrice = p.price + Number(surge.amount || 0)
+                // compute sum of active surges (skip any surge authored by viewer)
+                let totalSurgeAmount = 0
+                const ps = state && state.priceSurge
+                if (ps && typeof ps === 'object') {
+                  if (typeof ps.amount !== 'undefined' && (typeof ps.by !== 'undefined' || typeof ps.expiresAtTurnIndex !== 'undefined')) {
+                    const surge = ps
+                    if (surge && surge.amount && surge.by !== myId) {
+                      const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+                      const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                      if (active) totalSurgeAmount += Number(surge.amount || 0)
+                    }
+                  } else {
+                    Object.keys(ps || {}).forEach(k => {
+                      try {
+                        const entry = ps[k]
+                        if (!entry || !entry.amount) return
+                        if (entry.by === myId) return
+                        const expires = typeof entry.expiresAtTurnIndex === 'number' ? entry.expiresAtTurnIndex : null
+                        const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                        if (active) totalSurgeAmount += Number(entry.amount || 0)
+                      } catch (e) {}
+                    })
+                  }
                 }
+                if (totalSurgeAmount) displayPrice = p.price + totalSurgeAmount
               } catch (e) { }
 
               // compute a visual style/class to distinguish power-up types
@@ -2178,6 +2244,8 @@ try {
             if (nextPlayer) {
               updates[`players/${nextPlayer}/frozen`] = null
               updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              // clear per-player price surge for the player whose turn is starting (surge expires)
+              updates[`priceSurge/${nextPlayer}`] = null
             }
           } catch (e) {}
           if (debug) console.log('TimerWatcher: writing timeout', { roomId, tkey, timedOutPlayer, expiredTurnStartedAt: r.currentTurnStartedAt || null })
@@ -2212,6 +2280,8 @@ try {
         if (nextPlayer) {
           updates[`players/${nextPlayer}/frozen`] = null
           updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+          // clear per-player price surge for the player whose turn is starting (surge expires)
+          updates[`priceSurge/${nextPlayer}`] = null
         }
       } catch (e) {}
       await dbUpdate(roomRef, updates)
@@ -2827,7 +2897,7 @@ try {
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
               {state?.starterBonus?.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
-                  Starter rule: <strong>{state?.starterBonus?.description}</strong>
+                  Word rule: <strong>{state?.starterBonus?.description}</strong>
                 </div>
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>
