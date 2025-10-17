@@ -839,29 +839,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'letter_peek') {
         const pos = Number(opts.pos) || 0
+        // shared variables need to be in outer scope so we can reference them below
+        let letter = null
+        let buyerMsg = null
+        let targetMsg = null
+
         // human-readable short messages; explicitly report no letter at position when invalid
         if (!pos || pos < 1) {
-          const buyerMsg = `Letter peek: no letter at position ${opts.pos || pos}`
-          const targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${opts.pos || pos}`
+          buyerMsg = `Letter peek: no letter at position ${opts.pos || pos}`
+          targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${opts.pos || pos}`
           resultPayload = { message: `Letter peek: no letter at position ${opts.pos || pos}`, pos }
-
         } else {
-          const letter = (targetWord && targetWord[pos-1]) ? targetWord[pos-1] : null
+          letter = (targetWord && targetWord[pos-1]) ? targetWord[pos-1] : null
           if (!letter) {
             resultPayload = { message: `Letter peek: no letter at position ${pos}`, pos }
-            const buyerMsg = `Letter peek: no letter at position ${pos}`
-            const targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${pos}`
-          }
-          else {
+            buyerMsg = `Letter peek: no letter at position ${pos}`
+            targetMsg = `${buyerName} used Letter Peek on you; they revealed no letter at position ${pos}`
+          } else {
             resultPayload = { message: `Letter peek: '${letter}' at position ${pos}`, letter, pos }
-            const buyerMsg = `Letter peek: '${letter}' at position ${pos}`
-            const targetMsg = `${buyerName} used Letter Peek on you; they revealed '${letter}' letter at position ${pos}`
-          
+            buyerMsg = `Letter peek: '${letter}' at position ${pos}`
+            targetMsg = `${buyerName} used Letter Peek on you; they revealed '${letter}' letter at position ${pos}`
           }
         }
 
-        const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { letter: ch, message: targetMsg } }
+        const buyerData = { ...buyerBase, result: { letter: letter, message: buyerMsg } }
+        const targetData = { ...targetBase, result: { letter: letter, message: targetMsg } }
 
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
