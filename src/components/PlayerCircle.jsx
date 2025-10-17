@@ -595,12 +595,14 @@ export default function PlayerCircle({
                 // When viewer has an active Double Down on someone else, visually lock other players' Guess buttons
                 const ddLocked = !!(ddActive && ddTarget && ddTarget !== player.id && !isSelf)
                 const targetName = (playerIdToName && playerIdToName[ddTarget]) || ddTarget || 'the selected player'
-                const titleText = isEliminated ? 'Player eliminated' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word')
-                const className = `action-button ${ddLocked ? 'dd-locked' : ''}`
+                // Consider frozen state: when a player is frozen by a power-up, others should not be able to guess them
+                const isFrozen = !!(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)))
+                const titleText = isEliminated ? 'Player eliminated' : (isFrozen ? 'Player is frozen — guesses disabled' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word'))
+                const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
                 return (
                   <>
                     {!hideInteractiveForWordSpy && (
-                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked} onClick={() => { if (canGuess && !isEliminated && !ddLocked) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
+                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf)} onClick={() => { if (canGuess && !isEliminated && !ddLocked && !(isFrozen && !isSelf)) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
                     )}
                   </>
                 )
@@ -799,6 +801,10 @@ try {
   .player .double-down-badge { position: relative; z-index: 10; }
   /* when viewer has active Double Down and this tile is not the target, visually lock guess button */
   .dd-locked { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+  /* frozen players: make buttons non-interactive and show frozen styling for the tile */
+  .player.player-frozen { opacity: 0.75; }
+  .player.player-frozen .action-button { pointer-events: none; opacity: 0.6; cursor: not-allowed; }
+  .frozen-locked { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
     `
     document.head.appendChild(s)
   }

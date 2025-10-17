@@ -1944,7 +1944,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
                             )}
                             {stakeTooLarge && (
-                              <div style={{ color: '#900', fontSize: 12 }}>Stake cannot exceed ${maxStake} (your current wordmoney - 1 (cost of this power up))</div>
+                              <div style={{ color: '#900', fontSize: 12, maxWidth: 220, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                Stake cannot exceed ${maxStake} (your current wordmoney - 1 (cost of this power up))
+                              </div>
                             )}
                           </div>
                         )
