@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 export default function PlayerCircle({
+  onSkip = null,
   player,
   onGuess,
   canGuess = false,
@@ -589,7 +590,7 @@ export default function PlayerCircle({
 
 
             <div className="actions" style={{ marginBottom: 8 }}>
-              {isSelf ? (
+                {isSelf ? (
                 // Hide the "Show my word" button during Word Spy mode
                 (gameMode === 'wordSpy') ? (
                   <div style={{ fontSize: 13, color: '#999', fontStyle: 'italic' }}>{viewerIsSpy ? 'You are the spy' : ''}</div>
@@ -613,6 +614,11 @@ export default function PlayerCircle({
                   </>
                 )
               })()}
+
+              {/* Skip turn button: visible to the current player (self) when it's their turn */}
+              {isSelf && isTurn && !hideInteractiveForWordSpy && (
+                <button className="action-button" title="End your turn" onClick={() => { try { if (typeof onSkip === 'function') onSkip() } catch (e) {} }} style={{ marginLeft: 8 }}>Skip turn</button>
+              )}
 
               {!isSelf && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
                 <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'⚡ Power-up'}</button>

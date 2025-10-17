@@ -2187,6 +2187,39 @@ try {
     return null
   }
 
+  // Allow the current player to voluntarily end their turn and advance to the next player.
+  async function skipTurn() {
+    try {
+      if (!myId) return
+      if (currentTurnId !== myId) {
+        setToasts(t => [...t, { id: `skip_err_${Date.now()}`, text: 'You can only skip on your turn.' }])
+        return
+      }
+      const order = state && state.turnOrder ? state.turnOrder : []
+      if (!order || order.length === 0) return
+      const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
+      const nextIndex = (currentIndexLocal + 1) % order.length
+      const nextPlayer = order[nextIndex]
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const updates = {
+        currentTurnIndex: nextIndex,
+        currentTurnStartedAt: Date.now()
+      }
+      // Clear any frozen flags for the player whose turn will begin
+      try {
+        if (nextPlayer) {
+          updates[`players/${nextPlayer}/frozen`] = null
+          updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+        }
+      } catch (e) {}
+      await dbUpdate(roomRef, updates)
+      setToasts(t => [...t, { id: `skip_ok_${Date.now()}`, text: 'Turn skipped' }])
+    } catch (e) {
+      console.error('skipTurn failed', e)
+      setToasts(t => [...t, { id: `skip_err_${Date.now()}`, text: 'Could not skip turn. Try again.' }])
+    }
+  }
+
   async function handleSubmitWord() {
     const candidate = (word || '').toString().trim()
     // client-side safety checks (length and characters)
@@ -2728,6 +2761,7 @@ try {
                           onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }} 
                           showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
                           onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
+                          onSkip={skipTurn}
                           playerIdToName={playerIdToName}
                           timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                           starterApplied={!!state?.starterBonus?.applied}
