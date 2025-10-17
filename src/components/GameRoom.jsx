@@ -1927,7 +1927,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       </div>
                     ) : p.id === 'double_down' ? (
                       (() => {
-                        const stakeVal = (powerUpChoiceValue || '').toString().trim()
+                        // Double Down should use the stake input, not the letter_peek choice
+                        const stakeVal = (powerUpStakeValue || '').toString().trim()
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
                         // Max stake is your current wordmoney - 1 (you may stake up to your current balance minus the base price)
