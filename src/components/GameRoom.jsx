@@ -705,9 +705,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
     { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
     { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'word_freeze', name: 'Word Freeze', price: 6, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
+    { id: 'word_freeze', name: 'Word Freeze', price: 1, desc: 'Put your word on ice — no one can guess it until your turn comes back around. Players will see your player div freeze.', powerupType: 'selfPowerup' },
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-    { id: 'hang_shield', name: 'Hang Shield', price: 5, desc: 'Protect yourself — blocks the next attack against you. Only you will know you played it.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' }
@@ -1505,24 +1504,19 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
         if (powerId === 'word_freeze') {
           try {
+            // Word Freeze is a self-targeted power-up: ensure it freezes the buyer's own word
             const expires = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
-            updates[`players/${powerUpTarget}/frozen`] = true
-            updates[`players/${powerUpTarget}/frozenUntilTurnIndex`] = expires
-            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Word Freeze: ${targetName} is frozen for one round` } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Word Freeze on you` } }
+            const freezeTarget = myId
+            updates[`players/${freezeTarget}/frozen`] = true
+            updates[`players/${freezeTarget}/frozenUntilTurnIndex`] = expires
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: freezeTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: freezeTarget }
+            // Inform the buyer that their word is frozen and add a message for the buyer's own private reveals
+            updates[`players/${myId}/privatePowerReveals/${freezeTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Word Freeze: your word is frozen for one round` } }
+            // Also add an entry under the frozen player's privatePowerReveals for consistency (buyer = target here)
+            updates[`players/${freezeTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Word Freeze` } }
           } catch (e) {}
         }
-
-        if (powerId === 'hang_shield') {
-          try {
-            updates[`players/${myId}/privatePowerUps/hang_shield`] = { active: true, ts: Date.now() }
-            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
-            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Hang Shield: active — blocks the next attack against you` } }
-          } catch (e) {}
-        }
-
         if (powerId === 'price_surge') {
           try {
             const expiresAt = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
@@ -2695,7 +2689,10 @@ try {
 
           const baseCanGuess = phase === 'playing' && myId === currentTurnId && p.id !== myId
           // if viewer has an active DD and a known target, only that target is guessable.
-          const canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id)
+          // additionally, respect 'frozen' state on the target: if the target is frozen, other
+          // players (not the target themselves) should not be able to guess them.
+          const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
+          const canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
 
           const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
           // determine why the power-up button should be disabled (if anything)

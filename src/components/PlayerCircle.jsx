@@ -512,7 +512,13 @@ export default function PlayerCircle({
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
-          <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
+          <div style={{ position: 'relative' }}>
+            <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
+            {/* Frozen badge: visible when player is frozen (others see it) */}
+            {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
+              <div className="frozen-badge" title="Player is frozen — guesses disabled">❄️ Frozen</div>
+            )}
+          </div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center' }}>{player.name}</div>
           {/* wordmoney moved here to sit under the player's name */}
           <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
@@ -805,6 +811,8 @@ try {
   .player.player-frozen { opacity: 0.75; }
   .player.player-frozen .action-button { pointer-events: none; opacity: 0.6; cursor: not-allowed; }
   .frozen-locked { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
+  /* frozen badge styling */
+  .frozen-badge { position: absolute; right: -8px; top: -8px; background: rgba(255,255,255,0.95); color: #0b66ff; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.08); pointer-events: none; }
     `
     document.head.appendChild(s)
   }
