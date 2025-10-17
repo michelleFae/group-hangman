@@ -2285,7 +2285,14 @@ try {
         }
       } catch (e) {}
       await dbUpdate(roomRef, updates)
-      setToasts(t => [...t, { id: `skip_ok_${Date.now()}`, text: 'Turn skipped' }])
+      const toastId = `skip_ok_${Date.now()}`
+      setToasts(t => [...t, { id: toastId, text: 'Turn skipped' }])
+      // auto-dismiss after a short time
+      setTimeout(() => {
+        // mark removing to allow CSS fade if supported
+        setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x))
+      }, 3000)
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
     } catch (e) {
       console.error('skipTurn failed', e)
       setToasts(t => [...t, { id: `skip_err_${Date.now()}`, text: 'Could not skip turn. Try again.' }])
