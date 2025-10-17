@@ -1560,9 +1560,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (powerId === 'price_surge') {
           try {
             const expiresAt = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
-            // store as a per-player entry so multiple surges can stack and each expires on the originator's next turn
-            updates[`priceSurge/${myId}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
-            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
+            // apply as a per-target entry for every other player so the surge affects everyone except the buyer
+            try {
+              ;(state?.players || []).forEach(pp => {
+                try {
+                  if (pp && pp.id && pp.id !== myId) {
+                    updates[`priceSurge/${pp.id}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
+                  }
+                } catch (e) {}
+              })
+            } catch (e) {}
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: null }
             updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 for the next round` } }
           } catch (e) {}
         }
@@ -2357,7 +2365,19 @@ try {
                       {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                       <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
                       {showWordsOnEnd && p.word && (
-                        <span style={{ marginLeft: 8, background: '#eef5ff', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                        <span style={{
+                          marginLeft: 8,
+                          background: '#eef5ee',
+                          padding: '4px 8px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          color: '#234',
+                          display: 'inline-block',
+                          maxWidth: '40vw',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>{p.word}</span>
                       )}
                     </div>
                     <div style={{ fontWeight: 800 }}>
@@ -2967,11 +2987,35 @@ try {
                         {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                         <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
                         {showWordsOnEnd && p.word && (
-                          <span style={{ marginLeft: 8, background: '#eef5ff', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                          <span style={{
+                            marginLeft: 8,
+                            background: '#eef5ee',
+                            padding: '4px 8px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            color: '#234',
+                            display: 'inline-block',
+                            maxWidth: '40vw',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>{p.word}</span>
                         )}
                       </div>
                       <div style={{ fontWeight: 800 }}>
-                        <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
+                        <span style={{
+                          background: '#f3f3f3',
+                          color: p.id === state?.winnerId ? '#b8860b' : '#222',
+                          padding: '6px 10px',
+                          borderRadius: 16,
+                          display: 'inline-block',
+                          minWidth: 48,
+                          maxWidth: 120,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          textAlign: 'center'
+                        }}>
                           ${p.wordmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
                         </span>
                       </div>
