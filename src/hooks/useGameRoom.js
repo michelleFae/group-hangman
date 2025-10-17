@@ -139,9 +139,7 @@ export default function useGameRoom(roomId, playerName) {
   }, [roomId])
 
   function getStartMoneyFromRoom(roomVal) {
-    try {
-      if (roomVal && typeof roomVal.startingWordmoney === 'number') return Math.max(0, Number(roomVal.startingWordmoney))
-    } catch (e) {}
+    // Starting wordmoney is hard-coded to 2. Do not read from room settings.
     return 2
   }
 
@@ -524,7 +522,7 @@ export default function useGameRoom(roomId, playerName) {
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
       // local fallback: use configured starting wordmoney if available in state
-      const startLocal = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : 2
+  const startLocal = 2
       setState(prev => ({
         ...prev,
         players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, wordmoney: startLocal, revealed: [] }]
@@ -571,7 +569,7 @@ export default function useGameRoom(roomId, playerName) {
       }
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
-      const startMoney = getStartMoneyFromRoom(roomVal)
+  const startMoney = 2
       await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }
@@ -814,9 +812,7 @@ export default function useGameRoom(roomId, playerName) {
           const pSnap = await get(playerRef)
           const pVal = pSnap.val() || {}
           if (!pVal.starterBonusAwarded) {
-            const prev = (typeof pVal.wordmoney === 'number')
-              ? pVal.wordmoney
-              : ((roomRoot && typeof roomRoot.startingWordmoney === 'number') ? Number(roomRoot.startingWordmoney) : 2)
+            const prev = (typeof pVal.wordmoney === 'number') ? pVal.wordmoney : 2
             const ups = {}
             ups[`players/${uid}/wordmoney`] = prev + 10
             ups[`players/${uid}/starterBonusAwarded`] = true
@@ -845,7 +841,7 @@ export default function useGameRoom(roomId, playerName) {
           if (first) {
             const pSnap = await get(dbRef(db, `rooms/${roomId}/players/${first}`))
             const pVal = pSnap.val() || {}
-            const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : getStartMoneyFromRoom(roomRoot)
+            const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : 2
             updates[`players/${first}/wordmoney`] = Number(prev) + 1
             updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() }
           }

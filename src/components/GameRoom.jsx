@@ -29,7 +29,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
-  const [startingWordmoney, setStartingWordmoney] = useState(2)
+  // starting wordmoney is hard-coded to 2; no local state needed
   const [showSettings, setShowSettings] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
@@ -97,10 +97,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       return prev;
     });
 
-    // ✅ same for starting wordmoney
-    if (typeof state?.startingWordmoney === 'number') {
-      setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)));
-    }
+    // startingWordmoney is fixed to 2 (hard-coded); do not sync from room settings
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
@@ -116,7 +113,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.starterBonus?.enabled,
     state?.powerUpsEnabled,
     state?.minWordSize,
-    state?.startingWordmoney
+    // startingWordmoney removed
   ]);
 
   // toggle a body-level class so the background becomes green when money-mode is active
@@ -679,10 +676,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   style={{ width: 80, marginLeft: 8 }}
                 />
               </label>
-              <label htmlFor="startingWordmoney" title="Starting wordmoney for each player when the room is reset">
-                Starting wordmoney:
-                <input id="startingWordmoney" name="startingWordmoney" type="number" min={0} max={999} value={startingWordmoney} onChange={e => { const v = Math.max(0, Number(e.target.value || 0)); setStartingWordmoney(v); updateRoomSettings({ startingWordmoney: v }) }} style={{ width: 80, marginLeft: 8 }} disabled={!isHost} />
-              </label>
+              {/* Starting wordmoney removed from host settings; starting balance is hard-coded to $2 */}
           </div>
         </div>
       </div>
@@ -2057,8 +2051,8 @@ try {
         setIsResetting(true)
 
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
-    // determine starting wordmoney to apply for resets (prefer authoritative room state, fallback to local setting)
-    const resetStart = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : (typeof startingWordmoney === 'number' ? Math.max(0, Number(startingWordmoney)) : 2)
+  // determine starting wordmoney to apply for resets — hard-coded to 2
+  const resetStart = 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -2133,7 +2127,7 @@ try {
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = (state && typeof state.startingWordmoney === 'number') ? Math.max(0, Number(state.startingWordmoney)) : (typeof startingWordmoney === 'number' ? Math.max(0, Number(startingWordmoney)) : 2)
+  const startMoney = 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
