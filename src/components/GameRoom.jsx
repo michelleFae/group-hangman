@@ -2356,6 +2356,9 @@ try {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                       <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                      {showWordsOnEnd && p.word && (
+                        <span style={{ marginLeft: 8, background: '#eef5ff', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                      )}
                     </div>
                     <div style={{ fontWeight: 800 }}>
                       <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>

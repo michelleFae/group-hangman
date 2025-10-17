@@ -1,7 +1,7 @@
 /* Word Spy theme: high-contrast pink-on-black for secret/spy mood */
 body.wordspy-theme-body {
   background: #2a0310 !important; /* dark background for max contrast */
-  color: #ffd6f0 !important; /* soft light pink text */
+  color: rgb(148, 85, 125) !important; /* soft light pink text */
 }
 
 /* Cards should be slightly lifted but remain very dark so pink accents stand out */
@@ -9,7 +9,7 @@ body.wordspy-theme-body .card,
 body.wordspy-theme-body .modal-dialog,
 body.wordspy-theme-body .shop-modal-dialog {
   background: linear-gradient(180deg, #0b0b0b, #0b0b0b) !important;
-  color: #ffd6f0 !important;
+  color: #6a1f4f !important;
   border: 1px solid rgba(255,182,193,0.06) !important;
 }
 
