@@ -41,7 +41,6 @@ export default function PlayerCircle({
   const lastDisplayedRef = useRef(null)
   const lastTotalRef = useRef(null)
   const lastGainTsRef = useRef(0)
-  const [hangHistory, setHangHistory] = useState([]) // newest first
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
   const [expanded, setExpanded] = useState(false)
@@ -332,152 +331,9 @@ export default function PlayerCircle({
     if (flashPenalty) { setAnimateHang(true); const id = setTimeout(() => setAnimateHang(false), 1000); return () => clearTimeout(id) }
   }, [flashPenalty])
 
-  useEffect(() => {
-    const displayed = (Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)
-    if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
-      setPulse(true)
-      const id = setTimeout(() => setPulse(false), 450)
-      return () => clearTimeout(id)
-    }
-    // initialize history/tracking on first render for this player
-    if (lastDisplayedRef.current === null) {
-      // load saved history from localStorage if present
-      try {
-        const key = `gh_hang_history_${player.id}`
-        const raw = localStorage.getItem(key)
-        if (raw) {
-          const arr = JSON.parse(raw)
-          if (Array.isArray(arr)) {
-            setHangHistory(arr.slice(0,3))
-          }
-        } else {
-          // If no local history, seed from server-provided lastGain when available
-          try {
-            const lg = player.lastGain
-            if (lg && typeof lg.amount === 'number') {
-              const reasonMap = (r) => {
-                const s = (r || '').toString()
-                if (s === 'powerupReveal') return 'from power-up reveal'
-                if (s === 'letter_for_letter' || s === 'letter-for-letter') return 'from letter-for-letter'
-                if (s === 'startTurn' || s === 'turnStart' || s === 'startBonus') return 'from start of turn'
-                if (s === 'wrongGuess' || s === 'correctGuess') return 'from guessing'
-                return `(${s})`
-              }
-              const entry = { ts: Number(lg.ts) || Date.now(), delta: Number(lg.amount || 0), reason: reasonMap(lg.reason), prev: Math.max(0, displayed - Number(lg.amount || 0)) }
-              setHangHistory([entry])
-              try { localStorage.setItem(key, JSON.stringify([entry])) } catch (e) {}
-              lastGainTsRef.current = Number(lg.ts || 0)
-            }
-          } catch (e) {}
-        }
-      } catch (e) {}
-      lastTotalRef.current = displayed
-      // record lastGain ts so we don't double-record the same event (if not already set above)
-      try { lastGainTsRef.current = lastGainTsRef.current || (player.lastGain && player.lastGain.ts ? Number(player.lastGain.ts) : 0) } catch (e) { lastGainTsRef.current = 0 }
-    }
-    // detect changes and record an entry
-    if (lastDisplayedRef.current !== null && lastDisplayedRef.current !== displayed) {
-      const prev = lastDisplayedRef.current || 0
-      const delta = displayed - prev
-      // determine a reason text if possible
-      let reasonText = 'Adjustment'
-      try {
-        const lg = player.lastGain
-          if (lg && lg.ts && Number(lg.ts) > (lastGainTsRef.current || 0) && Math.abs(Number(lg.amount || 0)) === Math.abs(delta)) {
-          // map some reason codes to human text
-          const r = (lg.reason || '').toString()
-          if (r === 'powerupReveal') reasonText = 'from power-up reveal'
-          else if (r === 'letter_for_letter' || r === 'letter-for-letter') reasonText = 'from letter-for-letter'
-          else if (r === 'startTurn' || r === 'turnStart' || r === 'startBonus') reasonText = 'from start of turn'
-          else if (r === 'wrongGuess' || r === 'correctGuess') reasonText = 'from guessing'
-          else reasonText = `(${r})`
-          // include who (by) when available
-          if (lg.by) reasonText = `${reasonText} ${lg.by ? `by ${playerIdToName[lg.by] || lg.by}` : ''}`.trim()
-          lastGainTsRef.current = Number(lg.ts || 0)
-        } else if (delta < 0 && Number(pendingDeduct) > 0) {
-          reasonText = 'From buying power-up'
-        }
-      } catch (e) {}
-
-  const entry = { ts: Date.now(), delta: Number(delta), reason: reasonText, prev }
-  try { console.debug('wordmoney change detected for', player.id, entry) } catch (e) {}
-      const next = [entry].concat(hangHistory || []).slice(0,3)
-      setHangHistory(next)
-      // persist
-      try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
-      // update recorded total
-      lastTotalRef.current = displayed
-      // animation pulse for change
-      setPulse(true)
-      const id = setTimeout(() => setPulse(false), 450)
-      return () => clearTimeout(id)
-    }
-    lastDisplayedRef.current = displayed
-  }, [player.wordmoney, pendingDeduct])
-
-  // Also listen specifically for explicit lastGain updates from the server and record them
-  useEffect(() => {
-    try {
-      const lg = player.lastGain
-      if (!lg || typeof lg.ts === 'undefined') return
-      const ts = Number(lg.ts || 0)
-      if (ts && ts > (lastGainTsRef.current || 0)) {
-        const amount = Number(lg.amount || 0)
-        const reasonMap = (r) => {
-          const s = (r || '').toString()
-          if (s === 'powerupReveal') return 'from power-up reveal'
-          if (s === 'letter_for_letter' || s === 'letter-for-letter') return 'from letter-for-letter'
-          if (s === 'startTurn' || s === 'turnStart' || s === 'startBonus') return 'from start of turn'
-          if (s === 'wrongGuess' || s === 'correctGuess') return 'from guessing'
-          return `(${s})`
-        }
-        let reasonText = reasonMap(lg.reason)
-        if (lg.by) reasonText = `${reasonText} ${lg.by ? `by ${playerIdToName[lg.by] || lg.by}` : ''}`.trim()
-        const displayed = (Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)
-        const entry = { ts, delta: Number(amount), reason: reasonText, prev: Math.max(0, displayed - Number(amount || 0)) }
-        lastGainTsRef.current = ts
-        try { console.debug('wordmoney lastGain observed for', player.id, entry) } catch (e) {}
-        setHangHistory(h => {
-          const next = [entry].concat(h || []).slice(0,3)
-          try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
-          return next
-        })
-      }
-    } catch (e) {}
-  }, [player.lastGain])
-
-  // Listen for cross-component local updates dispatched from GameRoom seeding step
-  useEffect(() => {
-    function onUpdate(e) {
-      try {
-        const d = e && e.detail
-        if (!d || !d.playerId || d.playerId !== player.id) return
-        const entry = d.entry
-        if (!entry) return
-        setHangHistory(h => {
-          const next = [entry].concat(h || []).slice(0,3)
-          try { localStorage.setItem(`gh_hang_history_${player.id}`, JSON.stringify(next)) } catch (e) {}
-          return next
-        })
-      } catch (e) {}
-    }
-    try { window.addEventListener('gh_hang_history_update', onUpdate) } catch (e) {}
-    return () => { try { window.removeEventListener('gh_hang_history_update', onUpdate) } catch (e) {} }
-  }, [player.id])
 
   const isTurn = currentTurnId && currentTurnId === player.id
 
-  // When a new round starts (lobby phase), clear wordmoney details so tooltip is empty
-  useEffect(() => {
-    try {
-      if (phase === 'lobby') {
-        setHangHistory([])
-        try { localStorage.removeItem(`gh_hang_history_${player.id}`) } catch (e) {}
-        // reset tracking refs so we re-seed cleanly on first display after lobby
-        try { lastDisplayedRef.current = null; lastTotalRef.current = null; lastGainTsRef.current = 0 } catch (e) {}
-      }
-    } catch (e) {}
-  }, [phase, player.id])
 
   // Determine elimination UI state
   const isEliminated = !!player.eliminated
@@ -526,17 +382,6 @@ export default function PlayerCircle({
             <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
               ${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}
             </span>
-            {/* info icon with hover tooltip showing last 3 updates */}
-            {/* hide the wordmoney details tooltip during Word Spy */}
-            {!hideInteractiveForWordSpy && (
-              <span className="hang-info" style={{ marginLeft: 8, cursor: 'default', position: 'relative', display: 'inline-block' }} aria-hidden>
-                {/* prettier-ignore */}
-                <span aria-hidden style={{ width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%',  color: '#2b57d9', fontWeight: 800, boxShadow: '0 1px 0 rgba(0,0,0,0.04)' }}>ℹ️</span>
-                {/* tooltip will be rendered into document.body to avoid z-index clipping */}
-                {/* we mount a hidden container here and populate it imperatively */}
-                <HangTooltipPortal playerId={player.id} hangHistory={hangHistory} currentTotal={(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)} starterApplied={starterApplied} playerName={player.name} />
-              </span>
-            )}
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>YOU</div>}
           {/* Double Down active badge: shows when this player has a pending doubleDown */}
@@ -778,9 +623,6 @@ try {
     const s = document.createElement('style')
     s.id = styleId
     s.innerHTML = `
-      .hang-tooltip-inner { box-shadow: 0 10px 30px rgba(0,0,0,0.2); background: white; border-radius: 10px; color: #1f2937; }
-      .hang-tooltip-inner .plus { color: green }
-      .hang-tooltip-inner .minus { color: red }
       /* make sure tooltip content is readable */
       .gh-hang-tooltip { z-index: 2147483000 !important; position: absolute; min-width: 260px; max-width: 420px; }
       .gh-hang-tooltip .line { display:flex; align-items:center; gap:8px; margin-bottom:6px }
@@ -809,130 +651,4 @@ try {
   }
 } catch (e) {}
 
-// Portal tooltip component - renders hangHistory into document.body near the icon
-function HangTooltipPortal({ playerId, hangHistory, currentTotal, starterApplied = false, playerName = '' }) {
-  const iconRef = React.useRef(null)
-  const [visible, setVisible] = React.useState(false)
-  const [pos, setPos] = React.useState({ left: 0, top: 0 })
-  useEffect(() => {
-    // find the icon element for this player by scanning for the hang-info span under the player container
-    const container = document.querySelector(`.player[data-player-id="${playerId}"]`)
-    if (!container) return
-    const info = container.querySelector('.hang-info > span')
-    iconRef.current = info
-    if (!info) return
-    const enter = () => {
-      const r = info.getBoundingClientRect()
-      // prefer rendering to the right; clamp to viewport
-      const left = Math.min(window.innerWidth - 440, Math.max(8, r.right + 8))
-      const top = Math.max(8, r.top - 8)
-      setPos({ left, top })
-      setVisible(true)
-    }
-    const leave = () => setVisible(false)
-    info.addEventListener('mouseenter', enter)
-    info.addEventListener('mouseleave', leave)
-    // also hide when window scrolls/resize
-    window.addEventListener('scroll', leave, true)
-    window.addEventListener('resize', leave)
-    return () => {
-      try { info.removeEventListener('mouseenter', enter); info.removeEventListener('mouseleave', leave) } catch (e) {}
-      window.removeEventListener('scroll', leave, true)
-      window.removeEventListener('resize', leave)
-    }
-  }, [playerId])
 
-  useEffect(() => {
-    if (!visible) return
-    // ensure we update position if hangHistory changes
-    const info = iconRef.current
-    if (!info) return
-    const r = info.getBoundingClientRect()
-    const left = Math.min(window.innerWidth - 440, Math.max(8, r.right + 8))
-    const top = Math.max(8, r.top - 8)
-    setPos({ left, top })
-  }, [visible, hangHistory])
-
-  // Tooltip visibility is controlled only via mouseenter/mouseleave on the info icon.
-  // We intentionally do not auto-open the tooltip when hangHistory updates so it only
-  // appears when the user explicitly hovers the info icon.
-
-  if (typeof document === 'undefined') return null
-  return createPortal(
-    visible ? (
-      <div className="gh-hang-tooltip card" style={{ left: pos.left, top: pos.top }}>
-        <div className="hang-tooltip-inner" style={{ padding: 10 }}>
-          <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 800 }}>Wordmoney details</div>
-          <div>
-            {(hangHistory && hangHistory.length > 0) ? (
-              // if the only change is a single-entry (start/letter/powerup), show an aggregated explanatory line
-              (hangHistory.length === 1 && hangHistory[0] && hangHistory[0].reason) ? (
-                (() => {
-                  const entry = hangHistory[0]
-                  const amt = Number(entry.delta || 0)
-                  const prev = Math.max(0, (currentTotal || 0) - amt)
-                  const reason = (entry.reason || '').toLowerCase()
-                  // detect power-up/letter-for-letter style reason
-                  const isPower = reason.includes('power') || reason.includes('power-up') || reason.includes('powerup') || reason.includes('power up')
-                  const isStart = reason.includes('start') || reason.includes('turnstart') || reason.includes('start of turn')
-                  // for letter-for-letter played on you, prefer a clearer label
-                  const powerLabel = isPower ? 'from letter-for-letter played on you' : (isStart ? 'from start of turn' : entry.reason || '')
-                  return (
-                    <div style={{ marginBottom: 6 }}>
-                      <div style={{ color: '#1f2937' }}>
-                        <span style={{ fontWeight: 800 }}>current wordmoney = </span>
-                        <span style={{ color: 'green', fontWeight: 800 }}>${currentTotal}</span>
-                        <span style={{ marginLeft: 8 }}>
-                          ({powerLabel} {amt >= 0 ? `+${amt}` : `${amt}`})
-                        </span>
-                        <span style={{ marginLeft: 8, color: '#4b5563' }}>+ ${prev} (previous wordmoney)</span>
-                        {starterApplied ? (
-                          <span style={{ marginLeft: 8, color: 'green' }}>+ $1 (start of next turn)</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })()
-              ) : (
-                hangHistory.map((h, idx) => {
-                  const sign = h.delta >= 0 ? '+' : '-'
-                  const abs = Math.abs(h.delta)
-                  const color = h.delta >= 0 ? 'green' : 'red'
-                  return (
-                    <div key={idx} className="line">
-                      <div className="delta" style={{ color }}>{sign}${abs}</div>
-                      <div style={{ color: '#4b5563' }}>{h.reason || 'Adjustment'}</div>
-                    </div>
-                  )
-                })
-              )
-            ) : (() => {
-              // fallback: try reading persisted history from localStorage so tooltip can show immediately
-              try {
-                const raw = localStorage.getItem(`gh_hang_history_${playerId}`)
-                if (raw) {
-                  const arr = JSON.parse(raw)
-                  if (Array.isArray(arr) && arr.length > 0) {
-                    return arr.map((h, idx) => {
-                      const sign = h.delta >= 0 ? '+' : '-'
-                      const abs = Math.abs(h.delta)
-                      const color = h.delta >= 0 ? 'green' : 'red'
-                      return (
-                        <div key={`ls_${idx}`} className="line">
-                          <div className="delta" style={{ color }}>{sign}${abs}</div>
-                          <div style={{ color: '#9aa47f' }}>{h.reason || 'Adjustment'}</div>
-                        </div>
-                      )
-                    })
-                  }
-                }
-              } catch (e) {}
-              return <div style={{ color: '#4b5563' }}>No recent changes</div>
-            })()}
-          </div>
-        </div>
-      </div>
-    ) : null,
-    document.body
-  )
-}
