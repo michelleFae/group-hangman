@@ -2256,116 +2256,96 @@ try {
   }, [state?.phase, state?.players, isHost])
 
   async function isEnglishWord(w) {
+    console.log('isEnglishWord check for word:', w)
     const candidate = (w || '').toString().trim().toLowerCase()
     if (!/^[a-z]+$/.test(candidate)) return false
-    // Helper local fallback using project's NOUNS list + a small common-word list
-    const localFallbackCheck = (word) => {
-      try {
-        const lc = (word || '').toString().toLowerCase()
-        // Check NOUNS if available
-        if (typeof NOUNS !== 'undefined' && Array.isArray(NOUNS)) {
-          const found = NOUNS.some(n => (n || '').toString().toLowerCase() === lc)
-          if (found) return true
-        }
-        // Common small-word set (covers many short words not in NOUNS)
-        const COMMON_WORDS = ['the','be','to','of','and','a','in','that','have','i','it','for','not','on','with','he','as','you','do','at','this','but','his','by','from','they','we','say','her','she','or','an','will','my','one','all','would','there','their']
-        if (COMMON_WORDS.includes(lc)) return true
-      } catch (e) {}
-      return false
-    }
-    // We will be permissive when the primary dictionary API is unreachable or returns server errors.
-    // Steps: try dictionaryapi.dev; if it says the word exists -> accept. If it is down (network error or 5xx),
-    // try Datamuse, then local fallback. If those can't confirm and dictionaryapi.dev was down, allow the word.
+
+
+    let dictDown = false
+    let datamuseDown = false
+    let freeDictDown = false
+
     try {
-      let dictDown = false
-      let datamuseDown = false
-      let freeDictDown = false
-      // Primary check: dictionaryapi.dev
-      let res = null
+      // === FreeDictionary API ===
+    const response = await fetch(
+      `https://freedictionaryapi.com/api/v1/entries/en/${word}?translations=true&pretty=true`
+    );
+    console.log('FreeDictionaryAPI response status:', response.status);
 
-      // Additional fallback: FreeDictionary API (proxied server-side to avoid CORS).
-      // This will be attempted only when Datamuse did not confirm the word.
-      let freeDictionaryFound = false
-      if (!datamuseFound) {
-        try {
-          const fd = await fetch(`/api/freedictionary?word=${encodeURIComponent(candidate)}`)
-          if (fd && fd.ok) {
-            const fdata = await fd.json()
-            // If provider returned an array of entries (similar shape to dictionaryapi.dev) treat as found
-            if (Array.isArray(fdata) && fdata.length > 0) {
-              freeDictionaryFound = true
-              return true
-            }
-            // Some providers may return an object with 'definitions' or similar; be permissive
-            if (fdata && (fdata.definitions || fdata.meanings || fdata.entry)) {
-              freeDictionaryFound = true
-              return true
-            }
-          } else {
-            if (fd.status !== 404) {
-              freeDictDown = true
-              console.warn('FreeDictionary lookup non-ok response', fd.status)
-            }
-          }
-        } catch (e3) {
-          freeDictDown = true
-          console.warn('FreeDictionary lookup failed', e3)
-          // ignore and continue to local fallback
-        }
+    if (!response.ok && response.status !== 404) {
+      freeDictDown = true
+    }
+
+    const data = await response.json();
+    console.log('FreeDictionaryAPI response data:', data);
+
+    // Check if we got a valid entry with definitions
+    const isValid = data.entries.length > 0;
+
+      if (isValid) {
+        // word found
+        return true;
       }
 
+      // === Datamuse fallback ===
       try {
-      res = await fetch(`/api/dictionary?word=${encodeURIComponent(candidate)}`)
-      } catch (e) {
-        dictDown = true
-        res = null
-      }
-      if (res && res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data) && data.length > 0) return true
-      } else if (res && !res.ok) {
-        // treat non-404 errors (rate limiting, 4xx like 429/403, or 5xx) as the service being down;
-        // only 404 should be treated as an explicit "not found" response
-        if (res.status !== 404) dictDown = true
-      }
-
-      // Fallback: Datamuse
-      let datamuseFound = false
-      try {
-        console.log("datamuse lookup", candidate)
+        console.log('Checking Datamuse for word:', candidate);
         const dm = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(candidate)}&max=1`)
         if (dm.ok) {
           const ddata = await dm.json()
-          if (Array.isArray(ddata) && ddata.length > 0 && ddata[0].word && ddata[0].word.toLowerCase() === candidate) {
-            datamuseFound = true
+          if (
+            Array.isArray(ddata) &&
+            ddata.length > 0 &&
+            ddata[0].word &&
+            ddata[0].word.toLowerCase() === candidate
+          ) {
             return true
           }
-        } else {
-          if (dm.status !== 404) {
-            datamuseDown = true
-            console.warn('Datamuse lookup non-ok response', dm.status)
-          }
-          // else word not found in datamuse
+        } else if (dm.status !== 404) {
+          datamuseDown = true
+          console.warn('Datamuse lookup non-ok response', dm.status)
         }
       } catch (e2) {
         datamuseDown = true
         console.warn('Datamuse lookup failed', e2)
-        // datamuse/network failed — we'll rely on local fallback or permissive rule
       }
+      // === DictionaryAPI.dev check via Vercel proxy ===
+      // not going to work because cors
+      // console.log('Checking DictionaryAPI.dev for word:', candidate);
+      // let res = null;
+      // try {
+      //   res = await fetch(`/api/dictionary?word=${encodeURIComponent(candidate)}`);
+      // } catch (err) {
+      //   console.warn('DictionaryAPI.dev lookup failed', err);
+      //   dictDown = true;
+      // }
+
+      // if (res && res.ok) {
+      //   try {
+      //     const data = await res.json();
+      //     // dictionaryapi.dev returns an array of entries for valid words
+      //     if (Array.isArray(data) && data.length > 0) return true;
+      //   } catch (err) {
+      //     console.warn('DictionaryAPI.dev returned invalid JSON', err);
+      //     dictDown = true;
+      //   }
+      // } else if (res && res.status !== 404) {
+      //   // treat non-404 errors as API being down
+      //   dictDown = true;
+      // }
 
       
+      // add back dictDown check if you re-enable DictionaryAPI.dev
+      // === Allow if all external APIs are down ===
+      if (datamuseDown && freeDictDown) return true
 
-  // If dictionaryapi was down and no fallback confirmed the word, allow it (per user request)
-  if (dictDown && datamuseDown && freeDictDown) return true
-
-      // Otherwise conservative: not an English word
       return false
     } catch (e) {
-      // Unexpected error: be permissive to avoid blocking play
       console.warn('isEnglishWord unexpected error — permitting word', e)
       return true
     }
   }
+
 
   function TimerWatcher({ roomId, timed, turnTimeoutSeconds, currentTurnStartedAt, currentTurnIndex }) {
     const [tick, setTick] = useState(0)
