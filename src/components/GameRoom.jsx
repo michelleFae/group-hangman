@@ -2310,15 +2310,15 @@ try {
         console.warn('Datamuse lookup failed', e2)
       }
       // === DictionaryAPI.dev check via Vercel proxy ===
-      // not going to work because cors
-      // console.log('Checking DictionaryAPI.dev for word:', candidate);
-      // let res = null;
-      // try {
-      //   res = await fetch(`/api/dictionary?word=${encodeURIComponent(candidate)}`);
-      // } catch (err) {
-      //   console.warn('DictionaryAPI.dev lookup failed', err);
-      //   dictDown = true;
-      // }
+      //not going to work because cors
+      console.log('Checking DictionaryAPI.dev for word:', candidate);
+      let res = null;
+      try {
+        res = await fetch(`/api/dictionary?word=${encodeURIComponent(candidate)}`);
+      } catch (err) {
+        console.warn('DictionaryAPI.dev lookup failed', err);
+        dictDown = true;
+      }
 
       if (res && res.ok) {
         try {
