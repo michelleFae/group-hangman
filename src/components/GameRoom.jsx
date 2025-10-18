@@ -2191,6 +2191,8 @@ try {
   function PlayAgainControls({ isHost, myId, players }) {
     const [submitting, setSubmitting] = useState(false)
 
+    // Only the host should see these controls
+    if (!isHost) return null
     // Host-only restart: reset per-player words, wordmoney, submission flags, clear wantsRematch, and set phase to 'waiting'
     async function restartForAll() {
       if (!isHost) return
