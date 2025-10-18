@@ -25,7 +25,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [gameMode, setGameMode] = useState('lastOneStanding')
   const [wordSpyTimerSeconds, setWordSpyTimerSeconds] = useState(120)
   const [wordSpyRounds, setWordSpyRounds] = useState(3)
-  const [powerUpsEnabled, setPowerUpsEnabled] = useState(false)
+  const [powerUpsEnabled, setPowerUpsEnabled] = useState(true)
   const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
@@ -640,8 +640,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               </div>
             )}
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
-              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups
-              <div style={{ fontSize: 12, color: '#B4A3A3' }} onMouseEnter={() => { /* tooltip handled via title attr */ }}>ⓘ</div>
+              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups enabled
             </label>
             <label htmlFor="showWordsOnEnd" title="When enabled, each player's submitted secret word is shown on the final standings screen">
               <input id="showWordsOnEnd" name="showWordsOnEnd" type="checkbox" checked={showWordsOnEnd} onChange={e => { const nv = e.target.checked; setShowWordsOnEnd(nv); updateRoomSettings({ showWordsOnEnd: !!nv }) }} /> Show words on end screen
