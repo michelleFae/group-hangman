@@ -703,7 +703,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
-    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' }
+    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' },
+    { id: 'rare_trace', name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
 
   // Ensure the UI shows power-ups ordered by price (ascending)
@@ -1572,6 +1573,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             } catch (e) {}
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: null }
             updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 for the next round` } }
+          } catch (e) {}
+        }
+        // Rare Trace: tell buyer how many occurrences of very-rare letters exist in the target's word
+        if (powerId === 'rare_trace') {
+          try {
+            const rareLetters = ['q','x','z','j','k','v']
+            const wordLower = (targetWord || '').toLowerCase()
+            let count = 0
+            for (let i = 0; i < (wordLower || '').length; i++) {
+              try { if (rareLetters.includes(wordLower[i])) count++ } catch (e) {}
+            }
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Rare Trace: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `Rare Trace was used on you by ${playerIdToName[myId] || myId}` } }
           } catch (e) {}
         }
       } catch (e) {}
