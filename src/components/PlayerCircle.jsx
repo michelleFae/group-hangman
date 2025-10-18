@@ -551,7 +551,7 @@ export default function PlayerCircle({
 
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'hidden' }}>
+            <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
               {isSelf ? (
                 showOwnWord ? (
                   // If in Word Spy and the viewer is the spy, don't reveal the word — show a neutral message
@@ -569,7 +569,7 @@ export default function PlayerCircle({
 
               {/* styled hover tooltip that shows the full word with guessed letters highlighted */}
               {isSelf && ownerWord && (
-                <div className="word-tooltip" aria-hidden="true" style={{ position: 'absolute', left: 8, top: '100%', marginTop: 6, background: 'white', padding: 6, borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div className="word-tooltip" aria-hidden="true" style={{ position: 'absolute', left: 8, top: '100%', marginTop: 6, background: 'white', padding: 6, borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: 12, flexWrap: 'wrap', gap: 6 }}>
                   {ownerWord.split('').map((ch, idx) => {
                     const lower = (ch || '').toLowerCase()
                     const isGuessedByOthers = revealedSet.has(lower)
@@ -589,7 +589,7 @@ export default function PlayerCircle({
             </div>
 
 
-            <div className="actions" style={{ marginBottom: 8 }}>
+            <div className="actions" style={{ marginBottom: 8, overflow: 'visible' }}>
                 {isSelf ? (
                 // Hide the "Show my word" button during Word Spy mode
                 (gameMode === 'wordSpy') ? (

@@ -30,8 +30,14 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
       setJoinError('Please enter a display name to create a room')
       return
     }
+    // enforce max display name length
+    let finalName = name.toString()
+    if (finalName.length > 14) {
+      // truncate and inform the caller that we will send the truncated name
+      finalName = finalName.slice(0, 14)
+    }
     // In a real app we'd save the hashed password in Firebase
-    onJoin(id, name, password)
+  onJoin(id, finalName, password)
     try {
       const url = buildRoomUrl(id)
       window.history.replaceState({}, '', url)
@@ -104,7 +110,10 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           setJoinError('Please enter a display name to join')
           return
         } else {
-          onJoin(room, name, password) // Pass the password to onJoin
+          // enforce max display name length and truncate before sending
+          let finalName = name.toString()
+          if (finalName.length > 14) finalName = finalName.slice(0, 14)
+          onJoin(room, finalName, password) // Pass the password to onJoin
         }
       }).catch(err => {
         // if reading fails, allow join attempt and let DB rules handle it
@@ -215,7 +224,12 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         <h1 className="wordspiracy-title">Wordspiracy <span className="bubble">🕵️</span></h1>
         <p className="wordspiracy-tag">Protect your word. Expose theirs.</p>
       </div>
-  <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />
+  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+    <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />
+    {name && name.toString().length > 14 && (
+      <div className="small-error" style={{color:'#d9534f'}}>Display name too long — it will be truncated to 14 characters.</div>
+    )}
+  </div>
 
       {/* ARIA live region for announcements */}
       <div ref={ariaLiveRef} aria-live="polite" style={{ position: 'absolute', left: -9999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }} />

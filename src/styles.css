@@ -91,7 +91,13 @@ button[disabled] {
 /* Prevent the viewer's own tile from translating vertically (keep stable) */
 .player-self { transform: none !important }
 
-.player { overflow: hidden; position: relative }
+.player {
+  /* Allow the tile to grow vertically to fit content (buttons, revealed words)
+     and prevent clipping of children. Keep position for absolute tooltips. */
+  overflow: visible; /* allow children to be fully visible */
+  position: relative;
+  box-sizing: unset;
+}
 .player .revealed { pointer-events: auto }
 .player button { position: relative; z-index: 60 }
 .player .revealed { z-index: 10 }
@@ -104,6 +110,8 @@ button[disabled] {
   align-items: center;
   flex-wrap: wrap; /* allow buttons to wrap to new line if space is tight */
   min-width: 0; /* allow flex children to shrink */
+  /* Ensure actions don't overflow the player tile horizontally; allow vertical growth */
+  overflow: visible;
 }
 
 .player .action-button {
@@ -113,6 +121,8 @@ button[disabled] {
   overflow: hidden;
   text-overflow: ellipsis;
   box-sizing: border-box;
+  /* allow buttons to wrap visually by reducing padding slightly on tight widths */
+  min-height: 36px;
 }
 
 /* For very narrow tiles ensure buttons scale down a bit */
@@ -325,7 +335,7 @@ button[disabled] {
 .waiting-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 2px 6px rgba(0,0,0,0.6) }
 
 /* small screens */
-@media (max-width:600px){ .player{ width: 100%; } .meta{ margin-left: 0; margin-top: 6px }}
+@media (max-width:600px){.meta{ margin-left: 0; margin-top: 6px }}
 
 /* small inline error text */
 .small-error {

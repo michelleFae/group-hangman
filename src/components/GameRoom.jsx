@@ -692,7 +692,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
     { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
     { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.', powerupType: 'singleOpponentPowerup' },
+    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word, and all occurrences of it. You can\'t guess this letter to get points next turn.', powerupType: 'singleOpponentPowerup' },
     { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
   { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
     { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
@@ -826,13 +826,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const targetData = { ...targetBase, result: { letters, message: targetMsg } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+
       } else if (powerId === 'zeta_drop') {
         const last = targetWord ? targetWord.slice(-1) : null
-        // Intentionally do NOT set resultPayload.last here. We want Zeta Drop to be
-        // informational only: buyer sees the last letter via privatePowerReveals but
-        // the letter should NOT be added to the target's revealed set or marked
-        // as a no-score reveal. The buyer must still guess the letter on a later
-        // turn to earn points.
+        // Zeta Drop now publicly reveals the last letter (added to target.revealed).
+        // Set resultPayload so downstream reveal handling adds it to the public revealed
+        // set and awards the buyer if appropriate.
+        resultPayload = { last }
 
         const buyerMsg = `Zeta Drop: last letter is ${last}`
         const targetMsg = `${buyerName} used Zeta Drop on you to find out the last letter is ${last}`
@@ -1160,26 +1160,41 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               })
             })
           } catch (e) {}
+
+          // ALSO include any letters already publicly revealed on the buyer's own word
+          // (buyerNode.revealed). These should be considered attempted as the buyer
+          // effectively 'knows' these letters and wants to probe whether they exist
+          // in the target's word as well.
+          try {
+            const revealedLetters = buyerNode.revealed || []
+            if (Array.isArray(revealedLetters)) {
+              revealedLetters.forEach(ch => { try { if (ch) attemptedSet.add(String(ch).toLowerCase()) } catch (e) {} })
+            }
+          } catch (e) {}
           const letters = (targetWord || '').toLowerCase().split('')
+          // Build a stable, sorted attempted array for display and deterministic behavior
+          const attemptedArray = Array.from(attemptedSet).filter(Boolean).map(x => (x || '').toString().toLowerCase())
+          attemptedArray.sort()
           const found = []
-          attemptedSet.forEach(l => {
+          attemptedArray.forEach(l => {
             const count = letters.filter(ch => ch === l).length
             if (count > 0) found.push({ letter: l, count })
           })
 
-          // Build human-friendly messages
+          // Build human-friendly messages that explicitly state which letters were tried
+          const triedDisplay = attemptedArray.length > 0 ? attemptedArray.join(', ') : 'none'
           const buyerMsg = (found && found.length > 0)
-            ? `Mind Leech: found ${found.map(f => `${f.letter} (${f.count})`).join(', ')} in ${targetName}'s word`
-            : `Mind Leech: no letters from your word matched ${targetName}'s word`
+            ? `Mind Leech: tried ${triedDisplay}; found ${found.map(f => `${f.letter} (${f.count})`).join(', ')} in ${targetName}'s word`
+            : `Mind Leech: tried ${triedDisplay}; no letters from your word matched ${targetName}'s word`
           const targetMsg = (found && found.length > 0)
-            ? `${buyerName} used Mind Leech on you; they found ${found.map(f => `${f.letter} (${f.count})`).join(', ')}`
-            : `${buyerName} used Mind Leech on you; no letters matched`
+            ? `${buyerName} used Mind Leech on you; they tried ${triedDisplay} and found ${found.map(f => `${f.letter} (${f.count})`).join(', ')}`
+            : `${buyerName} used Mind Leech on you; they tried ${triedDisplay} and found no matching letters`
 
           // write privatePowerReveals entries for buyer and target so UI can show the results
           const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-          const buyerData = { ...buyerBase, result: { found, attempted: Array.from(attemptedSet), message: buyerMsg } }
-          const targetData = { ...targetBase, result: { found, attempted: Array.from(attemptedSet), message: targetMsg } }
+          const buyerData = { ...buyerBase, result: { found, attempted: attemptedArray, message: buyerMsg } }
+          const targetData = { ...targetBase, result: { found, attempted: attemptedArray, message: targetMsg } }
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
 
@@ -1666,32 +1681,61 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           try {
             if (!existingSet.has(add)) {
               const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
-                if (count > 0) {
+              if (count > 0) {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
-                const myHangCurrent = Number(me.wordmoney) || 0
-                const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined')
-                  ? updates[`players/${myId}/wordmoney`]
-                  : (myHangCurrent - cost)
-                const award = 2 * count
-                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
-                const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
-                let merged = false
-                for (let i = 0; i < prevHits.length; i++) {
-                  const h = prevHits[i]
-                  if (h && h.type === 'letter' && h.letter === add) {
-                    prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
-                    merged = true
-                    break
+                // Determine whether the buyer already received this letter privately earlier
+                const buyerPrivateReveals = (me.privatePowerReveals && me.privatePowerReveals[powerUpTarget]) ? Object.values(me.privatePowerReveals[powerUpTarget]) : []
+                const buyerPrivateHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget] : []
+                let wasPrivatelyRevealedByBuyer = false
+                try {
+                  for (const r of buyerPrivateReveals) {
+                    if (!r || !r.result) continue
+                    const res = r.result || {}
+                    const check = (s) => (s || '').toString().toLowerCase() === add
+                    if (res.letterFromTarget && check(res.letterFromTarget)) { wasPrivatelyRevealedByBuyer = true; break }
+                    if (res.letterFromBuyer && check(res.letterFromBuyer)) { wasPrivatelyRevealedByBuyer = true; break }
+                    if (res.letter && check(res.letter)) { wasPrivatelyRevealedByBuyer = true; break }
+                    if (res.last && check(res.last)) { wasPrivatelyRevealedByBuyer = true; break }
+                    if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(add)) { wasPrivatelyRevealedByBuyer = true; break }
+                    if (res.found && Array.isArray(res.found) && res.found.map(x => (x && x.letter || '').toString().toLowerCase()).includes(add)) { wasPrivatelyRevealedByBuyer = true; break }
                   }
-                }
-                if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
-                updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-                // zeta_drop special-case: if only one occurrence, still mark no-score per rules
-                if (powerId === 'zeta_drop') {
+                } catch (e) {}
+                try {
+                  if (!wasPrivatelyRevealedByBuyer && Array.isArray(buyerPrivateHits)) {
+                    for (const h of buyerPrivateHits) {
+                      if (!h) continue
+                      if (h.type === 'letter' && ((h.letter || '').toString().toLowerCase() === add)) { wasPrivatelyRevealedByBuyer = true; break }
+                    }
+                  }
+                } catch (e) {}
+
+                // Only award buyer if it wasn't already revealed publicly or privately by them
+                if (!wasPrivatelyRevealedByBuyer) {
+                  const myHangCurrent = Number(me.wordmoney) || 0
+                  const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined')
+                    ? updates[`players/${myId}/wordmoney`]
+                    : (myHangCurrent - cost)
+                  const award = 2 * count
+                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                  const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                  let merged = false
+                  for (let i = 0; i < prevHits.length; i++) {
+                    const h = prevHits[i]
+                    if (h && h.type === 'letter' && h.letter === add) {
+                      prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                      merged = true
+                      break
+                    }
+                  }
+                  if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
+                  updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+                  // zeta_drop special-case: if only one occurrence, still mark no-score per rules
+                  if (powerId === 'zeta_drop') {
                     if (count === 1) updates[`players/${powerUpTarget}/noScoreReveals/${add}`] = true
+                  }
+                  // mark visible gain
+                  updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
                 }
-                // mark visible gain
-                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
             }
           } catch (e) {}

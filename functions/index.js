@@ -69,156 +69,156 @@ exports.processGuess = functions.database
       return null
     }
 
-  const updates = {}
-  const hangDeltas = {}
+    const updates = {}
+    const hangDeltas = {}
     const isLetter = value.length === 1
 
-  // baseline: give a small reward for taking a turn; may be overridden for correct actions
-  const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-  let hangIncrement = 1
+    // baseline: give a small reward for taking a turn; may be overridden for correct actions
+    const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
+    let hangIncrement = 1
 
-  // we'll write wordmoney once into updates at the end of processing
+    // we'll write wordmoney once into updates at the end of processing
 
-      if (isLetter) {
-      const letter = lc(value)
-      const word = lc(target.word || '')
-      if (!word) {
-        await snapshot.ref.remove()
-        return null
-      }
+    if (isLetter) {
+    const letter = lc(value)
+    const word = lc(target.word || '')
+    if (!word) {
+      await snapshot.ref.remove()
+      return null
+    }
 
-      let count = 0
-      for (let ch of word) if (ch === letter) count++
+    let count = 0
+    for (let ch of word) if (ch === letter) count++
 
-      const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
+    const prevRevealed = Array.isArray(target.revealed) ? target.revealed.slice() : []
 
-      if (count > 0) {
-        const existing = prevRevealed.filter(x => x === letter).length
-        const toAdd = Math.max(0, count - existing)
+    if (count > 0) {
+      const existing = prevRevealed.filter(x => x === letter).length
+      const toAdd = Math.max(0, count - existing)
 
-        if (toAdd > 0) {
-          // reveal newly found occurrences only
-          for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
-          updates[`players/${targetId}/revealed`] = prevRevealed
+      if (toAdd > 0) {
+        // reveal newly found occurrences only
+        for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
+        updates[`players/${targetId}/revealed`] = prevRevealed
 
-          // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
-          let noScore = target.noScoreReveals && target.noScoreReveals[letter]
-          // Also treat as no-score if the guesser already had this letter privately recorded
-          try {
-            const prevHitsForTarget = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId] : []
-            if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toLowerCase() === letter))) {
-              noScore = true
-            }
-          } catch (e) {}
-          // Also treat as no-score if the guesser previously received this letter via a privatePowerReveals entry
-          try {
-            const pphr = (guesser.privatePowerReveals && guesser.privatePowerReveals[targetId]) ? Object.values(guesser.privatePowerReveals[targetId]) : []
-            if (Array.isArray(pphr) && pphr.some(r => {
-              try {
-                if (!r || !r.result) return false
-                const res = r.result
-                const check = s => (s || '').toString().toLowerCase() === letter
-                if (check(res.letterFromTarget)) return true
-                if (check(res.letterFromBuyer)) return true
-                if (check(res.letter)) return true
-                if (res.last && check(res.last)) return true
-                if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(letter)) return true
-                return false
-              } catch (e) { return false }
-            })) {
-              noScore = true
-            }
-          } catch (e) {}
-
-          if (!noScore) {
-            // award 2 wordmoney per newly revealed occurrence (as a delta)
-            // include any doubleDown extra if active
-            const dd = guesser.doubleDown
-            let award = (2 * toAdd)
-            if (dd && dd.active) {
-              const stake = Number(dd.stake) || 0
-              if (stake > 0) {
-                // award the stake per newly revealed occurrence
-                const extra = stake * toAdd
-                award += extra
-                  // consume the doubleDown entry after use
-                  updates[`players/${from}/doubleDown`] = null
-                  // subtract the original stake once (buyer pays the stake on resolution)
-                if (toAdd == 0) {
-                  //nothing guessed
-                  award = award - stake
-              }
-            }
-              // apply net delta (award already reduced by original stake if applicable)
-              hangDeltas[from] = (hangDeltas[from] || 0) + award
-              // record a visible recent gain so clients show the correct wordmoney delta (net)
-              updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
-
-            // write a private power-up result entry for the guesser so only they see the double-down result
-            try {
-              const ddKey = `double_down_${Date.now()}`
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake)).` } }
-              updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
-            } catch (e) {}
-
-            // record or aggregate private hit for guesser
-            const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-            let merged = false
-            for (let i = 0; i < prevHits.length; i++) {
-              const h = prevHits[i]
-              if (h && h.type === 'letter' && h.letter === letter) {
-                prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
-                merged = true
-                break
-              }
-            }
-            if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
-            updates[`players/${from}/privateHits/${targetId}`] = prevHits
-          } else {
-            // still reveal publicly but don't award points; add a private note for the guesser
-            const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
-            prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
-            updates[`players/${from}/privateHits/${targetId}`] = prevHits
-            // Inform the guesser privately about the no-score result for double-down
-            try {
-              const ddKey2 = `double_down_noscore_${Date.now()}`
-              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: 0, message: `Double Down: guessed '${letter}', no points awarded (no-score)` } }
-              updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
-            } catch (e) {}
+        // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
+        let noScore = target.noScoreReveals && target.noScoreReveals[letter]
+        // Also treat as no-score if the guesser already had this letter privately recorded
+        try {
+          const prevHitsForTarget = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId] : []
+          if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toLowerCase() === letter))) {
+            noScore = true
           }
+        } catch (e) {}
+        // Also treat as no-score if the guesser previously received this letter via a privatePowerReveals entry
+        try {
+          const pphr = (guesser.privatePowerReveals && guesser.privatePowerReveals[targetId]) ? Object.values(guesser.privatePowerReveals[targetId]) : []
+          if (Array.isArray(pphr) && pphr.some(r => {
+            try {
+              if (!r || !r.result) return false
+              const res = r.result
+              const check = s => (s || '').toString().toLowerCase() === letter
+              if (check(res.letterFromTarget)) return true
+              if (check(res.letterFromBuyer)) return true
+              if (check(res.letter)) return true
+              if (res.last && check(res.last)) return true
+              if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x || '').toString().toLowerCase()).includes(letter)) return true
+              return false
+            } catch (e) { return false }
+          })) {
+            noScore = true
+          }
+        } catch (e) {}
+
+        if (!noScore) {
+          // award 2 wordmoney per newly revealed occurrence (as a delta)
+          // include any doubleDown extra if active
+          const dd = guesser.doubleDown
+          let award = (2 * toAdd)
+          if (dd && dd.active) {
+            const stake = Number(dd.stake) || 0
+            if (stake > 0) {
+              // award the stake per newly revealed occurrence
+              const extra = stake * toAdd
+              award += extra
+                // consume the doubleDown entry after use
+                updates[`players/${from}/doubleDown`] = null
+                // subtract the original stake once (buyer pays the stake on resolution)
+              if (toAdd == 0) {
+                //nothing guessed
+                award = award - stake
+            }
+          }
+            // apply net delta (award already reduced by original stake if applicable)
+            hangDeltas[from] = (hangDeltas[from] || 0) + award
+            // record a visible recent gain so clients show the correct wordmoney delta (net)
+            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
+
+          // write a private power-up result entry for the guesser so only they see the double-down result
+          try {
+            const ddKey = `double_down_${Date.now()}`
+            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake)).` } }
+            updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
+          } catch (e) {}
+
+          // record or aggregate private hit for guesser
+          const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+          let merged = false
+          for (let i = 0; i < prevHits.length; i++) {
+            const h = prevHits[i]
+            if (h && h.type === 'letter' && h.letter === letter) {
+              prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
+              merged = true
+              break
+            }
+          }
+          if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
+          updates[`players/${from}/privateHits/${targetId}`] = prevHits
         } else {
-          // letter was already fully revealed — treat this as a wrong guess
-          const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
-          if (!prevWrong.includes(letter)) {
-            prevWrong.push(letter)
-            updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them (delta)
-            hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
-            // write a visible recent gain event so the target client can show a toast
-            updates[`players/${targetId}/lastGain`] = { amount: 2, by: from, reason: 'wrongGuess', value: letter, ts: Date.now() }
-            // If the guesser had an active doubleDown, they lose their stake on a wrong guess; record private loss entry
-            try {
-              const ddFail = guesser.doubleDown
-              if (ddFail && ddFail.active) {
-                const stake = Number(ddFail.stake) || 0
-                if (stake > 0) {
-                  // indicate loss privately to guesser
-                  const ddKey3 = `double_down_loss_${Date.now()}`
-                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: -stake, message: `Double Down: guessed '${letter}' and lost -$${stake}` } }
-                  updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
-                  // deduct the stake from the guesser as a hang delta so it's applied in the same transaction
-                  hangDeltas[from] = (hangDeltas[from] || 0) - stake
-                  // consume/clear the doubleDown entry so the DD badge is removed
-                  updates[`players/${from}/doubleDown`] = null
-                }
-              }
-            } catch (e) {}
-          }
+          // still reveal publicly but don't award points; add a private note for the guesser
+          const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+          prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
+          updates[`players/${from}/privateHits/${targetId}`] = prevHits
+          // Inform the guesser privately about the no-score result for double-down
+          try {
+            const ddKey2 = `double_down_noscore_${Date.now()}`
+            const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: 0, message: `Double Down: guessed '${letter}', no points awarded (no-score)` } }
+            updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+          } catch (e) {}
         }
-        // update guessedBy for owner visibility (only add guesser once)
-        const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
-        if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
-        updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
+      } else {
+        // letter was already fully revealed — treat this as a wrong guess
+        const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
+        if (!prevWrong.includes(letter)) {
+          prevWrong.push(letter)
+          updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
+          // reward the target for a wrong guess against them (delta)
+          hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+          // write a visible recent gain event so the target client can show a toast
+          updates[`players/${targetId}/lastGain`] = { amount: 2, by: from, reason: 'wrongGuess', value: letter, ts: Date.now() }
+          // If the guesser had an active doubleDown, they lose their stake on a wrong guess; record private loss entry
+          try {
+            const ddFail = guesser.doubleDown
+            if (ddFail && ddFail.active) {
+              const stake = Number(ddFail.stake) || 0
+              if (stake > 0) {
+                // indicate loss privately to guesser
+                const ddKey3 = `double_down_loss_${Date.now()}`
+                const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: -stake, message: `Double Down: guessed '${letter}' and lost -$${stake}` } }
+                updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                // deduct the stake from the guesser as a hang delta so it's applied in the same transaction
+                hangDeltas[from] = (hangDeltas[from] || 0) - stake
+                // consume/clear the doubleDown entry so the DD badge is removed
+                updates[`players/${from}/doubleDown`] = null
+              }
+            }
+          } catch (e) {}
+        }
+      }
+      // update guessedBy for owner visibility (only add guesser once)
+      const prevGuessedByForLetter = (target.guessedBy && target.guessedBy[letter]) ? target.guessedBy[letter].slice() : []
+      if (!prevGuessedByForLetter.includes(from)) prevGuessedByForLetter.push(from)
+      updates[`players/${targetId}/guessedBy/${letter}`] = prevGuessedByForLetter
       } else {
         // letter not in word: wrong guess
         const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
