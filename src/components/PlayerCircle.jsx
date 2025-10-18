@@ -501,11 +501,14 @@ export default function PlayerCircle({
           )}
 
               {visiblePrivatePowerReveals.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              {!hideInteractiveForWordSpy && (
-                <strong>Power-up results:</strong>
-              )}
-              <div style={{ marginTop: 6 }}>
+                <div style={{ marginTop: 8 }}>
+                  {!hideInteractiveForWordSpy && (
+                    // Put only the header text in a scrollable container
+                    <div className="powerup-results-title" style={{ maxHeight: 48, overflow: 'auto' }}>
+                      <strong>Power-up results:</strong>
+                    </div>
+                  )}
+                  <div style={{ marginTop: 6 }}>
                 {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
@@ -514,9 +517,18 @@ export default function PlayerCircle({
                   // determine style from updateType (fallback to not-important)
                   const updateType = (r && (r.updateType || r.updateType === '') ) ? r.updateType : (r && r.powerId && (r.updateType || null))
                   const isImportant = (r && r.updateType && r.updateType === 'important')
-                  const chipBg = isImportant ? '#FFD54F' : '#0B63D6'
-                  const chipColor = isImportant ? '#000' : '#fff'
-                  const chipStyle = { background: chipBg, color: chipColor, padding: '8px 10px', borderRadius: 8, marginTop: 6, fontSize: 13 }
+                  // Use a nicer blue gradient for power-up result chips (good on white text)
+                  const chipStyle = isImportant
+                    ? { background: '#FFD54F', color: '#000', padding: '8px 10px', borderRadius: 8, marginTop: 6, fontSize: 13 }
+                    : {
+                        background: 'linear-gradient(135deg, #2b8cff 0%, #0b63d6 100%)',
+                        color: '#ffffff',
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        marginTop: 6,
+                        fontSize: 13,
+                        boxShadow: '0 2px 8px rgba(11,99,214,0.16)'
+                      }
                   return (
                     <div key={idx} style={chipStyle}>
                       {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
