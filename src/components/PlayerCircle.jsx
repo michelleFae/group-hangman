@@ -501,110 +501,103 @@ export default function PlayerCircle({
           )}
 
               {visiblePrivatePowerReveals.length > 0 && (
-            <div style={{ marginTop: 8, background: '#132b56', padding: 6, borderRadius: 4 }}>
-              {visiblePrivatePowerReveals.length > 0 && !hideInteractiveForWordSpy && (
-              <strong>Power-up results:</strong>
-            )}
-              <ul style={{ margin: '6px 0 0 12px' }}>
+            <div style={{ marginTop: 8 }}>
+              {!hideInteractiveForWordSpy && (
+                <strong>Power-up results:</strong>
+              )}
+              <div style={{ marginTop: 6 }}>
                 {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
                   const actorName = (actorId && (playerIdToName && playerIdToName[actorId])) || actorId || 'Someone'
                   const actorIsViewer = viewerId && actorId && viewerId === actorId
+                  // determine style from updateType (fallback to not-important)
+                  const updateType = (r && (r.updateType || r.updateType === '') ) ? r.updateType : (r && r.powerId && (r.updateType || null))
+                  const isImportant = (r && r.updateType && r.updateType === 'important')
+                  const chipBg = isImportant ? '#FFD54F' : '#0B63D6'
+                  const chipColor = isImportant ? '#000' : '#fff'
+                  const chipStyle = { background: chipBg, color: chipColor, padding: '8px 10px', borderRadius: 8, marginTop: 6, fontSize: 13 }
                   return (
-                    <li key={idx} style={{ marginTop: 6 }}>
+                    <div key={idx} style={chipStyle}>
                       {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
                         <div>{`Letter Scope: there are ${Number(res.letters)} letter${Number(res.letters) === 1 ? '' : 's'} in the word`}</div>
                       ) : res && res.message ? (
-                        // Special-case: when the viewer is the actor (buyer) and the power-up is vowel_vision,
-                        // render a concise, target-local message that shows the vowel count (including duplicates).
-                        // This ensures the buyer sees "Vowel Vision: There are N vowels" inside the target's tile.
                         (r.powerId === 'vowel_vision' && actorIsViewer && typeof res.vowels === 'number') ? (
                           <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
                         ) : (
-                          <div>{res.message}</div>
+                          <div style={{ color: chipColor }}>{res.message}</div>
                         )
                       ) : r.powerId === 'letter_for_letter' ? (
                         (() => {
-                          // buyer revealed a letter from the target's word
                           if (res && res.letterFromTarget) {
                             const letter = String(res.letterFromTarget || '').slice(0,1)
-                            // count occurrences in this player's word
                             const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
                             const points = (Number(res.count || res.occurrences) || occ || 1) * 2
                             if (actorIsViewer) {
-                              return <div><strong>You</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — you earned <strong>+${points}</strong></div>
+                              return <div style={{ color: chipColor }}><strong>You</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — you earned <strong>+${points}</strong></div>
                             }
-                            return <div><strong>{actorName}</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — <strong>+${points}</strong> to {actorName}</div>
+                            return <div style={{ color: chipColor }}><strong>{actorName}</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — <strong>+${points}</strong> to {actorName}</div>
                           }
 
-                          // target received a letter reveal from buyer's word as a side-effect
                           if (res && res.letterFromBuyer) {
                             const letter = String(res.letterFromBuyer || '').slice(0,1)
-                            // if the payload includes occurrences/count, use it; otherwise assume 1
                             const occ = Number(res.count || res.occurrences || res.hits) || 1
                             const points = occ * 2
-                            // if the tile owner is the viewer, phrase as 'you got'
                             if (player && viewerId && player.id === viewerId) {
-                              return <div>Letter-for-letter side effect: <strong>'{letter}'</strong> revealed; <strong>you got +${points}</strong></div>
+                              return <div style={{ color: chipColor }}>Letter-for-letter side effect: <strong>'{letter}'</strong> revealed; <strong>you got +${points}</strong></div>
                             }
-                            return <div><strong>{player.name}</strong> got a letter-for-letter side effect: <strong>'{letter}'</strong> revealed from {actorName}'s word; <strong>+${points}</strong></div>
+                            return <div style={{ color: chipColor }}><strong>{player.name}</strong> got a letter-for-letter side effect: <strong>'{letter}'</strong> revealed from {actorName}'s word; <strong>+${points}</strong></div>
                           }
 
-                          // fallback
-                          return <div>{r.powerId}: {JSON.stringify(res)}</div>
+                          return <div style={{ color: chipColor }}>{r.powerId}: {JSON.stringify(res)}</div>
                         })()
                       ) : (
-                        // For other power-ups, show a friendly English message when possible.
                         (() => {
                           try {
-                            // If the viewer is the buyer (actorIsViewer), render concise English
-                              if (actorIsViewer) {
-                                if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {
-                            return <div>{`Letter Scope: ${Number(res.letters)} letter${Number(res.letters) === 1 ? ' is' : 's are'} in the word`}</div>
-                                  }
-                                if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
-                                  return <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
-                                }
+                            if (actorIsViewer) {
+                              if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {
+                                return <div style={{ color: chipColor }}>{`Letter Scope: ${Number(res.letters)} letter${Number(res.letters) === 1 ? ' is' : 's are'} in the word`}</div>
+                              }
+                              if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
+                                return <div style={{ color: chipColor }}>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
+                              }
                               if (r.powerId === 'zeta_drop') {
-                                // last letter info
                                 const last = res && res.last ? res.last : null
-                                return <div>{`Zeta Drop: last letter is ${last ? `'${last}'` : 'unknown'}`}</div>
+                                return <div style={{ color: chipColor }}>{`Zeta Drop: last letter is ${last ? `'${last}'` : 'unknown'}`}</div>
                               }
                               if (r.powerId === 'one_random' && res.letter) {
-                                return <div>{`One Random Letter: revealed '${String(res.letter).slice(0,1)}'`}</div>
+                                return <div style={{ color: chipColor }}>{`One Random Letter: revealed '${String(res.letter).slice(0,1)}'`}</div>
                               }
                               if (r.powerId === 'letter_peek') {
-                                if (res && res.message) return <div>{res.message}</div>
-                                if (res && res.letter && typeof res.pos !== 'undefined') return <div>{`Letter Peek: '${res.letter}' at position ${res.pos}`}</div>
+                                if (res && res.message) return <div style={{ color: chipColor }}>{res.message}</div>
+                                if (res && res.letter && typeof res.pos !== 'undefined') return <div style={{ color: chipColor }}>{`Letter Peek: '${res.letter}' at position ${res.pos}`}</div>
                               }
-                              if (r.powerId === 'related_word' && res && res.message) return <div>{res.message}</div>
+                              if (r.powerId === 'related_word' && res && res.message) return <div style={{ color: chipColor }}>{res.message}</div>
                               if (r.powerId === 'dice_of_doom' && res && typeof res.roll === 'number') {
                                 const letters = Array.isArray(res.letters) ? res.letters.join(', ') : ''
-                                return <div>{`Dice of Doom: rolled ${res.roll}${letters ? ` — revealed: ${letters}` : ''}`}</div>
+                                return <div style={{ color: chipColor }}>{`Dice of Doom: rolled ${res.roll}${letters ? ` — revealed: ${letters}` : ''}`}</div>
                               }
                               if (r.powerId === 'all_letter_reveal' && res && Array.isArray(res.letters)) {
-                                return <div>{`All Letter Reveal: revealed ${res.letters.length} unique letter${res.letters.length === 1 ? '' : 's'}`}</div>
+                                return <div style={{ color: chipColor }}>{`All Letter Reveal: revealed ${res.letters.length} unique letter${res.letters.length === 1 ? '' : 's'}`}</div>
                               }
                               if (r.powerId === 'full_reveal' && res && typeof res.full === 'string') {
-                                return <div>{`Full Reveal: the word was revealed`}</div>
+                                return <div style={{ color: chipColor }}>{`Full Reveal: the word was revealed`}</div>
                               }
-                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div>{`Sound Check: suggestions — ${Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}`}</div>
-                              if (r.powerId === 'what_do_you_mean' && res && res.message) return <div>{`Definition: ${res.message}`}</div>
+                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div style={{ color: chipColor }}>{`Sound Check: suggestions — ${Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}`}</div>
+                              if (r.powerId === 'what_do_you_mean' && res && res.message) return <div style={{ color: chipColor }}>{`Definition: ${res.message}`}</div>
                               if (r.powerId === 'mind_leech' && res && Array.isArray(res.found)) {
                                 const found = res.found.map(f => `${f.letter}×${f.count}`).join(', ')
-                                return <div>{`Mind Leech: found ${found || 'no letters'}`}</div>
+                                return <div style={{ color: chipColor }}>{`Mind Leech: found ${found || 'no letters'}`}</div>
                               }
                             }
                           } catch (e) {}
-                          // last resort: dump JSON
-                          return <div>{r.powerId}: {JSON.stringify(res)}</div>
+                          return <div style={{ color: chipColor }}>{r.powerId}: {JSON.stringify(res)}</div>
                         })()
                       )}
-                    </li>
+                    </div>
                   )
                 })}
-              </ul>
+              </div>
             </div>
           )}
         </div>

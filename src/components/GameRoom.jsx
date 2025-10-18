@@ -687,26 +687,26 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
-    { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
-    { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
-    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
-    { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
-    { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word, and all occurrences of it. You can\'t guess this letter to get points next turn.', powerupType: 'singleOpponentPowerup' },
-    { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
-  { id: 'related_word', name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'sound_check', name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word.', powerupType: 'singleOpponentPowerup' },
-  { id: 'split_15', name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
-    { id: 'what_do_you_mean', name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
-    { id: 'all_letter_reveal', name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'full_reveal', name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'word_freeze', name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
-    { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-    { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
-    { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
-    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
-    { id: 'rare_trace', name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
+    { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
+    { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_scope', updateType:"important", name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
+    { id: 'one_random', updateType:"not important", name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
+    { id: 'mind_leech', updateType:"not important", name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
+    { id: 'zeta_drop', updateType:"important", name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word, and all occurrences of it. You can\'t guess this letter to get points next turn.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
+  { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word.', powerupType: 'singleOpponentPowerup' },
+  { id: 'split_15', updateType:"not important", name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
+    { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
+    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
+    { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
+    { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
+    { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
+    { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
+    { id: 'rare_trace', updateType:"important", name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
 
   // Ensure the UI shows power-ups ordered by price (ascending)
@@ -3147,7 +3147,7 @@ try {
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>
                 <div className="progress-bar" style={{ width: `${(players.length ? (submittedCount / players.length) * 100 : 0)}%`, background: '#4caf50', height: 10, borderRadius: 6 }} />
-                <div style={{ marginTop: 6, fontSize: 13 }}>{submittedCount} / {players.length} submitted</div>
+                <div style={{ marginTop: 6, fontSize: 13 }}>{submittedCount} / {players.length} players submitted</div>
               </div>
             </div>
             <div className="submit-controls">
