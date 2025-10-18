@@ -2298,6 +2298,7 @@ try {
       // Fallback: Datamuse
       let datamuseFound = false
       try {
+        console.log("datamuse lookup", candidate)
         const dm = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(candidate)}&max=1`)
         if (dm.ok) {
           const ddata = await dm.json()
