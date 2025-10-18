@@ -1063,7 +1063,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               if (!raw) {
                 resultPayload = { message: "I don't know the definition." }
               } else {
-                const dictUrl = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(raw)}`
+                const dictUrl = `/api/dictionary?word=${encodeURIComponent(raw)}`
                 try {
                   const dres = await fetch(dictUrl)
                   if (dres && dres.ok) {
@@ -2278,10 +2278,12 @@ try {
     // try Datamuse, then local fallback. If those can't confirm and dictionaryapi.dev was down, allow the word.
     try {
       let dictDown = false
+      let wordMuseDown = false
+      let freeDictDown = false
       // Primary check: dictionaryapi.dev
       let res = null
       try {
-        res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${candidate}`)
+      res = await fetch(`/api/dictionary?word=${encodeURIComponent(candidate)}`)
       } catch (e) {
         dictDown = true
         res = null
@@ -2306,18 +2308,47 @@ try {
             datamuseFound = true
             return true
           }
+        } else {
+          wordMuseDown = true
+          console.warn('Datamuse lookup non-ok response', dm.status)
         }
       } catch (e2) {
+        wordMuseDown = true
         console.warn('Datamuse lookup failed', e2)
         // datamuse/network failed — we'll rely on local fallback or permissive rule
       }
 
-      // Local fallback
-      const localOk = localFallbackCheck(candidate)
-      if (localOk) return true
+      // Additional fallback: FreeDictionary API (proxied server-side to avoid CORS).
+      // This will be attempted only when Datamuse did not confirm the word.
+      let freeDictionaryFound = false
+      if (!datamuseFound) {
+        try {
+          const fd = await fetch(`/api/freedictionary?word=${encodeURIComponent(candidate)}`)
+          if (fd && fd.ok) {
+            const fdata = await fd.json()
+            // If provider returned an array of entries (similar shape to dictionaryapi.dev) treat as found
+            if (Array.isArray(fdata) && fdata.length > 0) {
+              freeDictionaryFound = true
+              return true
+            }
+            // Some providers may return an object with 'definitions' or similar; be permissive
+            if (fdata && (fdata.definitions || fdata.meanings || fdata.entry)) {
+              freeDictionaryFound = true
+              return true
+            }
+          } else {
+            freeDictDown = true
+            console.warn('FreeDictionary lookup non-ok response', fd.status)
+          }
+        } catch (e3) {
+          freeDictDown = true
+          console.warn('FreeDictionary lookup failed', e3)
+          // ignore and continue to local fallback
+        }
+  }
 
-      // If dictionaryapi was down and no fallback confirmed the word, allow it (per user request)
-      if (dictDown && !datamuseFound && !localOk) return true
+  // If dictionaryapi was down and no fallback confirmed the word, allow it (per user request)
+  if (dictDown && !datamuseDown && !freeDictDown) return true
 
       // Otherwise conservative: not an English word
       return false
