@@ -2307,6 +2307,7 @@ try {
           }
         }
       } catch (e2) {
+        console.warn('Datamuse lookup failed', e2)
         // datamuse/network failed — we'll rely on local fallback or permissive rule
       }
 
