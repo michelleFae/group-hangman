@@ -690,7 +690,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_for_letter', name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
     { id: 'vowel_vision', name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
     { id: 'letter_scope', name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
-    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed! You can guess this letter to get points next turn, if it is not already revealed!', powerupType: 'singleOpponentPowerup' },
+    { id: 'one_random', name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
     { id: 'mind_leech', name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
     { id: 'zeta_drop', name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word. You can\'t guess this letter to get points next turn, if there is only one occurrence of it.', powerupType: 'singleOpponentPowerup' },
     { id: 'letter_peek', name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
@@ -705,7 +705,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'double_down', name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'price_surge', name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
-    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per game.', powerupType: 'selfPowerup' },
+    { id: 'longest_word_bonus', name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
     { id: 'rare_trace', name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
 
@@ -1137,12 +1137,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const attemptedSet = new Set(Object.keys(guessedBy || {}).filter(k => k && k !== '__word').map(k => k.toLowerCase()))
 
           // ALSO include any letters revealed to the buyer via power-ups recorded in
-          // buyerNode.privatePowerReveals. These entries can include single-letter
+          // buyerNode.privateHits. These entries can include single-letter
           // fields (letter, last, letterFromBuyer, letterFromTarget), arrays (letters),
           // or found arrays (objects with .letter). Add all discovered letters to the
           // attempted set so Mind Leech uses them when probing the target word.
           try {
-            const ppr = buyerNode.privatePowerReveals || {}
+            const ppr = buyerNode.privateHits || {}
             Object.keys(ppr || {}).forEach(bucket => {
               const entries = ppr[bucket] || {}
               Object.values(entries || {}).forEach(entry => {
@@ -1572,19 +1572,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
         if (powerId === 'price_surge') {
           try {
-            const expiresAt = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex + 1 : null
-            // apply as a per-target entry for every other player so the surge affects everyone except the buyer
+            // Represent the surge as an entry keyed by the buyer so it globally affects everyone except the buyer.
+            // The surge will be cleared when the buyer's turn begins (turn-advance logic clears priceSurge/{playerId}).
             try {
-              ;(state?.players || []).forEach(pp => {
-                try {
-                  if (pp && pp.id && pp.id !== myId) {
-                    updates[`priceSurge/${pp.id}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
-                  }
-                } catch (e) {}
-              })
+              const expiresAt = null
+              updates[`priceSurge/${myId}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
             } catch (e) {}
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: null }
-            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 for the next round` } }
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 until your next turn` } }
           } catch (e) {}
         }
         // Rare Trace: tell buyer how many occurrences of very-rare letters exist in the target's word
@@ -1624,8 +1619,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
           let awardTotal = 0
           const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+          // Build a quick set of letters the buyer already has privately for this target
+          const prevHitsSet = new Set((prevHits || []).filter(h => h && h.type === 'letter').map(h => (h.letter || '').toString().toLowerCase()))
           toAdd.forEach(letter => {
-            if (!existingSet.has(letter)) {
+            try {
+              // Skip any letters already publicly revealed
+              if (existingSet.has(letter)) return
+              // Also skip awarding if buyer already privately has this letter for the same target
+              if (prevHitsSet.has(letter)) return
               // reveal all occurrences of this letter in the target's word and award for each
               const countInWord = (targetWord.toLowerCase().match(new RegExp(letter, 'g')) || []).length
               if (countInWord > 0) {
@@ -1634,7 +1635,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 let merged = false
                 for (let i = 0; i < prevHits.length; i++) {
                   const h = prevHits[i]
-                  if (h && h.type === 'letter' && h.letter === letter) {
+                  if (h && h.type === 'letter' && String(h.letter).toLowerCase() === letter) {
                     prevHits[i] = { ...h, count: (Number(h.count) || 0) + countInWord, ts: Date.now() }
                     merged = true
                     break
@@ -1642,7 +1643,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 }
                 if (!merged) prevHits.push({ type: 'letter', letter, count: countInWord, ts: Date.now() })
               }
-            }
+            } catch (e) {}
           })
 
           if (awardTotal > 0) {
@@ -1718,14 +1719,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.wordmoney) || 0
                 const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
-                const award = 2 * toAdd
+                // Determine if buyer already has this letter recorded for this target.
+                const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                const alreadyHasLetter = prevHits.some(h => h && h.type === 'letter' && String(h.letter).toLowerCase() === add)
+                // Per rule: if this purchase is letter_peek and the buyer already has this letter in privateHits
+                // for the target, do not award points (but still apply the revealed change to the target).
+                const award = (powerId === 'letter_peek' && alreadyHasLetter) ? 0 : 2 * toAdd
                 if (award > 0) {
                   updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
-                  const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
                   let merged = false
                   for (let i = 0; i < prevHits.length; i++) {
                     const h = prevHits[i]
-                    if (h && h.type === 'letter' && h.letter === add) {
+                    if (h && h.type === 'letter' && String(h.letter).toLowerCase() === add) {
                       prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
                       merged = true
                       break
@@ -2412,6 +2417,20 @@ try {
           updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
           // clear per-player price surge for the player whose turn is starting (surge expires)
           updates[`priceSurge/${nextPlayer}`] = null
+        }
+      } catch (e) {}
+      // Award the starter +1 to the player whose turn will begin (respect room starterBonus)
+      try {
+        if (nextPlayer) {
+          const nextNode = (state && state.players || []).find(p => p.id === nextPlayer) || {}
+          const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+          const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+          updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+          try {
+            if (state && state.starterBonus && state.starterBonus.enabled) {
+              updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+            }
+          } catch (e) {}
         }
       } catch (e) {}
       await dbUpdate(roomRef, updates)

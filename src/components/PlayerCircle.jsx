@@ -538,7 +538,7 @@ export default function PlayerCircle({
               </span>
             )}
           </div>
-          {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, background: 'rgba(0,0,0,0.06)', fontSize: 11, fontWeight: 700 }}>YOU</div>}
+          {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>YOU</div>}
           {/* Double Down active badge: shows when this player has a pending doubleDown */}
           {player && player.doubleDown && player.doubleDown.active && (
             <div className="double-down-badge" title="Double Down active" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#ffcc00', color: '#2b2b2b', fontSize: 11, fontWeight: 800 }}>DD</div>
