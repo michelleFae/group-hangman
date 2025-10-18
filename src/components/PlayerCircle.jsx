@@ -567,25 +567,6 @@ export default function PlayerCircle({
                 )
               ) : revealedPositions}
 
-              {/* styled hover tooltip that shows the full word with guessed letters highlighted */}
-              {isSelf && ownerWord && (
-                <div className="word-tooltip" aria-hidden="true" style={{ position: 'absolute', left: 8, top: '100%', marginTop: 6, background: 'white', padding: 6, borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: 12, flexWrap: 'wrap', gap: 6 }}>
-                  {ownerWord.split('').map((ch, idx) => {
-                    const lower = (ch || '').toLowerCase()
-                    const isGuessedByOthers = revealedSet.has(lower)
-                    const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
-                    const sourceId = privateLetterSource[lower]
-                    const overrideSource = privateLetterSource[`__override__${lower}`]
-                    const style = { marginRight: 6 }
-                    if (isGuessedByOthers) {
-                      if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={`tip_${idx}`} className={'tip-guessed'} style={{ ...style, color: playerColors[overrideSource] }}>{ch}</span>
-                      return <span key={`tip_${idx}`} className={'tip-guessed'} style={{ ...style, color: 'red' }}>{ch}</span>
-                    }
-                    if (sourceId && playerColors && playerColors[sourceId]) return <span key={`tip_${idx}`} className={'tip-private'} style={{ ...style, color: playerColors[sourceId] }}>{ch}</span>
-                    return <span key={`tip_${idx}`} className={'tip-unguessed'} style={style}>{ch}</span>
-                  })}
-                </div>
-              )}
             </div>
 
 
