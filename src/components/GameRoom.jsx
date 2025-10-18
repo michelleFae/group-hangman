@@ -1119,7 +1119,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const buyerMsgLocal = (powerId === 'sound_check')
-            ? `Sound Check: suggestions ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).join(', ') || 'none'}`
+            ? `Sound Check: sounds similar to ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).join(', ') || 'none'}`
             : `Definition: ${((resultPayload && resultPayload.message) || "I don't know the definition.")}`
           const targetMsgLocal = (powerId === 'sound_check')
             ? `${buyerName} used Sound Check on you` : `${buyerName} used What Do You Mean on you`
