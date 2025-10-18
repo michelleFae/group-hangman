@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react'
 import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
@@ -43,6 +43,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Locally lock the power-up shop for the viewer after buying Double Down until they make a guess
   const [ddShopLocked, setDdShopLocked] = useState(false)
   const powerUpChoiceRef = useRef(null)
+  const powerupListRef = useRef(null)
+  const powerupScrollRef = useRef(0)
   const multiHitSeenRef = useRef({})
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
@@ -1951,6 +1953,56 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => clearTimeout(t)
   }, [powerUpOpen])
 
+  // Preserve the scroll position of the power-up list while the modal is open.
+  // Some room state updates re-render the list and can reset scrollTop; remember
+  // the scrollTop on user scroll and restore it when the modal remains open.
+  useEffect(() => {
+    const el = powerupListRef.current
+    if (!el) return () => {}
+    const onScroll = () => {
+      try { powerupScrollRef.current = el.scrollTop } catch (e) {}
+    }
+    try { el.addEventListener('scroll', onScroll, { passive: true }) } catch (e) { el.onscroll = onScroll }
+    // when the modal opens, restore previous scroll position (next tick)
+    if (powerUpOpen) {
+      const t = setTimeout(() => {
+        try { if (typeof powerupScrollRef.current === 'number') el.scrollTop = powerupScrollRef.current } catch (e) {}
+      }, 0)
+      return () => {
+        clearTimeout(t)
+        try { el.removeEventListener && el.removeEventListener('scroll', onScroll) } catch (e) { el.onscroll = null }
+      }
+    }
+    return () => { try { el.removeEventListener && el.removeEventListener('scroll', onScroll) } catch (e) { el.onscroll = null } }
+  }, [powerUpOpen])
+
+  // Ensure scrollTop is restored immediately after any state changes while the modal
+  // remains open. Using useLayoutEffect prevents a visible jump by restoring before
+  // the browser paints the updated DOM.
+  useLayoutEffect(() => {
+    if (!powerUpOpen) return
+    const el = powerupListRef.current
+    if (!el) return
+    try {
+      const v = Number(powerupScrollRef.current) || 0
+      // apply immediately
+      try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+      // reapply across a couple animation frames and a short timeout to handle
+      // later style/transition-driven layout changes that may reset scrollTop.
+      try {
+        let raf1 = null, raf2 = null, to = null
+        raf1 = requestAnimationFrame(() => {
+          try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+          raf2 = requestAnimationFrame(() => {
+            try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+            to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+          })
+        })
+        return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
+      } catch (e) {}
+    } catch (e) {}
+  }, [state, powerUpOpen])
+
   // When the power-up modal is open, add a body-level class to pause site animations
   useEffect(() => {
     try {
@@ -1978,7 +2030,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </div>
             <button className="shop-modal-close" onClick={onClose}>✖</button>
           </div>
-          <div className="powerup-list">
+          <div className="powerup-list" ref={powerupListRef}>
             {(POWER_UPS || []).map(p => {
               // compute effective price for display (show surge applied if it affects buyer)
               let displayPrice = p.price
