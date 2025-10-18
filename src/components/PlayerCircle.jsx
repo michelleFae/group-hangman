@@ -668,7 +668,7 @@ export default function PlayerCircle({
           )}
 
           {(player._viewer && player._viewer.privateWrongWords && player._viewer.privateWrongWords[player.id] && player._viewer.privateWrongWords[player.id].length > 0) && (
-            <div style={{ marginTop: 8, background: '#fc816eff', padding: 6, borderRadius: 4 }}>
+            <div style={{ marginTop: 8, background: '#5f1515', padding: 6, borderRadius: 4 }}>
               <strong>Your wrong words:</strong>
               <div style={{ marginTop: 6 }}>{(player._viewer.privateWrongWords[player.id] || []).join(', ')}</div>
             </div>

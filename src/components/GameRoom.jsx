@@ -2320,24 +2320,24 @@ try {
       //   dictDown = true;
       // }
 
-      // if (res && res.ok) {
-      //   try {
-      //     const data = await res.json();
-      //     // dictionaryapi.dev returns an array of entries for valid words
-      //     if (Array.isArray(data) && data.length > 0) return true;
-      //   } catch (err) {
-      //     console.warn('DictionaryAPI.dev returned invalid JSON', err);
-      //     dictDown = true;
-      //   }
-      // } else if (res && res.status !== 404) {
-      //   // treat non-404 errors as API being down
-      //   dictDown = true;
-      // }
+      if (res && res.ok) {
+        try {
+          const data = await res.json();
+          // dictionaryapi.dev returns an array of entries for valid words
+          if (Array.isArray(data) && data.length > 0) return true;
+        } catch (err) {
+          console.warn('DictionaryAPI.dev returned invalid JSON', err);
+          dictDown = true;
+        }
+      } else if (res && res.status !== 404) {
+        // treat non-404 errors as API being down
+        dictDown = true;
+      }
 
       
-      // add back dictDown check if you re-enable DictionaryAPI.dev
+
       // === Allow if all external APIs are down ===
-      if (datamuseDown && freeDictDown) return true
+      if (dictDown && datamuseDown && freeDictDown) return true
 
       return false
     } catch (e) {
