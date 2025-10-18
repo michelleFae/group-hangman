@@ -2417,7 +2417,6 @@ try {
   if ( phase === 'ended') { // true) {
     return (
       <>
-        {modeBadge}
         <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
           {isWinner && confettiPieces.map((c, i) => (
             <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
@@ -2495,7 +2494,6 @@ try {
       <div className="app-content" style={appContentStyle}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
   {phase === 'lobby' && <h2>Room: {roomId}</h2>}
-  {phase === 'lobby' && modeBadge}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>
           <div style={{ marginBottom: 8 }}>
@@ -3050,7 +3048,6 @@ try {
         {/* Render ended/victory screen after hooks have been declared to avoid skipping hooks */}
         {phase === 'ended' && (
           <>
-          {modeBadge}
           <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
             {isWinner && confettiPieces.map((c, i) => (
               <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
