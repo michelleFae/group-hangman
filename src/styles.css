@@ -172,7 +172,7 @@ button[disabled] {
 .standings ol { padding-left: 18px; margin: 8px 0 }
 .standings li { text-align: left }
 .standings strong { font-size: 15px }
-.standings li span { display:inline-block; width: 28px }
+.standings li span { display:inline-block }
 
 /* Improve contrast for final standings on sad victory screen */
 .victory-screen.sad .standings {

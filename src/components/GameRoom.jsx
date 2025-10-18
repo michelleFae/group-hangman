@@ -2571,8 +2571,8 @@ try {
                 const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
                 const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
                 return (
-                  <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <li key={p.id} style={{ margin: '8px 0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ alignItems: 'center', gap: 8 }}>
                       {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
                       <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
                       {showWordsOnEnd && p.word && (
@@ -2585,8 +2585,7 @@ try {
                           color: '#234',
                           display: 'inline-block',
                           maxWidth: '40vw',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
+                          overflow: 'visible',
                           whiteSpace: 'nowrap'
                         }}>{p.word}</span>
                       )}
