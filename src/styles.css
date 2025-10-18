@@ -82,7 +82,7 @@ button[disabled] {
 .player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(22,20,22,0.9), rgba(18,16,20,0.92)); box-shadow: 0 8px 20px rgba(0,0,0,0.6); transition: transform .18s }
  .player:hover { transform: translateY(-6px) }
 /* New layout helpers for playing phase: make player tiles slightly more compact and stable */
-.player .you-badge { font-size: 11px; font-weight: 800; color: var(--text); }
+.player .you-badge { font-size: 11px; font-weight: 800; color: var(--text); background: rgb(184 20 20 / 44%); }
 .player .revealed { display: inline-flex; gap: 6px; align-items: center; flex: 1; min-width: 0; max-width: 160px; overflow-x: auto; white-space: nowrap; padding-right: 6px }
 .player .revealed span { font-weight: 700; display: inline-block }
 .player .revealed::-webkit-scrollbar { height: 6px }
@@ -145,7 +145,7 @@ button[disabled] {
 .wordmoney { color: var(--accent-2); font-weight:700 }
 .revealed { margin-top: 6px; color: var(--highlight); font-size: 13px }
 
-.turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:var(--accent); }
+.turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:#ffffff; }
 
 .room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(107,79,59,0.06), rgba(90,107,124,0.04)); display:inline-block }
 
@@ -552,7 +552,7 @@ body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.8) !importa
 
 .powerup-meta { flex: 1; min-width: 0; padding-right: 12px }
   .powerup-meta .title { font-weight: 700; display: block; color: var(--darktext) }
-  .powerup-meta .desc { display: block; color: var(--muted); font-size: 13px; margin-top: 6px }
+  .powerup-meta .desc { display: block; color: #453d33; font-size: 13px; margin-top: 6px }
 .powerup-actions { display: flex; align-items: center; gap: 8px }
 .powerup-buy { min-width: 72px; color: var(--text); }
 .powerup-buy:hover, .powerup-buy:focus { transform: none !important; }

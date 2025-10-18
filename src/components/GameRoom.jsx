@@ -1390,6 +1390,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
   updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
 
+  // Special-case: for letter_for_letter, write a clear, target-facing message so the target
+  // sees exactly: "B used letter for letter on you to reveal letter x" as requested.
+  try {
+    if (powerId === 'letter_for_letter') {
+      const letterDisplay = (buyerLetter || (resultPayload && (resultPayload.letter || resultPayload.last || (Array.isArray(resultPayload.letters) && resultPayload.letters[0])))) || ''
+      const msg = `${playerIdToName[myId] || myId} used letter for letter on you to reveal letter ${letterDisplay}`
+      updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: msg, letterFromBuyer: letterDisplay } }
+    }
+  } catch (e) {}
+
   // Immediately apply buyer award here to ensure their wordmoney reflects the +2 per newly revealed occurrence
   if (buyerAward && buyerAward > 0) {
       const meNow = (state?.players || []).find(p => p.id === myId) || {}
@@ -1684,38 +1694,51 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           } catch (e) {}
         }
       }
-      // handle single-letter payloads (one_random, letter_peek) where resultPayload.letter is set
+      // handle single-letter payloads (one_random, letter_peek, letter_for_letter) where resultPayload.letter is set
       if (resultPayload && resultPayload.letter) {
         try {
           const add = (resultPayload.letter || '').toLowerCase()
           if (add) {
-            const existing = targetNode.revealed || []
-            const existingSet = new Set((existing || []).map(x => (x || '').toLowerCase()))
-            updates[`players/${powerUpTarget}/revealed`] = Array.from(new Set([...(existing || []), add]))
-            if (!existingSet.has(add)) {
-              const count = (targetWord || '').split('').filter(ch => ch.toLowerCase() === add).length
-                if (count > 0) {
+            const existing = Array.isArray(targetNode.revealed) ? targetNode.revealed.slice() : []
+            // count how many of this letter are already in revealed (keeps duplicates)
+            const existingCount = existing.filter(x => (x || '').toLowerCase() === add).length
+            // total occurrences in the target word
+            const totalCount = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === add).length
+            // number of new occurrences to add to revealed array
+            const toAdd = Math.max(0, totalCount - existingCount)
+            if (toAdd > 0) {
+              // append the letter to the revealed array for each newly discovered occurrence
+              for (let i = 0; i < toAdd; i++) existing.push(add)
+              updates[`players/${powerUpTarget}/revealed`] = existing
+
+              // Award buyer for newly revealed occurrences (2 per occurrence)
+              try {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.wordmoney) || 0
                 const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
-                const award = 2 * count
-                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
-                const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
-                let merged = false
-                for (let i = 0; i < prevHits.length; i++) {
-                  const h = prevHits[i]
-                  if (h && h.type === 'letter' && h.letter === add) {
-                    prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
-                    merged = true
-                    break
+                const award = 2 * toAdd
+                if (award > 0) {
+                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                  const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
+                  let merged = false
+                  for (let i = 0; i < prevHits.length; i++) {
+                    const h = prevHits[i]
+                    if (h && h.type === 'letter' && h.letter === add) {
+                      prevHits[i] = { ...h, count: (Number(h.count) || 0) + toAdd, ts: Date.now() }
+                      merged = true
+                      break
+                    }
                   }
+                  if (!merged) prevHits.push({ type: 'letter', letter: add, count: toAdd, ts: Date.now() })
+                  updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
+                  updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: powerId, ts: Date.now() }
+                  // remember award so we can include it in the buyer/target privatePowerReveals message
+                  if (powerId === 'one_random') oneRandomAward = award
                 }
-                if (!merged) prevHits.push({ type: 'letter', letter: add, count, ts: Date.now() })
-                updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-                updates[`players/${myId}/lastGain`] = { amount: 2 * count, by: powerUpTarget, reason: powerId, ts: Date.now() }
-                // remember award so we can include it in the buyer/target privatePowerReveals message
-                if (powerId === 'one_random') oneRandomAward = award
-              }
+              } catch (e) {}
+            } else {
+              // nothing new to reveal; still ensure revealed array is set (no-op)
+              updates[`players/${powerUpTarget}/revealed`] = existing
             }
           }
         } catch (e) {}
@@ -2178,33 +2201,70 @@ try {
   async function isEnglishWord(w) {
     const candidate = (w || '').toString().trim().toLowerCase()
     if (!/^[a-z]+$/.test(candidate)) return false
+    // Helper local fallback using project's NOUNS list + a small common-word list
+    const localFallbackCheck = (word) => {
+      try {
+        const lc = (word || '').toString().toLowerCase()
+        // Check NOUNS if available
+        if (typeof NOUNS !== 'undefined' && Array.isArray(NOUNS)) {
+          const found = NOUNS.some(n => (n || '').toString().toLowerCase() === lc)
+          if (found) return true
+        }
+        // Common small-word set (covers many short words not in NOUNS)
+        const COMMON_WORDS = ['the','be','to','of','and','a','in','that','have','i','it','for','not','on','with','he','as','you','do','at','this','but','his','by','from','they','we','say','her','she','or','an','will','my','one','all','would','there','their']
+        if (COMMON_WORDS.includes(lc)) return true
+      } catch (e) {}
+      return false
+    }
+    // We will be permissive when the primary dictionary API is unreachable or returns server errors.
+    // Steps: try dictionaryapi.dev; if it says the word exists -> accept. If it is down (network error or 5xx),
+    // try Datamuse, then local fallback. If those can't confirm and dictionaryapi.dev was down, allow the word.
     try {
-      // Primary check: dictionaryapi.dev (free, broad coverage)
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${candidate}`)
-      if (res.ok) {
+      let dictDown = false
+      // Primary check: dictionaryapi.dev
+      let res = null
+      try {
+        res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${candidate}`)
+      } catch (e) {
+        dictDown = true
+        res = null
+      }
+      if (res && res.ok) {
         const data = await res.json()
         if (Array.isArray(data) && data.length > 0) return true
+      } else if (res && !res.ok) {
+        // treat non-404 errors (rate limiting, 4xx like 429/403, or 5xx) as the service being down;
+        // only 404 should be treated as an explicit "not found" response
+        if (res.status !== 404) dictDown = true
       }
 
-      // Fallback: Datamuse (no API key, good lexical coverage)
-      // Use an exact-spelling query and check if it returns the same word
+      // Fallback: Datamuse
+      let datamuseFound = false
       try {
         const dm = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(candidate)}&max=1`)
         if (dm.ok) {
           const ddata = await dm.json()
           if (Array.isArray(ddata) && ddata.length > 0 && ddata[0].word && ddata[0].word.toLowerCase() === candidate) {
+            datamuseFound = true
             return true
           }
         }
       } catch (e2) {
-        // ignore datamuse failure and fall through
+        // datamuse/network failed — we'll rely on local fallback or permissive rule
       }
 
-      // If neither service affirmed the word, treat as non-word
+      // Local fallback
+      const localOk = localFallbackCheck(candidate)
+      if (localOk) return true
+
+      // If dictionaryapi was down and no fallback confirmed the word, allow it (per user request)
+      if (dictDown && !datamuseFound && !localOk) return true
+
+      // Otherwise conservative: not an English word
       return false
     } catch (e) {
-      console.warn('Dictionary check encountered an error, allowing word by default', e)
-      // network failsafe: allow submission so users aren't blocked by lookup flakiness
+      // Unexpected error: be permissive to avoid blocking play
+      console.warn('isEnglishWord unexpected error — permitting word', e)
       return true
     }
   }
@@ -2418,12 +2478,24 @@ try {
     )
   }
 
+  // Ensure top-right fixed overlays (modeBadge + turn indicator) do not obscure content
+  const appContentStyle = Object.assign(
+    { paddingTop: 110, paddingRight: 160 },
+    powerUpOpen ? { pointerEvents: 'none', userSelect: 'none' } : {}
+  )
+
   return (
     <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''}`}>
+      {/* Render the mode badge as a fixed overlay (keeps consistent single source) */}
       {modeBadge}
-      <div className="app-content" style={powerUpOpen ? { pointerEvents: 'none', userSelect: 'none' } : undefined}>
+      {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
+      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 9998 }} className="turn-indicator fixed-turn-indicator">
+        {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
+      </div>
+      <div className="app-content" style={appContentStyle}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
-      {phase === 'lobby' && <h2>Room: {roomId}</h2>}
+  {phase === 'lobby' && <h2>Room: {roomId}</h2>}
+  {phase === 'lobby' && modeBadge}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>
           <div style={{ marginBottom: 8 }}>
@@ -2736,8 +2808,7 @@ try {
       )}
 
   <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
-        {players.length === 0 && <div>No players yet — wait for others to join.</div>}
-        <div className="turn-indicator">Current turn: {players.find(p => p.id === currentTurnId)?.name || '—'}</div>
+    {players.length === 0 && <div>No players yet — wait for others to join.</div>}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
           <div className="turn-timer">
             <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
