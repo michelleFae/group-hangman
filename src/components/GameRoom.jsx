@@ -3,6 +3,7 @@ import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
 import COLOURS from '../data/colours'
+import ANIMALS from '../data/animals'
 import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -2784,17 +2785,29 @@ try {
             return
           }
         } else if (secretThemeType === 'animals') {
-          // call validation endpoint on the local /api route
+          // Prefer a deterministic local list lookup first to avoid unnecessary network
+          // calls and remote 404s for common animals (butterfly, cat, etc.).
           try {
-            const resp = await fetch(`/api/validate-animal?word=${encodeURIComponent(candidate)}`)
-            if (!resp.ok) {
-              setWordError('Animal validation failed (server). Please try again.')
-              return
-            }
-            const js = await resp.json()
-            if (!js || !js.valid) {
-              setWordError('Word is not recognized as an animal by the validation service.')
-              return
+            const localList = Array.isArray(ANIMALS) ? ANIMALS : (ANIMALS && ANIMALS.default ? ANIMALS.default : [])
+            if (localList && localList.includes && localList.includes(candidate.toLowerCase())) {
+              // local match — valid
+            } else {
+              // call validation endpoint on the local /api route
+              try {
+                const resp = await fetch(`/api/validate-animal?word=${encodeURIComponent(candidate)}`)
+                if (!resp.ok) {
+                  setWordError('Animal validation failed (server). Please try again.')
+                  return
+                }
+                const js = await resp.json()
+                if (!js || !js.valid) {
+                  setWordError('Word is not recognized as an animal by the validation service.')
+                  return
+                }
+              } catch (e) {
+                setWordError('Could not validate animal — try again')
+                return
+              }
             }
           } catch (e) {
             setWordError('Could not validate animal — try again')
