@@ -903,6 +903,12 @@ export default function useGameRoom(roomId, playerName) {
       Object.keys(playersObj).forEach(pid => {
         updates[`players/${pid}/wordmoney`] = startMoney
       })
+      // Debug: log resolved starting money and what will be written for players
+      try {
+        console.log('startGame debug: resolved startMoney=', startMoney)
+        try { console.log('startGame debug: player ids=', Object.keys(playersObj)) } catch (e) {}
+        try { console.log('startGame debug: updates sample=', Object.keys(updates).slice(0,20)) } catch (e) {}
+      } catch (e) {}
     } catch (e) {}
 
     await update(roomRef, updates)

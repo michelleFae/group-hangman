@@ -1309,46 +1309,64 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               if (!raw) {
                 resultPayload = { message: "I don't know the definition." }
               } else {
-                const dictUrl = `/api/dictionary?word=${encodeURIComponent(raw)}`
+                // Attempt dictionary lookup. Try the local proxy first (/api/dictionary).
+                // If that fails, try the upstream Free Dictionary API directly as a fallback.
+                // Prefer a definition that does NOT contain the target word; otherwise sanitize it.
+                async function fetchDefinitions(url) {
+                  try {
+                    const r = await fetch(url)
+                    if (r && r.ok) {
+                      const j = await r.json()
+                      return Array.isArray(j) ? j : null
+                    }
+                  } catch (e) {
+                    // swallow and return null so caller can try fallback
+                  }
+                  return null
+                }
+
                 try {
-                  const dres = await fetch(dictUrl)
-                  if (dres && dres.ok) {
-                    const ddata = await dres.json()
-                    // extract the first sensible definition string from the response
-                    let def = null
-                    if (Array.isArray(ddata) && ddata.length > 0) {
-                      for (const entry of ddata) {
-                        if (!entry || !entry.meanings) continue
-                        for (const meaning of entry.meanings || []) {
-                          if (!meaning || !Array.isArray(meaning.definitions)) continue
-                          for (const d of meaning.definitions) {
-                            if (d && d.definition && typeof d.definition === 'string' && d.definition.trim().length > 0) {
-                              def = d.definition.trim()
-                              break
-                            }
+                  const proxyUrl = `/api/dictionary?word=${encodeURIComponent(raw)}`
+                  let ddata = await fetchDefinitions(proxyUrl)
+                  if (!ddata) {
+                    // fallback to direct Free Dictionary endpoint
+                    const direct = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(raw)}`
+                    ddata = await fetchDefinitions(direct)
+                  }
+
+                  // extract candidate definitions (strings) from the response
+                  let candidates = []
+                  if (Array.isArray(ddata) && ddata.length > 0) {
+                    for (const entry of ddata) {
+                      if (!entry || !entry.meanings) continue
+                      for (const meaning of entry.meanings || []) {
+                        if (!meaning || !Array.isArray(meaning.definitions)) continue
+                        for (const d of meaning.definitions) {
+                          if (d && d.definition && typeof d.definition === 'string' && d.definition.trim().length > 0) {
+                            candidates.push(d.definition.trim())
                           }
-                          if (def) break
                         }
-                        if (def) break
                       }
                     }
-                    if (def) {
-                      // remove exact occurrences of the target word (case-insensitive), replace with a neutral token
-                      try {
-                        const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-                        const re = new RegExp(`\\b${escaped}\\b`, 'ig')
-                        const safe = def.replace(re, 'the word')
-                        // keep message concise: single sentence if possible
-                        const oneSentence = safe.split(/[\.\!\?]\s/)[0]
-                        resultPayload = { message: oneSentence || safe }
-                      } catch (e) {
-                        resultPayload = { message: def }
-                      }
-                    } else {
-                      resultPayload = { message: "I don't know the definition." }
-                    }
-                  } else {
+                  }
+
+                  if (candidates.length === 0) {
                     resultPayload = { message: "I don't know the definition." }
+                  } else {
+                    // prefer a definition that does not include the target word (as a whole word, case-insensitive)
+                    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                    const wholeRe = new RegExp(`\\b${escaped}\\b`, 'i')
+                    let pick = candidates.find(c => !wholeRe.test(c)) || candidates[0]
+                    // If pick contains the word, sanitize exact whole-word occurrences by replacing with a neutral token
+                    try {
+                      const sanitizeRe = new RegExp(`\\b${escaped}\\b`, 'ig')
+                      if (sanitizeRe.test(pick)) {
+                        pick = pick.replace(sanitizeRe, 'the word')
+                      }
+                    } catch (e) {}
+                    // keep message concise: single sentence if possible
+                    const oneSentence = (pick || '').split(/[\.\!\?]\s/)[0]
+                    resultPayload = { message: oneSentence || pick }
                   }
                 } catch (e) {
                   resultPayload = { message: "I don't know the definition." }
