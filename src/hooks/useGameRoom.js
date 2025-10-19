@@ -146,7 +146,7 @@ export default function useGameRoom(roomId, playerName) {
   function getStartMoneyFromRoom(roomVal) {
     // Prefer an explicit room setting `startingWordmoney` when present; fall back to 2.
     try {
-      if (roomVal && typeof roomVal.startingWordmoney === 'number') return Number(roomVal.startingWordmoney)
+      if (roomVal && typeof roomVal.startingWordmoney !== 'undefined' && !Number.isNaN(Number(roomVal.startingWordmoney))) return Number(roomVal.startingWordmoney)
     } catch (e) {}
     return 2
   }
@@ -565,8 +565,8 @@ export default function useGameRoom(roomId, playerName) {
     console.log('joinRoom called with password:', password)
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
-      // local fallback: use configured starting wordmoney if available in state
-  const startLocal = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
+      // local fallback: use configured starting wordmoney if available in state (accept numeric strings)
+  const startLocal = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
       setState(prev => ({
         ...prev,
         players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, wordmoney: startLocal, revealed: [] }]
@@ -676,7 +676,8 @@ export default function useGameRoom(roomId, playerName) {
       }
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
-      const startMoney = (roomVal && typeof roomVal.startingWordmoney === 'number') ? Number(roomVal.startingWordmoney) : 2
+  // Use the helper so we accept numeric strings as well as numbers and provide a sane fallback
+  const startMoney = getStartMoneyFromRoom(roomVal)
       await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }
@@ -938,28 +939,12 @@ export default function useGameRoom(roomId, playerName) {
           return false
         }
       } else if (type === 'animals') {
-        try {
-          const resp = await fetch(`http://localhost:3000/api/validate-animal?word=${encodeURIComponent(stored)}`)
-          // If running in hosted environment, /api/validate-animal should be proxied; fall back to relative
-          let js = null
-          if (resp && resp.ok) js = await resp.json()
-          if (!js || !js.valid) {
-            console.warn('submitWord rejected by animal validator', stored, js)
+          // Prefer local deterministic list (ANIMALS imported at top)
+          const list = (ANIMALS && ANIMALS.default) ? ANIMALS.default : ANIMALS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in animals list', stored)
             return false
           }
-        } catch (e) {
-          try {
-            const resp2 = await fetch(`/api/validate-animal?word=${encodeURIComponent(stored)}`)
-            const js2 = resp2 && resp2.ok ? await resp2.json() : null
-            if (!js2 || !js2.valid) {
-              console.warn('submitWord rejected by animal validator (fallback)', stored, js2)
-              return false
-            }
-          } catch (err2) {
-            console.warn('submitWord animal validation failed', err2)
-            return false
-          }
-        }
       } else if (type === 'elements') {
         try {
           const list = (ELEMENTS && ELEMENTS.default) ? ELEMENTS.default : ELEMENTS

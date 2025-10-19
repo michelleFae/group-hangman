@@ -156,10 +156,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
     // sync configured starting wordmoney when present (accept numeric strings too)
     try {
-      if (state?.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) {
+      if (typeof state?.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) {
         setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)))
       }
     } catch (e) {}
+
+    // startingWordmoney is fixed to 2 (hard-coded); do not sync from room settings
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
@@ -198,7 +200,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.minWordSize,
     // ensure we re-run when the authoritative secretWordTheme changes so UI updates for all players
     state?.secretWordTheme,
-  state?.startingWordmoney,
+    // ensure we re-run when the configured starting balance changes
+    state?.startingWordmoney,
+    // startingWordmoney removed
   ]);
 
   // toggle a body-level class so the background becomes green when money-mode is active
@@ -680,7 +684,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomSettings(changes) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      await dbUpdate(roomRef, changes)
+      // Ensure startingWordmoney is persisted as a Number (avoid storing numeric strings)
+      const safe = { ...changes }
+      try {
+        if (typeof safe.startingWordmoney !== 'undefined') {
+          const n = Number(safe.startingWordmoney)
+          safe.startingWordmoney = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+        }
+      } catch (e) {}
+      await dbUpdate(roomRef, safe)
     } catch (e) {
       console.warn('Could not update room settings', e)
     }
@@ -2438,7 +2450,7 @@ try {
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
   // determine starting wordmoney to apply for resets — prefer room setting, fallback to 2
-  const resetStart = (state && state.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
+  const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -2515,7 +2527,7 @@ try {
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = (state && state.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
+  const startMoney = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
@@ -2820,30 +2832,13 @@ try {
             setWordError('Word must be a colour from the selected theme (no spaces).')
             return
           }
-        } else if (secretThemeType === 'animals') {
-          // Prefer a deterministic local list lookup first to avoid unnecessary network
-          // calls and remote 404s for common animals (butterfly, cat, etc.).
+            } else if (secretThemeType === 'animals') {
+          // Validate against the bundled ANIMALS list (offline-safe, deterministic)
           try {
             const localList = Array.isArray(ANIMALS) ? ANIMALS : (ANIMALS && ANIMALS.default ? ANIMALS.default : [])
-            if (localList && localList.includes && localList.includes(candidate.toLowerCase())) {
-              // local match — valid
-            } else {
-              // call validation endpoint on the local /api route
-              try {
-                const resp = await fetch(`/api/validate-animal?word=${encodeURIComponent(candidate)}`)
-                if (!resp.ok) {
-                  setWordError('Animal validation failed (server). Please try again.')
-                  return
-                }
-                const js = await resp.json()
-                if (!js || !js.valid) {
-                  setWordError('Word is not recognized as an animal by the validation service.')
-                  return
-                }
-              } catch (e) {
-                setWordError('Could not validate animal — try again')
-                return
-              }
+            if (!Array.isArray(localList) || !localList.includes(candidate.toLowerCase())) {
+              setWordError('Word must be an animal from the selected theme (no spaces).')
+              return
             }
           } catch (e) {
             setWordError('Could not validate animal — try again')
