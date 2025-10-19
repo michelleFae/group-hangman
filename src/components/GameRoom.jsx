@@ -899,7 +899,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
   { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
     { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word. It may be a letter that is already revealed!', powerupType: 'singleOpponentPowerup' },
   { id: 'split_15', updateType:"not important", name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
     { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
@@ -2904,12 +2904,12 @@ try {
       {/* Render the mode badge as a fixed overlay (keeps consistent single source) */}
       {modeBadge}
       {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
-      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 9998 }} className="turn-indicator fixed-turn-indicator">
+      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: -1 }} className="turn-indicator fixed-turn-indicator">
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
       {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
-        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 9998 }} className="turn-timer">
+        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 1 }} className="turn-timer">
           <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
           <div className="time">{(() => {
             const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())

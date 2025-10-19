@@ -20,6 +20,7 @@ body {
   background: linear-gradient(180deg, var(--bg), #121214 80%);
   color: var(--text);
   padding: 28px;
+  height: 100vh;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
 }
@@ -295,7 +296,7 @@ button[disabled] {
 .turn-timer { display:flex; align-items:center; gap:12px; margin: 12px 0 }
 .turn-timer .bar { height: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; flex:1; overflow:hidden }
 .turn-timer .fill { height:100%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); transition: width .2s linear }
-.turn-timer .time { min-width:56px; text-align:right; font-weight:700; color: var(--text) }
+.turn-timer .time { min-width:56px; text-align:right; font-weight:700; position:fixed; top: 90px; color: #ffef7e }
 
 /* Toasts */
 .toast-container { position: fixed; right: 18px; top: 18px; z-index: 9999; display:flex; flex-direction:column; gap:8px }
@@ -425,7 +426,7 @@ button[disabled] {
 body.my-turn-body {
   transition: background 300ms ease, color 300ms ease;
   /* Use a moody amber gradient to signal your turn but keep noir vibe */
-  background: linear-gradient(135deg, #1a130f 0%, #615205db 100%) !important;
+  background: linear-gradient(135deg, #24214b, #3c1a10) !important;
   color: #e6e1dc !important;
 }
 
