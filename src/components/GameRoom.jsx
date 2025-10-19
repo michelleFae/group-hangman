@@ -2904,7 +2904,7 @@ try {
       {/* Render the mode badge as a fixed overlay (keeps consistent single source) */}
       {modeBadge}
       {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
-      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: -1 }} className="turn-indicator fixed-turn-indicator">
+      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 1 }} className="turn-indicator fixed-turn-indicator">
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
