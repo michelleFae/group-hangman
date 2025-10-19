@@ -14,7 +14,8 @@ app.use((req, res, next) => {
     origin.startsWith('http://localhost') ||
     origin.startsWith('http://127.0.0.1') ||
     origin.startsWith('http://[::1]') ||
-    origin === 'https://wordspiracy.vercel.app'
+    origin.startsWith('https://wordspiracy.vercel.app') ||
+    origin.startsWith('http://wordspiracy.vercel.app')
   )) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')

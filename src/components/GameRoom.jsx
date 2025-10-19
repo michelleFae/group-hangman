@@ -1307,7 +1307,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             try {
               const raw = (targetWord || '').toString().trim()
               if (!raw) {
-                resultPayload = { message: "I don't know the definition." }
+                resultPayload = { message: "I don't know the definition!" }
               } else {
                 // Attempt dictionary lookup. Try the local proxy first (/api/dictionary).
                 // If that fails, try the upstream Free Dictionary API directly as a fallback.
@@ -1325,14 +1325,41 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   return null
                 }
 
+
+                const response = await fetch(
+                  `https://freedictionaryapi.com/api/v1/entries/en/${encodeURIComponent(raw)}?`
+                );
+                console.log('FreeDictionaryAPI response status:', response.status);
+
+                if (!response.ok && response.status !== 404) {
+                  freeDictDown = true
+                }
+
+                const data = await response.json();
+                console.log('FreeDictionaryAPI response data:', data);
+
+                // Check if we got a valid entry with definitions
+                const isValid = data.entries.length > 0;
+
+                if (isValid) {
+                  console.log(`Found definitions for "${raw}":`, data);
+                  data.entries.some(entry =>
+                      entry.senses.some(sense =>
+                        sense.definitions.some(def => {
+                          if (!def.includes(raw)) {
+                            resultPayload = { message: def };
+                            return true; // stops all the way up
+                          }
+                          return false;
+                        })
+                      )
+                    );
+                } else {
+                  // try api/dicitonary
+
                 try {
                   const proxyUrl = `/api/dictionary?word=${encodeURIComponent(raw)}`
                   let ddata = await fetchDefinitions(proxyUrl)
-                  if (!ddata) {
-                    // fallback to direct Free Dictionary endpoint
-                    const direct = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(raw)}`
-                    ddata = await fetchDefinitions(direct)
-                  }
 
                   // extract candidate definitions (strings) from the response
                   let candidates = []
@@ -1369,11 +1396,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     resultPayload = { message: oneSentence || pick }
                   }
                 } catch (e) {
+                  console.warn(e);
                   resultPayload = { message: "I don't know the definition." }
                 }
               }
+              }
             } catch (e) {
-              resultPayload = { message: "I don't know the definition." }
+              console.warn(e);
+              resultPayload = { message: "I don't know the definition :(" }
             }
           }
         } catch (e) {
