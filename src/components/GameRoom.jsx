@@ -188,6 +188,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.starterBonus?.enabled,
     state?.powerUpsEnabled,
     state?.minWordSize,
+    state?.secretWordTheme,
     // startingWordmoney removed
   ]);
 
@@ -2907,6 +2908,17 @@ try {
       <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 9998 }} className="turn-indicator fixed-turn-indicator">
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
       </div>
+      {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
+      {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
+        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 9998 }} className="turn-timer">
+          <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
+          <div className="time">{(() => {
+            const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
+            const s = Math.ceil(msLeft / 1000)
+            return `${s}s`
+          })()}</div>
+        </div>
+      )}
       <div className="app-content" style={appContentStyle}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
   {phase === 'lobby' && <h2>Room: {roomId}</h2>}
@@ -3233,16 +3245,7 @@ try {
 
   <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
     {players.length === 0 && <div>No players yet — wait for others to join.</div>}
-        {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
-          <div className="turn-timer">
-            <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
-            <div className="time">{(() => {
-              const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
-              const s = Math.ceil(msLeft / 1000)
-              return `${s}s`
-            })()}</div>
-          </div>
-        )}
+        {/* Timer moved to fixed overlay near turn indicator */}
         {(() => {
           // defensive: ensure players is an array of objects (some DB writes may briefly produce non-object entries)
           const sanitized = (players || []).filter(x => x && typeof x === 'object')
