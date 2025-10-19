@@ -144,7 +144,10 @@ export default function useGameRoom(roomId, playerName) {
   }, [roomId])
 
   function getStartMoneyFromRoom(roomVal) {
-    // Starting wordmoney is hard-coded to 2. Do not read from room settings.
+    // Prefer an explicit room setting `startingWordmoney` when present; fall back to 2.
+    try {
+      if (roomVal && typeof roomVal.startingWordmoney === 'number') return Number(roomVal.startingWordmoney)
+    } catch (e) {}
     return 2
   }
 
@@ -563,7 +566,7 @@ export default function useGameRoom(roomId, playerName) {
     if (!db) {
       playerIdRef.current = 'local-' + Math.random().toString(36).slice(2, 8)
       // local fallback: use configured starting wordmoney if available in state
-  const startLocal = 2
+  const startLocal = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
       setState(prev => ({
         ...prev,
         players: [...(prev?.players || []), { id: playerIdRef.current, name: playerName, wordmoney: startLocal, revealed: [] }]
@@ -666,7 +669,7 @@ export default function useGameRoom(roomId, playerName) {
       }
       const pRef = dbRef(db, `${playersRefPath}/${pKey}`)
       // include lastSeen so server-side cleaners can evict stale anonymous players
-  const startMoney = 2
+      const startMoney = (roomVal && typeof roomVal.startingWordmoney === 'number') ? Number(roomVal.startingWordmoney) : 2
       await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
       return chosen
     }

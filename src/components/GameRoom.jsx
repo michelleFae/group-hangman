@@ -22,7 +22,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [isCheckingDictionary, setIsCheckingDictionary] = useState(false)
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
-  const [starterEnabled, setStarterEnabled] = useState(false)
+  const [starterEnabled, setStarterEnabled] = useState(true)
   const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
   const [revealShowBlanks, setRevealShowBlanks] = useState(false)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
@@ -35,8 +35,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
   // starting wordmoney is hard-coded to 2; no local state needed
+  const [startingWordmoney, setStartingWordmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
-  const [secretThemeEnabled, setSecretThemeEnabled] = useState(false)
+  const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
   // Host-provided custom theme inputs (title + comma-separated list)
   const [customTitle, setCustomTitle] = useState('')
@@ -152,6 +153,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
       return prev;
     });
+
+    // sync configured starting wordmoney when present
+    try {
+      if (typeof state?.startingWordmoney === 'number') setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)))
+    } catch (e) {}
 
     // startingWordmoney is fixed to 2 (hard-coded); do not sync from room settings
     // sync reveal settings
@@ -885,7 +891,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   style={{ width: 80, marginLeft: 8 }}
                 />
               </label>
-              {/* Starting wordmoney removed from host settings; starting balance is hard-coded to $2 */}
+              <label htmlFor="startingWordmoney" title="Starting wordmoney assigned to each player when they join or when the room is reset">
+                Starting balance:
+                <input
+                  id="startingWordmoney"
+                  name="startingWordmoney"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={String(startingWordmoney || 0)}
+                  onChange={e => setStartingWordmoney(e.target.value)}
+                  onBlur={async (e) => {
+                    try {
+                      const parsed = Number(e.currentTarget.value)
+                      const v = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
+                      setStartingWordmoney(v)
+                      await updateRoomSettings({ startingWordmoney: v })
+                    } catch (err) {
+                      console.warn('Could not update startingWordmoney', err)
+                    }
+                  }}
+                  style={{ width: 100, marginLeft: 8 }}
+                />
+              </label>
           </div>
         </div>
       </div>
@@ -2410,8 +2438,8 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
-  // determine starting wordmoney to apply for resets — hard-coded to 2
-  const resetStart = 2
+  // determine starting wordmoney to apply for resets — prefer room setting, fallback to 2
+  const resetStart = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -2422,6 +2450,8 @@ try {
           updates[`players/${p.id}/eliminatedAt`] = null
           // apply configured starting wordmoney
           updates[`players/${p.id}/wordmoney`] = resetStart
+          // allow starter bonus to be re-awarded after a restart
+          updates[`players/${p.id}/starterBonusAwarded`] = null
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -2486,7 +2516,7 @@ try {
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = 2
+  const startMoney = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
@@ -2497,6 +2527,8 @@ try {
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
           updates[`players/${p.id}/wordmoney`] = startMoney
+          // allow starter bonus to be re-awarded on automatic rematch resets
+          updates[`players/${p.id}/starterBonusAwarded`] = null
           // Clear power-up state as part of rematch reset so old results don't persist
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
@@ -2913,7 +2945,7 @@ try {
                     </div>
                     <div style={{ fontWeight: 800 }}>
                       <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                        ${p.wordmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                        ${p.wordmoney || 0}
                       </span>
                     </div>
                   </li>
@@ -3571,7 +3603,7 @@ try {
                           whiteSpace: 'nowrap',
                           textAlign: 'center'
                         }}>
-                          ${p.wordmoney || 0}{p.id === state?.winnerId ? ' (winner)' : ''}
+                          ${p.wordmoney || 0}
                         </span>
                       </div>
                     </li>
