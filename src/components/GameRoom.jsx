@@ -3023,7 +3023,10 @@ try {
                     }
                     try { startWordSpy({ timerSeconds: wordSpyTimerSeconds, rounds: wordSpyRounds }) } catch (e) { console.warn('startWordSpy failed', e) }
                   } else {
-                    startGame(timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney })
+                    const opts = timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney }
+                    // include the local UI startingWordmoney so startGame can prefer it
+                    opts.startingWordmoney = startingWordmoney
+                    startGame(opts)
                   }
                 }}
                 disabled={players.length < 2}
