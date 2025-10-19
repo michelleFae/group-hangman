@@ -4,6 +4,9 @@ import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
 import COLOURS from '../data/colours'
 import ANIMALS from '../data/animals'
+import INSTRUMENTS from '../data/instruments'
+import ELEMENTS from '../data/elements'
+import CPPTERMS from '../data/cppterms'
 import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -2813,6 +2816,42 @@ try {
             }
           } catch (e) {
             setWordError('Could not validate animal — try again')
+            return
+          }
+        } else if (secretThemeType === 'instruments') {
+          // Built-in instruments validation (local list lookup)
+          try {
+            const arr = Array.isArray(INSTRUMENTS) ? INSTRUMENTS : (INSTRUMENTS && INSTRUMENTS.default ? INSTRUMENTS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              setWordError('Word must be an instrument from the selected theme (no spaces).')
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate instrument — try again')
+            return
+          }
+        } else if (secretThemeType === 'elements') {
+          // Built-in periodic elements validation — use list
+          try {
+            const arr = Array.isArray(ELEMENTS) ? ELEMENTS : (ELEMENTS && ELEMENTS.default ? ELEMENTS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              setWordError('Word must be a periodic element from the selected theme (use element name, no spaces).')
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate element — try again')
+            return
+          }
+        } else if (secretThemeType === 'cpp') {
+          // Built-in C++ terms validation — use list
+          try {
+            const arr = Array.isArray(CPPTERMS) ? CPPTERMS : (CPPTERMS && CPPTERMS.default ? CPPTERMS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              setWordError('Word must be a C++ related term from the selected theme (no spaces).')
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate C++ term — try again')
             return
           }
         }
