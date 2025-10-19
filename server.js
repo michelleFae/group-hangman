@@ -10,7 +10,12 @@ const io = new Server(server);
 app.use((req, res, next) => {
   // Allow Vite dev server origin and common localhost variants. In production, a stricter policy is recommended.
   const origin = req.headers.origin || ''
-  if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('http://[::1]') )) {
+  if (origin && (
+    origin.startsWith('http://localhost') ||
+    origin.startsWith('http://127.0.0.1') ||
+    origin.startsWith('http://[::1]') ||
+    origin === 'https://wordspiracy.vercel.app'
+  )) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
