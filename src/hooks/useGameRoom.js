@@ -626,7 +626,14 @@ export default function useGameRoom(roomId, playerName) {
         const snap = await get(roomRootRef)
         const roomVal = snap.val() || {}
         if (!roomVal.hostId) {
-          try { await update(roomRootRef, { hostId: joiningId }); console.log('Assigned host to', joiningId, 'for room', roomId) } catch (e) { console.warn('ensureHost update failed', e) }
+          try {
+            // If room-level defaults are missing, set them as part of the first host assignment
+            const updates = { hostId: joiningId }
+            if (!roomVal.starterBonus) updates.starterBonus = { enabled: true, description: '' }
+            if (!roomVal.secretWordTheme) updates.secretWordTheme = { enabled: true, type: 'animals' }
+            await update(roomRootRef, updates)
+            console.log('Assigned host to', joiningId, 'for room', roomId, 'with defaults')
+          } catch (e) { console.warn('ensureHost update failed', e) }
         }
       } catch (e) {
         console.warn('ensureHost failed', e)
@@ -696,8 +703,18 @@ export default function useGameRoom(roomId, playerName) {
         }
 
         if (!snapshot.exists()) {
-          dbSet(roomRootRef, { hostId: uid, phase: 'lobby', open: true, players: {}, password: password || '' })
-          console.log('Room created with password:', password)
+          // Create room with sensible defaults persisted so all clients observe them
+          dbSet(roomRootRef, {
+            hostId: uid,
+            phase: 'lobby',
+            open: true,
+            players: {},
+            password: password || '',
+            // enable starter bonus and secret-word theme by default for new rooms
+            starterBonus: { enabled: true, description: '' },
+            secretWordTheme: { enabled: true, type: 'animals' }
+          })
+          console.log('Room created with password and defaults:', password)
           // pick color and add player
           pickColorAndSetPlayer(uid).then(async chosen => {
             setState(prev => ({ ...prev, password: password }))
