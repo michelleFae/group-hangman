@@ -2744,7 +2744,9 @@ try {
     // - If custom.words is an empty array => host permits any word (skip dictionary checks)
     // - If custom.words is a non-empty array => membership is enforced (checked later) and skip dictionary checks
   const custom = (secretThemeType === 'custom') && state?.secretWordTheme && state.secretWordTheme.custom
-    if (!custom) {
+    // If any secret-word theme is enforced by the host, skip the English dictionary check.
+    // Theme-specific validation (colours/animals/elements/cpp/custom) runs later.
+    if (!secretThemeEnabled) {
       // perform dictionary check (may be slow) and show a small spinner state
       setIsCheckingDictionary(true)
       const ok = await isEnglishWord(candidate)
@@ -2754,8 +2756,7 @@ try {
         return
       }
     } else {
-      // when custom exists, do not call isEnglishWord at all (host overrides dictionary checks)
-      // short-circuit: nothing to do here
+      // theme is enabled: skip general dictionary checks; theme validation follows below
     }
     // If the host enabled a secret-word theme, validate according to selected type
     if (secretThemeEnabled) {
