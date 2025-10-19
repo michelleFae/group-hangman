@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from 're
 import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
+import COLOURS from '../data/colours'
 import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -31,6 +32,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
   // starting wordmoney is hard-coded to 2; no local state needed
   const [showSettings, setShowSettings] = useState(false)
+  const [secretThemeEnabled, setSecretThemeEnabled] = useState(false)
+  const [secretThemeType, setSecretThemeType] = useState('animals')
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
   const [toasts, setToasts] = useState([])
@@ -81,8 +84,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   if (state?.gameMode) setGameMode(state.gameMode)
   if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
   if (typeof state?.wordSpyRounds === 'number') setWordSpyRounds(Math.max(1, Math.min(20, Number(state.wordSpyRounds))))
-    setStarterEnabled(!!state?.starterBonus?.enabled);
-    setPowerUpsEnabled(!!state?.powerUpsEnabled);
+  setStarterEnabled(!!state?.starterBonus?.enabled);
+  // default power-ups to enabled unless the room explicitly sets it to false
+  setPowerUpsEnabled(state?.powerUpsEnabled ?? true);
     // showWordsOnEnd controls whether players' secret words are displayed on final standings
     if (typeof state?.showWordsOnEnd === 'boolean') setShowWordsOnEnd(!!state.showWordsOnEnd)
 
@@ -103,6 +107,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
+    // sync secret word theme settings if present
+    if (state?.secretWordTheme && typeof state.secretWordTheme === 'object') {
+      const st = state.secretWordTheme
+      setSecretThemeEnabled(!!st.enabled)
+      setSecretThemeType(st.type || 'animals')
+    }
 
   // sync Word Spy settings if present
   if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
@@ -138,6 +148,26 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
     return () => {}
   }, [state?.gameMode])
+
+  // Small badge component to display the active secret-word theme with emoji + gradient
+  function ThemeBadge({ type }) {
+    const infoMap = {
+      animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
+      colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
+      elements: { emoji: '⚛️', label: 'Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
+      cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+      default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
+    }
+    const info = infoMap[type] || infoMap.default
+    return (
+      <div style={{ marginTop: 8 }}>
+        <span title={`Secret word theme: ${info.label}`} style={{ background: info.bg, color: '#fff', padding: '6px 10px', borderRadius: 12, fontSize: 13, fontWeight: 700, display: 'inline-block', textTransform: 'none' }}>
+          <span style={{ marginRight: 8 }}>{info.emoji}</span>
+          {info.label}
+        </span>
+      </div>
+    )
+  }
 
   // highlight when it's the viewer's turn by adding/removing a body-level class
   useEffect(() => {
@@ -557,8 +587,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <strong style={{ fontSize: 13 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
             <small style={{ color: '#B4A3A3', fontSize: 12 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : 'Elimination wins'}</small>
           </div>
-          {/* show a rocket badge when power-ups are enabled and visible to all players in the lobby */}
-          {state?.powerUpsEnabled && phase === 'lobby' && (
+          {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
+          {powerUpsEnabled && phase === 'lobby' && (
             <div title="Power-ups are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="powerup-rocket" style={{ fontSize: 18 }}>🚀</span>
               <small style={{ color: '#B4A3A3', fontSize: 12 }}>Power-ups</small>
@@ -677,6 +707,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   style={{ width: 80, marginLeft: 8 }}
                 />
               </label>
+              <div style={{ marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input id="secretThemeEnabled" type="checkbox" checked={secretThemeEnabled} onChange={e => { const nv = e.target.checked; setSecretThemeEnabled(nv); updateRoomSettings({ secretWordTheme: { enabled: !!nv, type: secretThemeType } }) }} /> Enforce secret word theme
+                </label>
+                {secretThemeEnabled && (
+                  <label style={{ marginTop: 6 }} htmlFor="secretThemeType">Theme:
+                    <select id="secretThemeType" value={secretThemeType} onChange={e => { const nv = e.target.value; setSecretThemeType(nv); updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: nv } }) }} style={{ marginLeft: 8 }}>
+                      <option value="animals">Animals</option>
+                      <option value="colours">Colours</option>
+                      <option value="elements">Periodic elements</option>
+                      <option value="cpp">C++ terms</option>
+                    </select>
+                  </label>
+                )}
+              </div>
               {/* Starting wordmoney removed from host settings; starting balance is hard-coded to $2 */}
           </div>
         </div>
@@ -2540,6 +2585,38 @@ try {
       setWordError("That doesn't look like an English word. Please pick another.")
       return
     }
+    // If the host enabled a secret-word theme, validate according to selected type
+    if (secretThemeEnabled) {
+      try {
+        if (secretThemeType === 'colours') {
+          const found = COLOURS && Array.isArray(COLOURS) && COLOURS.includes(candidate.toLowerCase())
+          if (!found) {
+            setWordError('Word must be a colour from the selected theme (no spaces).')
+            return
+          }
+        } else if (secretThemeType === 'animals') {
+          // call validation endpoint on the local /api route
+          try {
+            const resp = await fetch(`/api/validate-animal?word=${encodeURIComponent(candidate)}`)
+            if (!resp.ok) {
+              setWordError('Animal validation failed (server). Please try again.')
+              return
+            }
+            const js = await resp.json()
+            if (!js || !js.valid) {
+              setWordError('Word is not recognized as an animal by the validation service.')
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate animal — try again')
+            return
+          }
+        }
+      } catch (e) {
+        setWordError('Theme validation failed — try again')
+        return
+      }
+    }
     // call submitWord and only mark submitted when it succeeds
     try {
       const success = await submitWord(candidate)
@@ -2630,6 +2707,9 @@ try {
       <div className="app-content" style={appContentStyle}>
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
   {phase === 'lobby' && <h2>Room: {roomId}</h2>}
+  {phase === 'lobby' && secretThemeEnabled && (
+    <ThemeBadge type={secretThemeType} />
+  )}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>
           <div style={{ marginBottom: 8 }}>
@@ -3140,9 +3220,12 @@ try {
           <div className="submit-bar card">
             <div className="submit-left">
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
+              {secretThemeEnabled && (
+                <ThemeBadge type={secretThemeType} />
+              )}
               {state?.starterBonus?.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
-                  Word rule: <strong>{state?.starterBonus?.description}</strong>
+                  Word bonus if: <strong>{state?.starterBonus?.description}</strong>
                 </div>
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>

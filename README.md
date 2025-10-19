@@ -41,6 +41,15 @@ npm run dev
 
 Open http://localhost:5173 and test the app.
 
+Run the local API server (dev only)
+--
+If you need the local Express helper that serves `/api/*` endpoints (dictionary, validate-animal), run the server in a separate terminal:
+
+```bash
+npm install        # only if you haven't installed node_modules yet
+node server.js
+```
+
 Note on authoritative processing
 --
 Client guesses are either (A) sent to a serverless API (`/api/processGuess`) when `VITE_USE_SERVERLESS` is set to `1`/`true`, or (B) pushed into the Realtime DB queue `rooms/{roomId}/queue` (fallback). In the latter case you need a consumer to process the queue (either the Cloud Function in `functions/` or a worker you run). Without a consumer, queued guesses won't be processed.

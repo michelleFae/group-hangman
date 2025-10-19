@@ -1,0 +1,10 @@
+// Common C++ terms (single-word, letters only, lowercase)
+const CPPTERMS = [
+  'auto','break','case','catch','class','const','constexpr','continue','default','delete','do','double','else','enum','explicit','export','extern','false','float','for','friend','goto','if','inline','int','long','mutable','namespace','new','noexcept','nullptr','operator','private','protected','public','register','reinterpret','return','short','signed','sizeof','static','struct','switch','template','this','throw','true','try','typedef','typename','union','unsigned','using','virtual','void','volatile','while',
+  // STL / common library terms
+  'vector','string','map','set','list','deque','queue','stack','pair','tuple','optional','variant','any','algorithm','iterator','lambda','thread','mutex','atomic','future','promise','bind','move','copy','constructor','destructor','rvalue','lvalue','overload','override','inheritance','polymorphism','templateinstantiation','decltype','alignas','alignof','concept','coroutine','constexprif',
+  // additional lib names and keywords
+  'boost','fmt','chrono','iostream','iostreams','iomanip','sstream','filesystem','regex','numeric','functional','utility','iterator','traits','reflection', 'printf','scanf','cerr','cin','cout','clog', 'endl', 'threadsafe', 'nothrow', 'sharedptr', 'uniqueptr', 'weakptr', 'makepair', 'maketuple', 'foreach', 'emplaceback', 'emplacefront', 'emplace', 'pushback', 'pushfront', 'popback', 'popfront', 'sort','find','accumulate','transform','bind', 'memcpy','memmove','memset', 'nullptr', 'std','cstddef','cstdint','cstdlib','cassert','cctype','cwctype','clocale','csignal','cstdarg','ctime','cfloat','ccomplex','cfenv','cuchar','climits','ciso646','csetjmp','cstddef','cstdint','cstdio','cstdlib','cstring','cwchar','cwctype', 'array','forwardlist', 'mutex','guard','lock', 'barrier','latch','semaphore','sender','receiver','syncwait', 'splitter','joiner', 'stoptoken', 'jthread', 'stopcallback'
+]
+ 
+export default CPPTERMS

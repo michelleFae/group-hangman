@@ -9,6 +9,9 @@ import {
   push as dbPush,
 } from 'firebase/database'
 import NOUNS from '../data/nouns'
+import COLOURS from '../data/colours'
+import ELEMENTS from '../data/elements'
+import CPPTERMS from '../data/cppterms'
 
 export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
@@ -792,6 +795,76 @@ export default function useGameRoom(roomId, playerName) {
   if (stored.length === 1) {
     console.warn('submitWord rejected: single-letter words are not allowed')
     return false
+  }
+
+  // enforce secret-word theme server-side when configured on the room
+  try {
+    const theme = room && room.secretWordTheme ? room.secretWordTheme : null
+    if (theme && theme.enabled) {
+      const type = theme.type || 'animals'
+      if (type === 'colours') {
+        // use local colours list (imported) to validate
+        try {
+          const list = (COLOURS && COLOURS.default) ? COLOURS.default : COLOURS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in colours list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord colour validation failed', e)
+          return false
+        }
+      } else if (type === 'animals') {
+        try {
+          const resp = await fetch(`http://localhost:3000/api/validate-animal?word=${encodeURIComponent(stored)}`)
+          // If running in hosted environment, /api/validate-animal should be proxied; fall back to relative
+          let js = null
+          if (resp && resp.ok) js = await resp.json()
+          if (!js || !js.valid) {
+            console.warn('submitWord rejected by animal validator', stored, js)
+            return false
+          }
+        } catch (e) {
+          try {
+            const resp2 = await fetch(`/api/validate-animal?word=${encodeURIComponent(stored)}`)
+            const js2 = resp2 && resp2.ok ? await resp2.json() : null
+            if (!js2 || !js2.valid) {
+              console.warn('submitWord rejected by animal validator (fallback)', stored, js2)
+              return false
+            }
+          } catch (err2) {
+            console.warn('submitWord animal validation failed', err2)
+            return false
+          }
+        }
+      } else if (type === 'elements') {
+        try {
+          const list = (ELEMENTS && ELEMENTS.default) ? ELEMENTS.default : ELEMENTS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in elements list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord element validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'cpp') {
+        try {
+          const list = (CPPTERMS && CPPTERMS.default) ? CPPTERMS.default : CPPTERMS
+          // plain lowercase alphabetic match
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in cpp terms list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord cpp validation failed', e)
+          return false
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('submitWord theme validation unexpected error', e)
   }
   // Use update() so we don't overwrite existing fields like color or private lists
   await update(playerRef, { hasWord: true, word: stored, name: playerName })
