@@ -12,13 +12,13 @@ const RAW = [
 
 // canonicalize: lowercase + dedupe while preserving plural/singular as separate tokens
 const seen = new Set();
-const normalized = [];
+const INSTRUMENTS = [];
 for (const t of RAW) {
   const tok = String(t).toLowerCase();
   if (!seen.has(tok)) {
     seen.add(tok);
-    normalized.push(tok);
+    INSTRUMENTS.push(tok);
   }
 }
 
-export default normalized;
+export default INSTRUMENTS;

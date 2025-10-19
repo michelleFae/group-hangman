@@ -188,7 +188,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.starterBonus?.enabled,
     state?.powerUpsEnabled,
     state?.minWordSize,
-    state?.secretWordTheme,
     // startingWordmoney removed
   ]);
 
@@ -2417,15 +2416,8 @@ try {
           updates[`players/${p.id}/eliminated`] = false
           updates[`players/${p.id}/eliminatedAt`] = null
           updates[`players/${p.id}/eliminatedAt`] = null
-          // apply configured starting wordmoney; preserve any +10 starter bonus awarded previously
-          try {
-            const hadStarter = !!p.starterBonusAwarded
-            updates[`players/${p.id}/wordmoney`] = resetStart + (hadStarter ? 10 : 0)
-            // clear the awarded flag so the bonus can be granted again in the next game
-            updates[`players/${p.id}/starterBonusAwarded`] = null
-          } catch (e) {
-            updates[`players/${p.id}/wordmoney`] = resetStart
-          }
+          // apply configured starting wordmoney
+          updates[`players/${p.id}/wordmoney`] = resetStart
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -2500,14 +2492,7 @@ try {
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          // Preserve +10 starter bonus if previously awarded; otherwise apply startMoney
-          try {
-            const hadStarter = !!p.starterBonusAwarded
-            updates[`players/${p.id}/wordmoney`] = startMoney + (hadStarter ? 10 : 0)
-            updates[`players/${p.id}/starterBonusAwarded`] = null
-          } catch (e) {
-            updates[`players/${p.id}/wordmoney`] = startMoney
-          }
+          updates[`players/${p.id}/wordmoney`] = startMoney
           // Clear power-up state as part of rematch reset so old results don't persist
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null

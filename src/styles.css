@@ -578,23 +578,3 @@ body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background
 .confetti-piece { box-shadow: 0 6px 12px rgba(0,0,0,0.6); }
 
 /* ensure cash-piece color remains green for money mode celebrations */
-
-/*
-  Mobile stacking fix: some fixed overlays (turn-indicator, toasts) use very high
-  z-index values (e.g., 9998/9999). On narrow viewports the power-up shop modal
-  was rendering underneath those overlays which hid the close button. Increase
-  the modal overlay/dialog z-index only on small screens so desktop stacking
-  remains unchanged.
-*/
-@media (max-width: 700px) {
-  /* ensure shop modal overlays everything on small screens */
-  .modal-overlay.shop-modal,
-  .shop-modal {
-    z-index: 11000 !important;
-  }
-  .shop-modal .shop-modal-dialog,
-  .shop-modal-dialog {
-    position: relative !important;
-    z-index: 11001 !important;
-  }
-}
