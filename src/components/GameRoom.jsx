@@ -2245,6 +2245,8 @@ try {
         setIsResetting(true)
 
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
+  // clear winner state when restarting so the victory screen doesn't persist
+  updates['winnerId'] = null
   // determine starting wordmoney to apply for resets — hard-coded to 2
   const resetStart = 2
     ;(players || []).forEach(p => {
@@ -2323,6 +2325,8 @@ try {
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
   const startMoney = 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
+  // ensure winnerId is cleared when performing an automatic rematch reset
+  updates['winnerId'] = null
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
