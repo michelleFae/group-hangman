@@ -1346,12 +1346,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
                   data.entries?.some(entry =>
                     entry.senses?.some(sense => {
-                      // Handle both singular and plural property names
-                      const defs = Array.isArray(sense.definitions)
-                        ? sense.definitions
-                        : sense.definition
-                        ? [sense.definition]
-                        : [];
+                      const defs = [sense.definition];
+                  
 
                       return defs.some(def => {
                         if (!def.includes(raw)) {
