@@ -889,13 +889,12 @@ export default function useGameRoom(roomId, playerName) {
     // existing numeric values — only initialize missing entries so the first-player
     // +1 award is always computed relative to the room-configured starting value.
     try {
+      // Overwrite every player's wordmoney to the configured starting balance so
+      // the host's "Starting balance" is applied when the game starts.
       const startMoney = getStartMoneyFromRoom(room)
       const playersObj = room.players || {}
       Object.keys(playersObj).forEach(pid => {
-        const p = playersObj[pid] || {}
-        if (typeof p.wordmoney !== 'number') {
-          updates[`players/${pid}/wordmoney`] = startMoney
-        }
+        updates[`players/${pid}/wordmoney`] = startMoney
       })
     } catch (e) {}
 
