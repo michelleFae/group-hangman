@@ -154,22 +154,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
-    // sync secret word theme settings if present
-    if (state?.secretWordTheme && typeof state.secretWordTheme === 'object') {
-      const st = state.secretWordTheme
+    // sync secret word theme settings if present (run whenever the authoritative room setting changes)
+    if (typeof state?.secretWordTheme === 'object') {
+      const st = state.secretWordTheme || {}
+      // Update local UI state so all players see the current host-selected theme immediately
       setSecretThemeEnabled(!!st.enabled)
       setSecretThemeType(st.type || 'animals')
-      // pre-fill host custom inputs when present and when the theme is 'custom'
+      // Pre-fill host custom inputs when present and when the theme is 'custom'.
+      // Only overwrite uncontrolled inputs when the settings modal is open so an actively-typing host doesn't lose focus.
       try {
-        // Only prefill when the settings modal is open so an actively-typing host doesn't lose focus
         if (showSettings && (st.type === 'custom') && st.custom && Array.isArray(st.custom.words)) {
           const ser = JSON.stringify({ title: st.custom.title || '', words: (st.custom.words || []) })
           if (prevCustomSerializedRef.current !== ser) {
             prevCustomSerializedRef.current = ser
-            // Prefill uncontrolled inputs via refs to avoid controlled re-renders while typing
             try { if (customTitleRef.current) customTitleRef.current.value = st.custom.title || '' } catch (e) {}
             try { if (customCsvRef.current) customCsvRef.current.value = (st.custom.words || []).join(',') } catch (e) {}
-            // keep state copies for compatibility but avoid using them to control input
             setCustomTitle(st.custom.title || '')
             setCustomCsv((st.custom.words || []).join(','))
           }
@@ -188,6 +187,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.starterBonus?.enabled,
     state?.powerUpsEnabled,
     state?.minWordSize,
+    // ensure we re-run when the authoritative secretWordTheme changes so UI updates for all players
+    state?.secretWordTheme,
     // startingWordmoney removed
   ]);
 

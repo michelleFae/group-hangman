@@ -85,6 +85,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
               return
             }
           } catch (e) {
+            console.warn('Could not assess stale players before join', e)
             // fallback: treat as closed
             setJoinError('This room has already started and is closed to new players.')
             return
