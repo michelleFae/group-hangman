@@ -13,6 +13,7 @@ import COLOURS from '../data/colours'
 import ELEMENTS from '../data/elements'
 import CPPTERMS from '../data/cppterms'
 import ANIMALS from '../data/animals'
+import INSTRUMENTS from '../data/instruments'
 
 export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
@@ -187,7 +188,8 @@ export default function useGameRoom(roomId, playerName) {
   try {
     const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
     let pool = null
-    if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+  if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+  else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
     else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
     else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
     else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null

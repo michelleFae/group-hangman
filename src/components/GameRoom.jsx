@@ -167,10 +167,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Small badge component to display the active secret-word theme with emoji + gradient
   function ThemeBadge({ type }) {
     const infoMap = {
-      animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
-      colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
-      elements: { emoji: '⚛️', label: 'Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
-      cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+  animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
+  colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
+  instruments: { emoji: '🎵', label: 'Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
+  elements: { emoji: '⚛️', label: 'Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
+  cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
     const info = infoMap[type] || infoMap.default
@@ -675,6 +676,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     <select id="secretThemeType" value={secretThemeType} onChange={e => { const nv = e.target.value; setSecretThemeType(nv); updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: nv } }) }} style={{ marginLeft: 8 }}>
                       <option value="animals">Animals</option>
                       <option value="colours">Colours</option>
+                      <option value="instruments">Instruments</option>
                       <option value="elements">Periodic elements</option>
                       <option value="cpp">C++ terms</option>
                     </select>
