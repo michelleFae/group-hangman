@@ -2909,7 +2909,7 @@ try {
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
       {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
-        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 1 }} className="turn-timer">
+        <div style={{ right: 18, zIndex: 1 }} className="turn-timer">
           <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
           <div className="time">{(() => {
             const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
