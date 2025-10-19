@@ -34,6 +34,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showSettings, setShowSettings] = useState(false)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(false)
   const [secretThemeType, setSecretThemeType] = useState('animals')
+  // Host-provided custom theme inputs (title + comma-separated list)
+  const [customTitle, setCustomTitle] = useState('')
+  const [customCsv, setCustomCsv] = useState('')
+  const [customError, setCustomError] = useState('')
+  const prevCustomSerializedRef = useRef(null)
+  const customTitleRef = useRef(null)
+  const customCsvRef = useRef(null)
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
   const [toasts, setToasts] = useState([])
@@ -56,6 +63,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [forcedLobbyView, setForcedLobbyView] = useState(false)
   // ensure audio/vibration unlock on first user gesture (no UI toast)
   useUserActivation()
+
+  // Global capture: log unhandled promise rejections and window errors to help debug
+  // intermittent extension-related failures that show as "A listener indicated an asynchronous response..."
+  useEffect(() => {
+    const onRejection = (ev) => {
+      try {
+        console.error('Global unhandledrejection caught in GameRoom:', ev)
+        // some browsers put the actual error in ev.reason
+        if (ev && ev.reason) console.error('Rejection reason:', ev.reason)
+        // rethrow a bit later so it's also visible in dev tools stack if desired
+      } catch (e) {}
+    }
+    const onError = (ev) => {
+      try {
+        console.error('Global error caught in GameRoom:', ev)
+      } catch (e) {}
+    }
+    window.addEventListener('unhandledrejection', onRejection)
+    window.addEventListener('error', onError)
+    return () => {
+      window.removeEventListener('unhandledrejection', onRejection)
+      window.removeEventListener('error', onError)
+    }
+  }, [])
 
   useEffect(() => {
     joinRoom(password) // Pass the password to joinRoom
@@ -127,6 +158,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const st = state.secretWordTheme
       setSecretThemeEnabled(!!st.enabled)
       setSecretThemeType(st.type || 'animals')
+      // pre-fill host custom inputs when present and when the theme is 'custom'
+      try {
+        // Only prefill when the settings modal is open so an actively-typing host doesn't lose focus
+        if (showSettings && (st.type === 'custom') && st.custom && Array.isArray(st.custom.words)) {
+          const ser = JSON.stringify({ title: st.custom.title || '', words: (st.custom.words || []) })
+          if (prevCustomSerializedRef.current !== ser) {
+            prevCustomSerializedRef.current = ser
+            // Prefill uncontrolled inputs via refs to avoid controlled re-renders while typing
+            try { if (customTitleRef.current) customTitleRef.current.value = st.custom.title || '' } catch (e) {}
+            try { if (customCsvRef.current) customCsvRef.current.value = (st.custom.words || []).join(',') } catch (e) {}
+            // keep state copies for compatibility but avoid using them to control input
+            setCustomTitle(st.custom.title || '')
+            setCustomCsv((st.custom.words || []).join(','))
+          }
+        }
+      } catch (e) {}
     }
 
   // sync Word Spy settings if present
@@ -172,6 +219,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   instruments: { emoji: '🎵', label: 'Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
   elements: { emoji: '⚛️', label: 'Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
   cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+  custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
     const info = infoMap[type] || infoMap.default
@@ -679,8 +727,85 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       <option value="instruments">Instruments</option>
                       <option value="elements">Periodic elements</option>
                       <option value="cpp">C++ terms</option>
+                      <option value="custom">Custom</option>
                     </select>
                   </label>
+                )}
+                {/* Host-only custom theme upload */}
+                {secretThemeEnabled && isHost && secretThemeType === 'custom' && (
+                  <div style={{ marginTop: 10, padding: 8, border: '1px dashed #eee', borderRadius: 8 }}>
+                    <strong style={{ fontSize: 13 }}>Upload custom word set (host only)</strong>
+                    <div style={{ marginTop: 8 }}>
+                      <label style={{ display: 'block', fontSize: 13 }}>Title (optional):
+                        <input id="custom_title" ref={customTitleRef} defaultValue={customTitle} onChange={e => { try { setCustomError('') } catch (er) {} }} placeholder="e.g. Party words" style={{ width: '100%', marginTop: 6 }} />
+                      </label>
+                      <label style={{ display: 'block', fontSize: 13, marginTop: 8 }}>Words (comma-separated):
+                        <input id="custom_csv" ref={customCsvRef} defaultValue={customCsv} onChange={e => { try { setCustomError('') } catch (er) {} }} placeholder="ribbon,candy,cake,balloon,balloons" style={{ width: '100%', marginTop: 6 }} />
+                      </label>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                        <button onClick={async () => {
+                          // validate CSV: lower-case, split, ensure each token is letters-only and single-word
+                          try {
+                            const raw = (customCsvRef.current ? (customCsvRef.current.value || '') : (customCsv || '')).toString().trim()
+                            // allow empty raw: means any word permitted (no validation)
+                            const parts = raw ? raw.split(',').map(s => (s || '').toString().trim().toLowerCase()).filter(Boolean) : []
+                            // if provided some tokens, validate them
+                            if (parts.length > 0) {
+                              const invalid = parts.filter(w => !/^[a-z]+$/.test(w) || /\s/.test(w))
+                              if (invalid.length > 0) {
+                                // Preserve whatever the user has typed in the input — do NOT clear or overwrite
+                                // the ref or local state so they can fix the comma-separated list in-place.
+                                setCustomError(`Invalid words: ${invalid.slice(0,6).join(', ')}${invalid.length > 6 ? ', …' : ''}. Words must be single words with letters only.`)
+                                // Do not touch prevCustomSerializedRef, customTitleRef, or customCsvRef here.
+                                return
+                              }
+                            }
+                            // Save to room settings (persist title and array). Empty array means "allow any word".
+                            const titleVal = (customTitleRef.current ? (customTitleRef.current.value || '') : (customTitle || '')).toString().trim() || null
+                            await updateRoomSettings({ secretWordTheme: { enabled: true, type: secretThemeType, custom: { title: titleVal, words: parts } } })
+                            // remember serialized value so we don't overwrite local edits unnecessarily
+                            const serNow = JSON.stringify({ title: titleVal || '', words: parts })
+                            prevCustomSerializedRef.current = serNow
+                            // Ensure the inputs reflect the confirmed saved set so the host can edit it further
+                            try { if (customTitleRef.current) customTitleRef.current.value = titleVal || '' } catch (e) {}
+                            try { if (customCsvRef.current) customCsvRef.current.value = (parts || []).join(',') } catch (e) {}
+                            // keep local state in sync for compatibility
+                            setCustomTitle(titleVal || '')
+                            setCustomCsv((parts || []).join(','))
+                            setCustomError('')
+                            const savedToastId = `custom_ok_${Date.now()}`
+                            setToasts(t => [...t, { id: savedToastId, text: 'Custom word set saved' }])
+                            setTimeout(() => setToasts(t => t.filter(x => x.id !== savedToastId)), 4000)
+                          } catch (e) {
+                            console.warn('Could not save custom set', e)
+                            setCustomError('Could not save custom set. Try again.')
+                          }
+                        }}>Save custom set</button>
+                        <button onClick={async () => {
+                          try {
+                            // clear custom set from room
+                            await updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: secretThemeType, custom: null } })
+                            // clear local inputs and prev serialized marker
+                            prevCustomSerializedRef.current = null
+                            try { if (customCsvRef.current) customCsvRef.current.value = '' } catch (e) {}
+                            try { if (customTitleRef.current) customTitleRef.current.value = '' } catch (e) {}
+                            setCustomCsv('')
+                            setCustomTitle('')
+                            setCustomError('')
+                            const clearedToastId = `custom_cleared_${Date.now()}`
+                            setToasts(t => [...t, { id: clearedToastId, text: 'Custom word set cleared' }])
+                            setTimeout(() => setToasts(t => t.filter(x => x.id !== clearedToastId)), 4000)
+                          } catch (e) {
+                            setCustomError('Could not clear custom set')
+                          }
+                        }}>Clear</button>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+                        Example: ribbon,candy,cake,balloon,balloons — leave blank to allow any word (no validation)
+                      </div>
+                      {customError && <div style={{ marginTop: 8, color: '#900', fontSize: 13 }}>{customError}</div>}
+                    </div>
+                  </div>
                 )}
               </div>
             <label htmlFor="gameMode" title="Choose the game mode for this room">
@@ -2614,17 +2739,44 @@ try {
       return
     }
     setWordError('')
-    // perform dictionary check (may be slow) and show a small spinner state
-    setIsCheckingDictionary(true)
-    const ok = await isEnglishWord(candidate)
-    setIsCheckingDictionary(false)
-    if (!ok) {
-      setWordError("That doesn't look like an English word. Please pick another.")
-      return
+    // If a host custom set is present, respect its semantics:
+    // - If custom.words is an empty array => host permits any word (skip dictionary checks)
+    // - If custom.words is a non-empty array => membership is enforced (checked later) and skip dictionary checks
+  const custom = (secretThemeType === 'custom') && state?.secretWordTheme && state.secretWordTheme.custom
+    if (!custom) {
+      // perform dictionary check (may be slow) and show a small spinner state
+      setIsCheckingDictionary(true)
+      const ok = await isEnglishWord(candidate)
+      setIsCheckingDictionary(false)
+      if (!ok) {
+        setWordError("That doesn't look like an English word. Please pick another.")
+        return
+      }
+    } else {
+      // when custom exists, do not call isEnglishWord at all (host overrides dictionary checks)
+      // short-circuit: nothing to do here
     }
     // If the host enabled a secret-word theme, validate according to selected type
     if (secretThemeEnabled) {
       try {
+  // If the selected theme is 'custom' and the host provided a custom set, it overrides theme validation entirely.
+  if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
+          const wordsArr = Array.isArray(state.secretWordTheme.custom.words) ? state.secretWordTheme.custom.words : null
+          // wordsArr === null means host did not save words (treat as no custom list) — fall through to theme checks
+          if (Array.isArray(wordsArr)) {
+            // If the array has length > 0, enforce membership in that array.
+            if (wordsArr.length > 0) {
+              const allowed = (wordsArr || []).map(s => (s || '').toString().toLowerCase())
+              if (!allowed.includes(candidate.toLowerCase())) {
+                setWordError('Word must be from the host-provided custom list.')
+                return
+              }
+            }
+            // If array is empty, host means "allow any word" — no further checks
+            return
+          }
+        }
+        // No host custom set: fall back to built-in theme validations
         if (secretThemeType === 'colours') {
           const found = COLOURS && Array.isArray(COLOURS) && COLOURS.includes(candidate.toLowerCase())
           if (!found) {
@@ -2745,7 +2897,14 @@ try {
   {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
   {phase === 'lobby' && <h2>Room: {roomId}</h2>}
   {phase === 'lobby' && secretThemeEnabled && (
-    <ThemeBadge type={secretThemeType} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <ThemeBadge type={secretThemeType} />
+      {secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && state.secretWordTheme.custom.title ? (
+        <div style={{ fontSize: 13, color: '#666', marginLeft: 6 }} title={state.secretWordTheme.custom.title}>
+          {state.secretWordTheme.custom.title}{Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0 ? ' (any word allowed)' : ''}
+        </div>
+      ) : null}
+    </div>
   )}
       {phase === 'lobby' && (
         <div style={{ display: 'inline-block' }}>

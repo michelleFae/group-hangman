@@ -6,6 +6,21 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Very small CORS helper for local development. Allows Vite dev origin and any origin when running locally.
+app.use((req, res, next) => {
+  // Allow Vite dev server origin and common localhost variants. In production, a stricter policy is recommended.
+  const origin = req.headers.origin || ''
+  if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('http://[::1]') )) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
+  // handle preflight
+  if (req.method === 'OPTIONS') return res.status(204).end()
+  return next()
+})
+
 // Simple JSON body parsing (not strictly required for GET proxy below)
 app.use(express.json())
 
