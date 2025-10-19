@@ -203,8 +203,17 @@ export default function useGameRoom(roomId, playerName) {
   } catch (e) {
     word = null
   }
-  // fallback to a generic noun list if theme didn't produce a valid word
-  if (!word) word = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+        // fallback to a generic noun list if theme didn't produce a valid word
+  try {
+    const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+    if (Array.isArray(nounsList) && nounsList.length > 0) {
+      word = nounsList[Math.floor(Math.random() * nounsList.length)]
+    }
+  } catch (e) {
+    // last-resort hardcoded fallback
+    const fallbackNouns = ['lamp','guitar','bottle','chair','camera','book','pillow','cup','window','bicycle']
+    word = fallbackNouns[Math.floor(Math.random() * fallbackNouns.length)]
+  }
       const timerSeconds = Math.max(10, Math.min(3600, Number(options.timerSeconds) || 120))
       const rounds = Math.max(1, Math.min(100, Number(options.rounds) || (Object.keys(room.players || {}).length || 4)))
       // pick one spy at random
@@ -525,9 +534,14 @@ export default function useGameRoom(roomId, playerName) {
           currentRound: nextRound,
           state: 'waiting'
         }
-        // pick a new word and spy
-        const NOUNS = ['lamp','guitar','bottle','chair','camera','book','pillow','cup','window','bicycle','backpack','clock','wallet','shoe','bottle','pen','table','spoon','bottlecap','lantern']
-        const word = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+        // pick a new word and spy — use shared NOUNS from data/nouns.js with a small fallback
+        let word = null
+        
+        const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+        if (Array.isArray(nounsList) && nounsList.length > 0) {
+          word = nounsList[Math.floor(Math.random() * nounsList.length)]
+        }
+        
         const playersList = Object.keys(room.players || {})
         const spyId = playersList[Math.floor(Math.random() * playersList.length)]
           newWordSpy.word = word
