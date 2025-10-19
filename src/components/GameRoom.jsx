@@ -2759,25 +2759,25 @@ try {
       // theme is enabled: skip general dictionary checks; theme validation follows below
     }
     // If the host enabled a secret-word theme, validate according to selected type
-    if (secretThemeEnabled) {
-      try {
-  // If the selected theme is 'custom' and the host provided a custom set, it overrides theme validation entirely.
-  if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
-          const wordsArr = Array.isArray(state.secretWordTheme.custom.words) ? state.secretWordTheme.custom.words : null
-          // wordsArr === null means host did not save words (treat as no custom list) — fall through to theme checks
-          if (Array.isArray(wordsArr)) {
-            // If the array has length > 0, enforce membership in that array.
-            if (wordsArr.length > 0) {
-              const allowed = (wordsArr || []).map(s => (s || '').toString().toLowerCase())
-              if (!allowed.includes(candidate.toLowerCase())) {
-                setWordError('Word must be from the host-provided custom list.')
-                return
+      if (secretThemeEnabled) {
+        try {
+          // If the selected theme is 'custom' and the host provided a custom set, it overrides theme validation entirely.
+          if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
+            const wordsArr = Array.isArray(state.secretWordTheme.custom.words) ? state.secretWordTheme.custom.words : null
+            // wordsArr === null means host did not save words (treat as no custom list) — fall through to theme checks
+            if (Array.isArray(wordsArr)) {
+              // If the array has length > 0, enforce membership in that array.
+              if (wordsArr.length > 0) {
+                const allowed = (wordsArr || []).map(s => (s || '').toString().toLowerCase())
+                if (!allowed.includes(candidate.toLowerCase())) {
+                  setWordError('Word must be from the host-provided custom list.')
+                  return
+                }
               }
+              // If array is empty, host means "allow any word" — treat as valid and continue
+              // Do not return here; allow flow to proceed to submitWord
             }
-            // If array is empty, host means "allow any word" — no further checks
-            return
           }
-        }
         // No host custom set: fall back to built-in theme validations
         if (secretThemeType === 'colours') {
           const found = COLOURS && Array.isArray(COLOURS) && COLOURS.includes(candidate.toLowerCase())
