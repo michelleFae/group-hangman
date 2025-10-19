@@ -1343,17 +1343,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
                 if (isValid) {
                   console.log(`Found definitions for "${raw}":`, data);
-                  data.entries.some(entry =>
-                      entry.senses.some(sense =>
-                        sense.definitions.some(def => {
-                          if (!def.includes(raw)) {
-                            resultPayload = { message: def };
-                            return true; // stops all the way up
-                          }
-                          return false;
-                        })
-                      )
-                    );
+
+                  data.entries?.some(entry =>
+                    entry.senses?.some(sense => {
+                      // Handle both singular and plural property names
+                      const defs = Array.isArray(sense.definitions)
+                        ? sense.definitions
+                        : sense.definition
+                        ? [sense.definition]
+                        : [];
+
+                      return defs.some(def => {
+                        if (!def.includes(raw)) {
+                          resultPayload = { message: def };
+                          return true; // stops all nested loops
+                        }
+                        return false;
+                      });
+                    })
+                  );
                 } else {
                   // try api/dicitonary
 
