@@ -574,6 +574,62 @@ export default function useGameRoom(roomId, playerName) {
     const uid = auth && auth.currentUser ? auth.currentUser.uid : null
     const playersRefPath = `rooms/${roomId}/players`
 
+    // TTL for eviction when someone joins: 1 hour
+    const EVICT_TTL_MS = 60 * 60 * 1000
+
+    // Remove stale (non-authenticated) players whose lastSeen is older than TTL.
+    // This mirrors server-side eviction but runs opportunistically when a player joins.
+    async function evictStale(roomRootRef) {
+      try {
+        const snap = await get(roomRootRef)
+        const roomVal = snap.val() || {}
+        const players = roomVal.players || {}
+        const now = Date.now()
+        const updates = {}
+        let hasUpdates = false
+        Object.keys(players).forEach(pid => {
+          const p = players[pid]
+          if (!p) return
+          // best-effort: skip likely-authenticated players (do not evict authenticated accounts)
+          if (p.uid || p.authProvider || p.isAuthenticated) return
+          const last = p.lastSeen ? Number(p.lastSeen) : 0
+          if (!last || (now - last) > EVICT_TTL_MS) {
+            updates[`players/${pid}`] = null
+            hasUpdates = true
+            try { console.log(`Evicting stale player ${pid} from room ${roomId} (lastSeen=${last})`) } catch (e) {}
+          }
+        })
+        if (hasUpdates) {
+          try { await update(roomRootRef, updates) } catch (e) { console.warn('evictStale: update failed', e) }
+          // If room became empty after eviction, remove the room root
+          try {
+            const postSnap = await get(dbRef(db, `rooms/${roomId}/players`))
+            const postPlayers = postSnap.val() || {}
+            if (!postPlayers || Object.keys(postPlayers).length === 0) {
+              try { await dbSet(roomRootRef, null); console.log(`Removing empty room ${roomId} after eviction`) } catch (e) {}
+            }
+          } catch (e) { /* ignore post-check errors */ }
+        }
+      } catch (e) {
+        console.warn('evictStale failed', e)
+      }
+    }
+
+    // Ensure the room has a host; if not, assign the provided id as host.
+    async function ensureHost(joiningId) {
+      if (!joiningId) return
+      try {
+        const roomRootRef = dbRef(db, `rooms/${roomId}`)
+        const snap = await get(roomRootRef)
+        const roomVal = snap.val() || {}
+        if (!roomVal.hostId) {
+          try { await update(roomRootRef, { hostId: joiningId }); console.log('Assigned host to', joiningId, 'for room', roomId) } catch (e) { console.warn('ensureHost update failed', e) }
+        }
+      } catch (e) {
+        console.warn('ensureHost failed', e)
+      }
+    }
+
     const palette = [
       '#FFDC70', // soft yellow
       '#64B5F6', // clear sky blue
@@ -618,6 +674,9 @@ export default function useGameRoom(roomId, playerName) {
     if (uid) {
       playerIdRef.current = uid
       const roomRootRef = dbRef(db, `rooms/${roomId}`)
+      // opportunistically evict stale players before processing this join
+      evictStale(roomRootRef).catch(() => {})
+
       get(roomRootRef).then(snapshot => {
         const roomVal = snapshot.val() || {}
         console.log('Room data fetched:', roomVal)
@@ -637,10 +696,11 @@ export default function useGameRoom(roomId, playerName) {
           dbSet(roomRootRef, { hostId: uid, phase: 'lobby', open: true, players: {}, password: password || '' })
           console.log('Room created with password:', password)
           // pick color and add player
-          pickColorAndSetPlayer(uid).then(chosen => {
+          pickColorAndSetPlayer(uid).then(async chosen => {
             setState(prev => ({ ...prev, password: password }))
             console.log('Player joined new room with color:', chosen)
             try { startHeartbeat() } catch (e) {}
+            try { await ensureHost(uid) } catch (e) {}
           })
           return
         }
@@ -664,10 +724,11 @@ export default function useGameRoom(roomId, playerName) {
         }
 
         // pick color and add player
-        pickColorAndSetPlayer(uid).then(chosen => {
+        pickColorAndSetPlayer(uid).then(async chosen => {
           setState(prev => ({ ...prev, password: roomVal?.password || password }))
           console.log('Player joined room with color:', chosen)
           try { startHeartbeat() } catch (e) {}
+          try { await ensureHost(uid) } catch (e) {}
         })
       })
       return
@@ -706,7 +767,10 @@ export default function useGameRoom(roomId, playerName) {
     }
 
     // check max players before creating a new anonymous player
-    const roomSnap = await get(dbRef(db, `rooms/${roomId}`))
+    const roomRootRef2 = dbRef(db, `rooms/${roomId}`)
+    // opportunistically evict stale players before creating new anon
+    await evictStale(roomRootRef2)
+    const roomSnap = await get(roomRootRef2)
     const rv = roomSnap.val() || {}
     const count = Object.keys(rv.players || {}).length
     if (count >= 20) {
@@ -722,12 +786,13 @@ export default function useGameRoom(roomId, playerName) {
     }
     playerIdRef.current = newPlayerRef.key
     // pick color and set player using the pushed key
-    pickColorAndSetPlayer(newPlayerRef.key).then(chosen => {
+    pickColorAndSetPlayer(newPlayerRef.key).then(async chosen => {
       try {
         window.localStorage && window.localStorage.setItem(`gh_anon_${roomId}`, newPlayerRef.key)
       } catch (e) {}
       console.log('Anonymous player joined with color:', chosen)
       try { startHeartbeat() } catch (e) {}
+      try { await ensureHost(newPlayerRef.key) } catch (e) {}
     })
   }
 
