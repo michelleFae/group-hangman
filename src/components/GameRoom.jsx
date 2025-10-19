@@ -154,12 +154,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       return prev;
     });
 
-    // sync configured starting wordmoney when present
+    // sync configured starting wordmoney when present (accept numeric strings too)
     try {
-      if (typeof state?.startingWordmoney === 'number') setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)))
+      if (state?.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) {
+        setStartingWordmoney(Math.max(0, Number(state.startingWordmoney)))
+      }
     } catch (e) {}
-
-    // startingWordmoney is fixed to 2 (hard-coded); do not sync from room settings
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
@@ -198,7 +198,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     state?.minWordSize,
     // ensure we re-run when the authoritative secretWordTheme changes so UI updates for all players
     state?.secretWordTheme,
-    // startingWordmoney removed
+  state?.startingWordmoney,
   ]);
 
   // toggle a body-level class so the background becomes green when money-mode is active
@@ -583,9 +583,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // derive viewer name from server state if available (covers refresh cases)
   const myNode = (state?.players || []).find(p => p.id === myId) || {}
   const myName = myNode.name || playerName
-  // consider the viewer a winner if the room's winnerId matches their id,
-  // or if the stored winnerName equals their effective name (covers legacy rooms)
-  const isWinner = (state?.winnerId && myId && state.winnerId === myId) || (state?.winnerName && state.winnerName === myName)
+  // consider the viewer a winner if the room's winnerId matches their id
+  const isWinner = (state?.winnerId && myId && state.winnerId === myId) 
   // compute standings:
   // - if winnerByWordmoney is true, sort by wordmoney desc
   // - otherwise (last-one-standing), order by elimination: winner first, then players
@@ -2439,7 +2438,7 @@ try {
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
   // determine starting wordmoney to apply for resets — prefer room setting, fallback to 2
-  const resetStart = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
+  const resetStart = (state && state.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -2516,7 +2515,7 @@ try {
       try {
         setIsResetting(true)
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
-  const startMoney = (state && typeof state.startingWordmoney === 'number') ? Number(state.startingWordmoney) : 2
+  const startMoney = (state && state.startingWordmoney !== undefined && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
