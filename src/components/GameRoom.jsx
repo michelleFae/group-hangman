@@ -75,8 +75,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
+    // If room explicitly sets timed, respect it; otherwise, when Word Spy is active
+    // default timed mode ON and compute seconds = 60 * number of players (clamped)
     if (state?.timed !== undefined) setTimedMode(!!state.timed);
     if (state?.turnTimeoutSeconds !== undefined) setTurnSeconds(state.turnTimeoutSeconds || 30);
+    if (state?.gameMode === 'wordSpy') {
+      try {
+        setTimedMode(true)
+        const playersCount = (state && state.players && Array.isArray(state.players)) ? state.players.length : 1
+        const computed = Math.max(10, Math.min(600, 60 * Math.max(1, playersCount)))
+        // prefer explicit room value if present, otherwise use computed
+        if (typeof state?.turnTimeoutSeconds !== 'number') {
+          setTurnSeconds(computed)
+        }
+        // keep legacy wordSpyTimerSeconds in sync for compatibility
+        setWordSpyTimerSeconds(prev => (typeof state?.wordSpyTimerSeconds === 'number' ? Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))) : computed))
+      } catch (e) {}
+    }
     // legacy support: if gameMode exists, prefer it; otherwise derive from winnerByWordmoney
     if (state?.gameMode) setGameMode(state.gameMode)
     else setWinnerByWordmoney(!!state?.winnerByWordmoney);
@@ -184,7 +199,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomTiming(timed, seconds) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      await dbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(300, Number(seconds) || 30)) : null })
+      await dbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(600, Number(seconds) || 30)) : null })
     } catch (e) {
       console.warn('Could not update room timing preview', e)
     }
@@ -645,15 +660,48 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             {timedMode && (
               <label htmlFor="turnSeconds">
                 Seconds per turn:
-                <input id="turnSeconds" name="turnSeconds" type="number" min={10} max={300} value={turnSeconds} onChange={e => { const v = Math.max(10, Math.min(300, Number(e.target.value || 30))); setTurnSeconds(v); updateRoomTiming(timedMode, v); updateRoomSettings({ turnTimeoutSeconds: v }) }} style={{ width: 100, marginLeft: 8 }} />
+                <input id="turnSeconds" name="turnSeconds" type="number" min={10} max={600} value={turnSeconds} onChange={e => { const v = Math.max(10, Math.min(600, Number(e.target.value || 30))); setTurnSeconds(v); updateRoomTiming(timedMode, v); updateRoomSettings({ turnTimeoutSeconds: v }) }} style={{ width: 100, marginLeft: 8 }} />
               </label>
             )}
             <label htmlFor="starterEnabled" title="When enabled, a single random word requirement will be chosen when the game starts. Players whose submitted word meets the requirement receive +10 bonus wordmoney.">
               <input id="starterEnabled" name="starterEnabled" type="checkbox" checked={starterEnabled} onChange={e => { const nv = e.target.checked; setStarterEnabled(nv); updateRoomSettings({ starterBonus: { enabled: !!nv, description: state?.starterBonus?.description || '' } }) }} /> Word selection bonus
             </label>
+            <div style={{ marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input id="secretThemeEnabled" type="checkbox" checked={secretThemeEnabled} onChange={e => { const nv = e.target.checked; setSecretThemeEnabled(nv); updateRoomSettings({ secretWordTheme: { enabled: !!nv, type: secretThemeType } }) }} /> Enforce secret word theme
+                </label>
+                {secretThemeEnabled && (
+                  <label style={{ marginTop: 6 }} htmlFor="secretThemeType">Theme:
+                    <select id="secretThemeType" value={secretThemeType} onChange={e => { const nv = e.target.value; setSecretThemeType(nv); updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: nv } }) }} style={{ marginLeft: 8 }}>
+                      <option value="animals">Animals</option>
+                      <option value="colours">Colours</option>
+                      <option value="elements">Periodic elements</option>
+                      <option value="cpp">C++ terms</option>
+                    </select>
+                  </label>
+                )}
+              </div>
             <label htmlFor="gameMode" title="Choose the game mode for this room">
               Mode:
-              <select id="gameMode" name="gameMode" value={gameMode} onChange={e => { const nv = e.target.value; setGameMode(nv); updateRoomGameMode(nv, { timerSeconds: wordSpyTimerSeconds, rounds: wordSpyRounds }); updateRoomSettings({ gameMode: nv }) }} style={{ marginLeft: 8 }}>
+              <select id="gameMode" name="gameMode" value={gameMode} onChange={e => {
+                const nv = e.target.value
+                // when switching to Word Spy, default timed mode ON and set seconds = 60 * players
+                if (nv === 'wordSpy') {
+                  const playersCount = (state && state.players && Array.isArray(state.players)) ? state.players.length : ((players && Array.isArray(players)) ? players.length : 1)
+                  const computed = Math.max(10, Math.min(600, 60 * Math.max(1, playersCount)))
+                  setGameMode(nv)
+                  setTimedMode(true)
+                  setTurnSeconds(computed)
+                  // persist mode and timing to room
+                  updateRoomTiming(true, computed)
+                  updateRoomGameMode(nv, { timerSeconds: computed, rounds: wordSpyRounds })
+                  updateRoomSettings({ gameMode: nv, timed: true, turnTimeoutSeconds: computed })
+                } else {
+                  setGameMode(nv)
+                  updateRoomGameMode(nv, { timerSeconds: turnSeconds, rounds: wordSpyRounds })
+                  updateRoomSettings({ gameMode: nv })
+                }
+              }} style={{ marginLeft: 8 }}>
                 <option value="lastOneStanding">Last One Standing</option>
                 <option value="money">Money Wins</option>
                 <option value="wordSpy">Word Spy</option>
@@ -661,11 +709,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </label>
             {gameMode === 'wordSpy' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                <label htmlFor="wordSpyTimerSeconds">Word Spy timer (seconds):
-                  <input id="wordSpyTimerSeconds" type="number" min={10} max={600} value={wordSpyTimerSeconds} onChange={e => { const v = Math.max(10, Math.min(600, Number(e.target.value || 120))); setWordSpyTimerSeconds(v); updateRoomGameMode('wordSpy', { timerSeconds: v, rounds: wordSpyRounds }); updateRoomSettings({ wordSpyTimerSeconds: v }) }} style={{ width: 120, marginLeft: 8 }} />
-                </label>
+                {/* Word Spy uses the global Timed game seconds (computed as 60 * players by default). Do not show a separate Word Spy timer input. */}
                 <label htmlFor="wordSpyRounds">Rounds:
-                  <input id="wordSpyRounds" type="number" min={1} max={20} value={wordSpyRounds} onChange={e => { const v = Math.max(1, Math.min(20, Number(e.target.value || 1))); setWordSpyRounds(v); updateRoomGameMode('wordSpy', { timerSeconds: wordSpyTimerSeconds, rounds: v }); updateRoomSettings({ wordSpyRounds: v }) }} style={{ width: 120, marginLeft: 8 }} />
+                  <input id="wordSpyRounds" type="number" min={1} max={20} value={wordSpyRounds} onChange={e => { const v = Math.max(1, Math.min(20, Number(e.target.value || 1))); setWordSpyRounds(v); updateRoomGameMode('wordSpy', { timerSeconds: turnSeconds, rounds: v }); updateRoomSettings({ wordSpyRounds: v }) }} style={{ width: 120, marginLeft: 8 }} />
                 </label>
               </div>
             )}
@@ -707,21 +753,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   style={{ width: 80, marginLeft: 8 }}
                 />
               </label>
-              <div style={{ marginTop: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input id="secretThemeEnabled" type="checkbox" checked={secretThemeEnabled} onChange={e => { const nv = e.target.checked; setSecretThemeEnabled(nv); updateRoomSettings({ secretWordTheme: { enabled: !!nv, type: secretThemeType } }) }} /> Enforce secret word theme
-                </label>
-                {secretThemeEnabled && (
-                  <label style={{ marginTop: 6 }} htmlFor="secretThemeType">Theme:
-                    <select id="secretThemeType" value={secretThemeType} onChange={e => { const nv = e.target.value; setSecretThemeType(nv); updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: nv } }) }} style={{ marginLeft: 8 }}>
-                      <option value="animals">Animals</option>
-                      <option value="colours">Colours</option>
-                      <option value="elements">Periodic elements</option>
-                      <option value="cpp">C++ terms</option>
-                    </select>
-                  </label>
-                )}
-              </div>
               {/* Starting wordmoney removed from host settings; starting balance is hard-coded to $2 */}
           </div>
         </div>

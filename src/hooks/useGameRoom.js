@@ -12,6 +12,7 @@ import NOUNS from '../data/nouns'
 import COLOURS from '../data/colours'
 import ELEMENTS from '../data/elements'
 import CPPTERMS from '../data/cppterms'
+import ANIMALS from '../data/animals'
 
 export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
@@ -179,8 +180,29 @@ export default function useGameRoom(roomId, playerName) {
       const snap = await get(roomRef)
       const room = snap.val() || {}
       if (room.hostId !== uid) return
-  // generate a noun from the curated noun list
-  const word = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  // choose a word for Word Spy. If the room has a secretWordTheme enabled,
+  // pick from that theme's curated list (animals, colours, elements, cppterms).
+  // Otherwise fall back to the generic NOUNS list.
+  let word = null
+  try {
+    const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
+    let pool = null
+    if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+    else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
+    else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
+    else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null
+    // Ensure pool entries are single-word alphabetic strings and length >= 2
+    if (Array.isArray(pool) && pool.length > 0) {
+      const filtered = pool.map(p => (p || '').toString().trim()).filter(p => /^[a-zA-Z]+$/.test(p) && p.length >= 2)
+      if (filtered.length > 0) {
+        word = filtered[Math.floor(Math.random() * filtered.length)]
+      }
+    }
+  } catch (e) {
+    word = null
+  }
+  // fallback to a generic noun list if theme didn't produce a valid word
+  if (!word) word = NOUNS[Math.floor(Math.random() * NOUNS.length)]
       const timerSeconds = Math.max(10, Math.min(3600, Number(options.timerSeconds) || 120))
       const rounds = Math.max(1, Math.min(100, Number(options.rounds) || (Object.keys(room.players || {}).length || 4)))
       // pick one spy at random
