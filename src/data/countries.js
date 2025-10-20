@@ -4,7 +4,7 @@
 // or common one-word aliases/abbreviations (e.g. usa, uk). Multi-word country names
 // are intentionally excluded rather than being merged into a single token.
 
-const COUNTRIES = [
+let COUNTRIES = [
   'afghanistan','albania','algeria','andorra','angola',
   'argentina','armenia','australia','austria','azerbaijan',
   'bahamas','bahrain','bangladesh','barbados','belarus','belgium','belize','benin','bhutan','bolivia','botswana','brazil','brunei','bulgaria','burundi',
@@ -35,6 +35,6 @@ const COUNTRIES = [
 ]
 
 // Normalize to lowercase alphabetic-only entries and dedupe
-const cleaned = Array.from(new Set((COUNTRIES || []).map(c => (c || '').toString().toLowerCase().replace(/[^a-z]/g, '')))).filter(Boolean)
+COUNTRIES = Array.from(new Set((COUNTRIES || []).map(c => (c || '').toString().toLowerCase().replace(/[^a-z]/g, '')))).filter(Boolean)
 
-export default cleaned
+export default COUNTRIES

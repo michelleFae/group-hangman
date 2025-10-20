@@ -15,6 +15,8 @@ import CPPTERMS from '../data/cppterms'
 import ANIMALS from '../data/animals'
 import INSTRUMENTS from '../data/instruments'
 import COUNTRIES from '../data/countries'
+import FRUITS_VEGS from '../data/fruits_vegetables'
+import OCCUPATIONS from '../data/occupations'
 
 export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
@@ -193,6 +195,8 @@ export default function useGameRoom(roomId, playerName) {
     const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
     let pool = null
   if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+  else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
+  else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
   else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
   else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
     else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
@@ -968,6 +972,30 @@ export default function useGameRoom(roomId, playerName) {
           }
         } catch (e) {
           console.warn('submitWord element validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'fruits') {
+        try {
+          const list = (FRUITS_VEGS && FRUITS_VEGS.default) ? FRUITS_VEGS.default : FRUITS_VEGS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in fruits/vegs list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord fruits validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'occupations') {
+        try {
+          const list = (OCCUPATIONS && OCCUPATIONS.default) ? OCCUPATIONS.default : OCCUPATIONS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in occupations list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord occupations validation failed', e)
           return false
         }
       }
