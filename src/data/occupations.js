@@ -8,7 +8,7 @@ const BASE = [
   'professor','programmer','publisher','receptionist','referee','researcher','sailor','scientist','secretary','shopkeeper','soldier',
   'surgeon','tailor','teacher','technician','translator','veterinarian','waiter','writer', 'speaker',
   // added professions
-  'ecologist','violinist','pianist','actress','waitress','hostess','stewardess','seamstress','authoress', 'hairstylist',
+  'ecologist','violinist','pianist','actress','waitress','hostess','stewardess','seamstress','authoress', 'hairstylist', 'washerwoman', 'agriculturist','washerman','washer'
   // sports professions
   ,'footballer','basketballer','cricketer','baseballer','golfer','tennisplayer','boxer','wrestler','swimmer','runner','athlete'
   // more professions
