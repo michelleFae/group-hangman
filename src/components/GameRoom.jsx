@@ -7,6 +7,9 @@ import ANIMALS from '../data/animals'
 import INSTRUMENTS from '../data/instruments'
 import ELEMENTS from '../data/elements'
 import CPPTERMS from '../data/cppterms'
+import FRUITS_VEGS from '../data/fruits_vegetables'
+import OCCUPATIONS from '../data/occupations'
+import COUNTRIES from '../data/countries'
 import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
@@ -2827,6 +2830,55 @@ try {
     }
   }
 
+  // Helper: compute Levenshtein distance and suggest the closest word from a list
+  function levenshtein(a = '', b = '') {
+    a = (a || '').toString()
+    b = (b || '').toString()
+    const m = a.length
+    const n = b.length
+    if (m === 0) return n
+    if (n === 0) return m
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+    for (let i = 0; i <= m; i++) dp[i][0] = i
+    for (let j = 0; j <= n; j++) dp[0][j] = j
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+      }
+    }
+    return dp[m][n]
+  }
+
+  function suggestClosest(list, candidate) {
+    if (!Array.isArray(list) || !candidate) return null
+    const c = candidate.toString().toLowerCase()
+    let best = null
+    let bestScore = Infinity
+    for (const w of list) {
+      if (!w) continue
+      const s = (w || '').toString().toLowerCase()
+      if (!/^[a-z]+$/.test(s)) continue
+      const d = levenshtein(c, s)
+      if (d < bestScore) { bestScore = d; best = s }
+    }
+    // Accept suggestion only when reasonably close.
+    // threshold: allow up to 2 edits or up to ~30% of word length (min 1)
+    if (!best) return null
+    const maxAllowed = Math.max(1, Math.floor(Math.min(2, Math.ceil(best.length * 0.3))))
+    return (bestScore <= Math.max(2, Math.floor(candidate.length * 0.3))) ? best : null
+  }
+
+  function suggestAndSetError(baseMsg, list, candidate) {
+    try {
+      const sug = suggestClosest(list, candidate)
+      if (sug) setWordError(`${baseMsg} Did you mean "${sug}"?`)
+      else setWordError(baseMsg)
+    } catch (e) {
+      setWordError(baseMsg)
+    }
+  }
+
   async function handleSubmitWord() {
     const candidate = (word || '').toString().trim()
     // client-side safety checks (length and characters)
@@ -2867,15 +2919,15 @@ try {
       if (secretThemeEnabled) {
         try {
           // If the selected theme is 'custom' and the host provided a custom set, it overrides theme validation entirely.
-          if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
+              if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
             const wordsArr = Array.isArray(state.secretWordTheme.custom.words) ? state.secretWordTheme.custom.words : null
             // wordsArr === null means host did not save words (treat as no custom list) — fall through to theme checks
-            if (Array.isArray(wordsArr)) {
+                if (Array.isArray(wordsArr)) {
               // If the array has length > 0, enforce membership in that array.
               if (wordsArr.length > 0) {
                 const allowed = (wordsArr || []).map(s => (s || '').toString().toLowerCase())
                 if (!allowed.includes(candidate.toLowerCase())) {
-                  setWordError('Word must be from the host-provided custom list.')
+                  suggestAndSetError('Word must be from the host-provided custom list.', allowed, candidate)
                   return
                 }
               }
@@ -2885,9 +2937,9 @@ try {
           }
         // No host custom set: fall back to built-in theme validations
         if (secretThemeType === 'colours') {
-          const found = COLOURS && Array.isArray(COLOURS) && COLOURS.includes(candidate.toLowerCase())
-          if (!found) {
-            setWordError('Word must be a colour from the selected theme (no spaces).')
+          const arr = Array.isArray(COLOURS) ? COLOURS : (COLOURS && COLOURS.default ? COLOURS.default : [])
+          if (!arr.includes(candidate.toLowerCase())) {
+            suggestAndSetError('Word must be a colour from the selected theme (no spaces).', arr, candidate)
             return
           }
             } else if (secretThemeType === 'animals') {
@@ -2895,7 +2947,7 @@ try {
           try {
             const localList = Array.isArray(ANIMALS) ? ANIMALS : (ANIMALS && ANIMALS.default ? ANIMALS.default : [])
             if (!Array.isArray(localList) || !localList.includes(candidate.toLowerCase())) {
-              setWordError('Word must be an animal from the selected theme (no spaces).')
+              suggestAndSetError('Word must be an animal from the selected theme (no spaces).', localList, candidate)
               return
             }
           } catch (e) {
@@ -2907,7 +2959,7 @@ try {
           try {
             const arr = Array.isArray(INSTRUMENTS) ? INSTRUMENTS : (INSTRUMENTS && INSTRUMENTS.default ? INSTRUMENTS.default : [])
             if (!arr.includes(candidate.toLowerCase())) {
-              setWordError('Word must be an instrument from the selected theme (no spaces).')
+              suggestAndSetError('Word must be an instrument from the selected theme (no spaces).', arr, candidate)
               return
             }
           } catch (e) {
@@ -2919,7 +2971,7 @@ try {
           try {
             const arr = Array.isArray(ELEMENTS) ? ELEMENTS : (ELEMENTS && ELEMENTS.default ? ELEMENTS.default : [])
             if (!arr.includes(candidate.toLowerCase())) {
-              setWordError('Word must be a periodic element from the selected theme (use element name, no spaces).')
+              suggestAndSetError('Word must be a periodic element from the selected theme (use element name, no spaces).', arr, candidate)
               return
             }
           } catch (e) {
@@ -2931,11 +2983,44 @@ try {
           try {
             const arr = Array.isArray(CPPTERMS) ? CPPTERMS : (CPPTERMS && CPPTERMS.default ? CPPTERMS.default : [])
             if (!arr.includes(candidate.toLowerCase())) {
-              setWordError('Word must be a C++ related term from the selected theme (no spaces).')
+              suggestAndSetError('Word must be a C++ related term from the selected theme (no spaces).', arr, candidate)
               return
             }
           } catch (e) {
             setWordError('Could not validate C++ term — try again')
+            return
+          }
+        } else if (secretThemeType === 'fruits') {
+          try {
+            const arr = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS : (FRUITS_VEGS && FRUITS_VEGS.default ? FRUITS_VEGS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be a fruit or vegetable from the selected theme (single word).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate fruit/vegetable — try again')
+            return
+          }
+        } else if (secretThemeType === 'occupations') {
+          try {
+            const arr = Array.isArray(OCCUPATIONS) ? OCCUPATIONS : (OCCUPATIONS && OCCUPATIONS.default ? OCCUPATIONS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be an occupation from the selected theme (no spaces).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate occupation — try again')
+            return
+          }
+        } else if (secretThemeType === 'countries') {
+          try {
+            const arr = Array.isArray(COUNTRIES) ? COUNTRIES : (COUNTRIES && COUNTRIES.default ? COUNTRIES.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be a country from the selected theme (single word).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate country — try again')
             return
           }
         }
