@@ -470,7 +470,9 @@ export default function PlayerCircle({
 
           <div style={{ marginTop: 8 }}>
             {!hideInteractiveForWordSpy && (
-              <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>{expanded ? 'Hide info' : 'Expand info'}</button>
+              <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
+              </button>
             )}
           </div>
         </div>
@@ -515,7 +517,7 @@ export default function PlayerCircle({
                       <strong>Power-up results:</strong>
                     </div>
                   )}
-                  <div style={{ marginTop: 6, overflowY: 'scroll', height: '40vh', paddingRight: '20px' }}>
+                  <div className="powerup-results-scroll" style={{ marginTop: 6, overflowY: 'scroll', maxHeight: '40vh', paddingRight: '20px' }}>
                 {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
@@ -662,6 +664,12 @@ try {
       /* revealed word wrapping */
       .player .revealed { word-break: break-word; white-space: normal; }
       .player .revealed span { flex: 0 0 auto; }
+  /* thin dark scrollbar for power-up results */
+  .powerup-results-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent; }
+  .powerup-results-scroll::-webkit-scrollbar { width: 8px; }
+  .powerup-results-scroll::-webkit-scrollbar-track { background: transparent; }
+  .powerup-results-scroll::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.45); border-radius: 8px; }
+  .powerup-results-scroll::-webkit-scrollbar-thumb:hover { background-color: rgba(0,0,0,0.6); }
       .player .word-tooltip { max-width: 360px; word-break: break-word; }
       /* eliminated player styling: greyed out and non-interactive */
       .player.player-eliminated { opacity: 0.5; filter: grayscale(60%); }
