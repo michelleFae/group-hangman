@@ -112,6 +112,8 @@ const BASE = [
   ,'headhunter','distiller','manequin'
   // ocular / cosmetic professions
   ,'ocularist','cosemetologist','cosmetologist'
+  // small additions
+  ,'digger','interviewer'
 ]
 
 const IRREGULARS = {
