@@ -34,6 +34,13 @@ export default function PlayerCircle({
   // hostId is optional prop; when provided, ensure the host's own revealed area shows public reveals
   // so the host and other players can see letters guessed for the host's word.
   const revealed = player.revealed || []
+  // colors used for styling power-up names and revealed letters
+  const powerNameColor = '#2b8cff'
+  const revealedLetterColor = '#ffcc00'
+  // Set of power-up ids considered important (fallback when reveal.updateType is missing)
+  const IMPORTANT_POWERS = new Set([
+    'vowel_vision', 'letter_scope', 'zeta_drop', 'letter_peek', 'related_word', 'sound_check', 'what_do_you_mean', 'longest_word_bonus', 'full_reveal', 'rare_trace'
+  ])
   const [showWord, setShowWord] = useState(false)
   const [soundedLow, setSoundedLow] = useState(false)
   const [animateHang, setAnimateHang] = useState(false)
@@ -515,27 +522,41 @@ export default function PlayerCircle({
                   const actorName = (actorId && (playerIdToName && playerIdToName[actorId])) || actorId || 'Someone'
                   const actorIsViewer = viewerId && actorId && viewerId === actorId
                   // determine style from updateType (fallback to not-important)
-                  const updateType = (r && (r.updateType || r.updateType === '') ) ? r.updateType : (r && r.powerId && (r.updateType || null))
-                  const isImportant = (r && r.updateType && r.updateType === 'important')
-                  // Use a nicer blue gradient for power-up result chips (good on white text)
-                  const chipStyle = isImportant
-                    ? { background: '#FFD54F', color: '#000', padding: '8px 10px', borderRadius: 8, marginTop: 6, fontSize: 13 }
-                    : {
-                        background: 'linear-gradient(135deg, #2b8cff 0%, #0b63d6 100%)',
-                        color: '#ffffff',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        marginTop: 6,
-                        fontSize: 13,
-                        boxShadow: '0 2px 8px rgba(11,99,214,0.16)'
-                      }
+                  const updateType = (r && (r.updateType || r.updateType === '') ) ? r.updateType : null
+                  // derive importance from explicit updateType or from known power metadata
+                  const isImportant = (r && r.updateType === 'important') || (r && r.powerId && IMPORTANT_POWERS.has(r.powerId))
+                  console.log('🔥 rendering power-up result chip', { playerId: player.id, viewerId, actorId, actorIsViewer, powerId: r.powerId, result: res, updateType, isImportant })
+                    // Use a darker, related palette and apply the gradient to the important chip
+                    const chipStyle = isImportant
+                      ? {
+                          // darker-to-light purple gradient but light enough for black text to remain readable
+                          background: 'linear-gradient(135deg, #1f0a43ff 0%, #3d236dff 100%)',
+                          color: '#fbebebff',
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          marginTop: 6,
+                          fontSize: 13,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                          border: '1px solid rgba(0,0,0,0.08)'
+                        }
+                      : {
+                          // lighter purple gradient for non-important chips to ensure strong contrast with black text
+                          background: 'linear-gradient(135deg, #07202cff 0%, #171b5bff 100%)',
+                          color: '#fbebebff',
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          marginTop: 6,
+                          fontSize: 13,
+                          boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
+                          border: '1px solid rgba(0,0,0,0.06)'
+                        }
                   return (
                     <div key={idx} style={chipStyle}>
                       {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
-                        <div>{`Letter Scope: there are ${Number(res.letters)} letter${Number(res.letters) === 1 ? '' : 's'} in the word`}</div>
+                        <div><strong style={{ color: powerNameColor }}>Letter Scope</strong>: there are <strong style={{ color: revealedLetterColor }}>{Number(res.letters)}</strong> letter{Number(res.letters) === 1 ? '' : 's'} in the word</div>
                       ) : res && res.message ? (
                         (r.powerId === 'vowel_vision' && actorIsViewer && typeof res.vowels === 'number') ? (
-                          <div>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
+                          <div><strong style={{ color: powerNameColor }}>Vowel Vision</strong>: There are <strong style={{ color: revealedLetterColor }}>{res.vowels}</strong> vowel{res.vowels === 1 ? '' : 's'}</div>
                         ) : (
                           <div style={chipStyle}>{res.message}</div>
                         )
@@ -546,9 +567,9 @@ export default function PlayerCircle({
                             const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
                             const points = (Number(res.count || res.occurrences) || occ || 1) * 2
                             if (actorIsViewer) {
-                              return <div style={chipStyle}><strong>You</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — you earned <strong>+${points}</strong></div>
+                              return <div style={chipStyle}><strong>Letter for Letter:</strong><em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word — <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                             }
-                            return <div style={chipStyle}><strong>{actorName}</strong> revealed <strong>'{letter}'</strong> from <strong>{player.name}</strong>'s word — <strong>+${points}</strong> to {actorName}</div>
+                            return <div style={chipStyle}><strong>Letter for Letter:</strong><em>{actorName}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
 
                           if (res && res.letterFromBuyer) {
@@ -556,54 +577,54 @@ export default function PlayerCircle({
                             const occ = Number(res.count || res.occurrences || res.hits) || 1
                             const points = occ * 2
                             if (player && viewerId && player.id === viewerId) {
-                              return <div style={chipStyle}>Letter-for-letter side effect: <strong>'{letter}'</strong> revealed; <strong>you got +${points}</strong></div>
+                              return <div style={chipStyle}><strong>Letter for Letter Side Effect:</strong><strong style={{ color: powerNameColor }}>'{letter}'</strong> revealed; <strong style={{ color: revealedLetterColor }}>you got +${points}</strong>.</div>
                             }
-                            return <div style={chipStyle}><strong>{player.name}</strong> got a letter-for-letter side effect: <strong>'{letter}'</strong> revealed from {actorName}'s word; <strong>+${points}</strong></div>
+                            return <div style={chipStyle}><strong>Letter for Letter Side Effect:</strong><em>{player.name}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
 
-                          return <div style={chipStyle}>{r.powerId}: {JSON.stringify(res)}</div>
+                          return <div style={chipStyle}><strong style={{ color: powerNameColor }}>{r.powerId}</strong>: {JSON.stringify(res)}</div>
                         })()
                       ) : (
                         (() => {
                           try {
                             if (actorIsViewer) {
                               if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {
-                                return <div style={chipStyle}>{`Letter Scope: ${Number(res.letters)} letter${Number(res.letters) === 1 ? ' is' : 's are'} in the word`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Scope</strong>: {Number(res.letters)} letter{Number(res.letters) === 1 ? ' is' : 's are'} in the word</div>
                               }
                               if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
-                                return <div style={chipStyle}>{`Vowel Vision: There are ${res.vowels} vowel${res.vowels === 1 ? '' : 's'}`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Vowel Vision</strong>: There are <strong style={{ color: revealedLetterColor }}>{res.vowels}</strong> vowel{res.vowels === 1 ? '' : 's'}</div>
                               }
                               if (r.powerId === 'zeta_drop') {
                                 const last = res && res.last ? res.last : null
-                                return <div style={chipStyle}>{`Zeta Drop: last letter is ${last ? `'${last}'` : 'unknown'}`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Zeta Drop</strong>: last letter is {last ? <strong style={{ color: revealedLetterColor }}>'{last}'</strong> : 'unknown'}</div>
                               }
                               if (r.powerId === 'one_random' && res.letter) {
-                                return <div style={chipStyle}>{`One Random Letter: revealed '${String(res.letter).slice(0,1)}'`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>One Random Letter</strong>: revealed <strong style={{ color: revealedLetterColor }}>'{String(res.letter).slice(0,1)}'</strong></div>
                               }
                               if (r.powerId === 'letter_peek') {
-                                if (res && res.message) return <div style={chipStyle}>{res.message}</div>
-                                if (res && res.letter && typeof res.pos !== 'undefined') return <div style={chipStyle}>{`Letter Peek: '${res.letter}' at position ${res.pos}`}</div>
+                                if (res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Peek</strong>: {res.message}</div>
+                                if (res && res.letter && typeof res.pos !== 'undefined') return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Peek</strong>: <strong style={{ color: revealedLetterColor }}>'{res.letter}'</strong> at position {res.pos}</div>
                               }
-                              if (r.powerId === 'related_word' && res && res.message) return <div style={chipStyle}>{res.message}</div>
+                              if (r.powerId === 'related_word' && res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Related Word</strong>: {res.message}</div>
                               if (r.powerId === 'dice_of_doom' && res && typeof res.roll === 'number') {
                                 const letters = Array.isArray(res.letters) ? res.letters.join(', ') : ''
-                                return <div style={chipStyle}>{`Dice of Doom: rolled ${res.roll}${letters ? ` — revealed: ${letters}` : ''}`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Dice of Doom</strong>: rolled <strong style={{ color: revealedLetterColor }}>{res.roll}</strong>{letters ? <> — revealed: <strong style={{ color: revealedLetterColor }}>{letters}</strong></> : null}</div>
                               }
                               if (r.powerId === 'all_letter_reveal' && res && Array.isArray(res.letters)) {
-                                return <div style={chipStyle}>{`All Letter Reveal: revealed ${res.letters.length} unique letter${res.letters.length === 1 ? '' : 's'}`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>All Letter Reveal</strong>: revealed <strong style={{ color: revealedLetterColor }}>{res.letters.length}</strong> unique letter{res.letters.length === 1 ? '' : 's'}</div>
                               }
                               if (r.powerId === 'full_reveal' && res && typeof res.full === 'string') {
-                                return <div style={chipStyle}>{`Full Reveal: the word was revealed`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Full Reveal</strong>: the word was revealed</div>
                               }
-                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div style={chipStyle}>{`Sound Check: suggestions — ${Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}`}</div>
-                              if (r.powerId === 'what_do_you_mean' && res && res.message) return <div style={chipStyle}>{`Definition: ${res.message}`}</div>
+                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Sound Check</strong>: suggestions — {Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}</div>
+                              if (r.powerId === 'what_do_you_mean' && res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Definition</strong>: {res.message}</div>
                               if (r.powerId === 'mind_leech' && res && Array.isArray(res.found)) {
                                 const found = res.found.map(f => `${f.letter}×${f.count}`).join(', ')
-                                return <div style={chipStyle}>{`Mind Leech: found ${found || 'no letters'}`}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Mind Leech</strong>: found {found || 'no letters'}</div>
                               }
                             }
                           } catch (e) {}
-                          return <div style={chipStyle}>{r.powerId}: {JSON.stringify(res)}</div>
+                          return <div style={chipStyle}><strong style={{ color: powerNameColor }}>{r.powerId}</strong>: {JSON.stringify(res)}</div>
                         })()
                       )}
                     </div>
