@@ -104,6 +104,14 @@ const BASE = [
   ,'choclatier'
   // candy professions
   ,'candymaker'
+  // additional requested professions (deduped, correct spellings)
+  ,'skydiver','showman','showgirl','prostitute','hitman','hitwoman','killer','assassin','ambassador','delegate','boulderer','climber','joiner','lumberjack','jackeroo','jillaroo','jilleroo','herder','sniffer','geneticist','anthropologist','meteorologist','interpreter','yodeler','paralegal','barrister','physiotherapist','shopper','registrar'
+  // more additions
+  ,'porter','mentor','inspector','fishmonger','coordinator','mourner','mover','trapper','feeler','queuer'
+  // final small additions
+  ,'headhunter','distiller','manequin'
+  // ocular / cosmetic professions
+  ,'ocularist','cosemetologist','cosmetologist'
 ]
 
 const IRREGULARS = {
