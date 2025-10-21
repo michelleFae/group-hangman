@@ -665,13 +665,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // but keep the inner card interactive by re-enabling pointer-events on it
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
       <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-  <span style={{ fontSize: 16 }}>{state?.winnerByWordmoney ? '💸' : '🛡️'}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-            <strong style={{ fontSize: 13 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
-            <small style={{ color: '#B4A3A3', fontSize: 12 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : 'Elimination wins'}</small>
-          </div>
-          {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
+    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSpy' ? '🕵️' : (state?.winnerByWordmoney ? '💸' : '🛡️')}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
+        <strong style={{ fontSize: 13 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
+        <small style={{ color: '#B4A3A3', fontSize: 12 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : 'Elimination wins'}</small>
+        </div>
+        {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
           {powerUpsEnabled && phase === 'lobby' && (
             <div title="Power-ups are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="powerup-rocket" style={{ fontSize: 18 }}>🚀</span>
