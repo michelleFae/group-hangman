@@ -515,7 +515,7 @@ export default function PlayerCircle({
                       <strong>Power-up results:</strong>
                     </div>
                   )}
-                  <div style={{ marginTop: 6 }}>
+                  <div style={{ marginTop: 6, overflowY: 'scroll', height: '40vh', paddingRight: '20px' }}>
                 {visiblePrivatePowerReveals.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
@@ -537,7 +537,7 @@ export default function PlayerCircle({
                           marginTop: 6,
                           fontSize: 13,
                           boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                          border: '1px solid rgba(0,0,0,0.08)'
+                          border: '2px solid #3b75c9'
                         }
                       : {
                           // lighter purple gradient for non-important chips to ensure strong contrast with black text
@@ -548,17 +548,23 @@ export default function PlayerCircle({
                           marginTop: 6,
                           fontSize: 13,
                           boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-                          border: '1px solid rgba(0,0,0,0.06)'
+                          border: '2px solid #3b75c9'
                         }
                   return (
-                    <div key={idx} style={chipStyle}>
+                    <div key={idx}>
                       {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
-                        <div><strong style={{ color: powerNameColor }}>Letter Scope</strong>: there are <strong style={{ color: revealedLetterColor }}>{Number(res.letters)}</strong> letter{Number(res.letters) === 1 ? '' : 's'} in the word</div>
+                        <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Scope</strong>: there are <strong style={{ color: revealedLetterColor }}>{Number(res.letters)}</strong> letter{Number(res.letters) === 1 ? '' : 's'} in the word</div>
                       ) : res && res.message ? (
                         (r.powerId === 'vowel_vision' && actorIsViewer && typeof res.vowels === 'number') ? (
-                          <div><strong style={{ color: powerNameColor }}>Vowel Vision</strong>: There are <strong style={{ color: revealedLetterColor }}>{res.vowels}</strong> vowel{res.vowels === 1 ? '' : 's'}</div>
+                          <div style={chipStyle}><strong style={{ color: powerNameColor }}>Vowel Vision</strong>: There are <strong style={{ color: revealedLetterColor }}>{res.vowels}</strong> vowel{res.vowels === 1 ? '' : 's'}</div>
                         ) : (
-                          <div style={chipStyle}>{res.message}</div>
+                          <div style={chipStyle}>
+                            {res && res.messageHtml ? (
+                              <div dangerouslySetInnerHTML={{ __html: String(res.messageHtml) }} />
+                            ) : (
+                              <div>{res.message}</div>
+                            )}
+                          </div>
                         )
                       ) : r.powerId === 'letter_for_letter' ? (
                         (() => {

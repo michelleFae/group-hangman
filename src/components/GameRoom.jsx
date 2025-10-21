@@ -1075,10 +1075,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const letters = (targetWord || '').length
         resultPayload = { letters, message: `Letter Scope: there are ${letters} letter${letters === 1 ? '' : 's'} in the word` }
         
-        const buyerMsg = `Letter Scope: Including duplicates, there are ${letters} letter${letters === 1 ? '' : 's'} in the word`
-        const targetMsg = `Letter Scope: ${buyerName} used Letter Scope on you`
-        const buyerData = { ...buyerBase, result: { letters, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { letters, message: targetMsg } }
+  const buyerMsg = `Letter Scope: Including duplicates, there are ${letters} letter${letters === 1 ? '' : 's'} in the word`
+  const targetMsg = `Letter Scope: ${buyerName} used Letter Scope on you`
+  // Provide HTML message variants so clients can render styled names/labels
+  const buyerMessageHtml = `<strong class="power-name">Letter Scope</strong>: Including duplicates, there are <strong class="revealed-letter">${letters}</strong> letter${letters === 1 ? '' : 's'} in the word`
+  const targetMessageHtml = `<strong class="power-name">Letter Scope</strong>: <em>${buyerName}</em> used Letter Scope on you`
+  const buyerData = { ...buyerBase, result: { letters, message: buyerMsg, messageHtml: buyerMessageHtml } }
+  const targetData = { ...targetBase, result: { letters, message: targetMsg, messageHtml: targetMessageHtml } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
 
@@ -1094,8 +1097,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // write privatePowerReveals entries for buyer and target so UI can show the results
         const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
         const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-        const buyerData = { ...buyerBase, result: { last, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { last, message: targetMsg } }
+  const buyerMessageHtml = `<strong class="power-name">Zeta Drop</strong>: last letter is <strong class="revealed-letter">${last}</strong>`
+  const targetMessageHtml = `<strong class="power-name">Zeta Drop</strong>: <em>${buyerName}</em> found out the last letter of your word is <strong class="revealed-letter">${last}</strong>`
+  const buyerData = { ...buyerBase, result: { last, message: buyerMsg, messageHtml: buyerMessageHtml } }
+  const targetData = { ...targetBase, result: { last, message: targetMsg, messageHtml: targetMessageHtml } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
 
@@ -1106,8 +1111,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         resultPayload = { letter: ch }
         const buyerMsg = `One Random Letter: ${ch} in ${targetName}'s word`
         const targetMsg = `One Random Letter: ${buyerName} used One Random Letter on you; they revealed ${ch}`
-        const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { letter: ch, message: targetMsg } }
+  const buyerMessageHtml = `<strong class="power-name">One Random Letter</strong>: <strong class="revealed-letter">${ch}</strong> in <em>${targetName}</em>'s word`
+  const targetMessageHtml = `<strong class="power-name">One Random Letter</strong>: <em>${buyerName}</em> used One Random Letter on you; they revealed <strong class="revealed-letter">${ch}</strong>`
+  const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg, messageHtml: buyerMessageHtml } }
+  const targetData = { ...targetBase, result: { letter: ch, message: targetMsg, messageHtml: targetMessageHtml } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'letter_peek') {
@@ -1135,8 +1142,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           }
         }
 
-        const buyerData = { ...buyerBase, result: { letter: letter, message: buyerMsg } }
-        const targetData = { ...targetBase, result: { letter: letter, message: targetMsg } }
+      const buyerMessageHtml = `<strong class="power-name">Letter Peek</strong>: <strong class="revealed-letter">'${letter}'</strong> at position <strong class="revealed-letter">${pos}</strong>`
+      const targetMessageHtml = `<strong class="power-name">Letter Peek</strong>: <em>${buyerName}</em> used Letter Peek on you; they revealed <strong class="revealed-letter">'${letter}'</strong> at position <strong class="revealed-letter">${pos}</strong>`
+      const buyerData = { ...buyerBase, result: { letter: letter, message: buyerMsg, messageHtml: buyerMessageHtml } }
+    const targetData = { ...targetBase, result: { letter: letter, message: targetMsg, messageHtml: targetMessageHtml } }
 
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
@@ -1153,10 +1162,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
             const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
             
-            if (candidate) {
-              buyerMsg = `Related Word: '${candidate}'.`
-              targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
-            }
+              if (candidate) {
+                buyerMsg = `Related Word: '${candidate}'.`
+                targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
+                const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: '<strong class="revealed-letter">${candidate}</strong>'`
+                const targetMessageHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> used Related Word on you and revealed '<strong class="revealed-letter">${candidate}</strong>' as a related word.`
+                const buyerDataLocal = { ...buyerBase, result: { message: buyerMsg, messageHtml: buyerMessageHtml } }
+                const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml } }
+                updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerDataLocal
+                updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetDataLocal
+                // explicit entries written above; fall through so default writer won't overwrite them (it checks for existing keys)
+              }
           }
         } catch (e) {
           // resultPayload = { message: 'Related word: no result' }
@@ -1190,8 +1206,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const buyerMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `Dice of Doom: revealed ${revealedLetters.join(', ')}` : `Dice of Doom: no letters could be revealed`
           const targetMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `Dice of Doom: ${buyerName} used Dice of Doom on you; they revealed ${revealedLetters.join(', ')}` : `${buyerName} used Dice of Doom on you; no letters were revealed`
-          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+          const revealedHtml = (revealedLetters && revealedLetters.length > 0) ? revealedLetters.map(l => `<strong class="revealed-letter">${l}</strong>`).join(', ') : null
+          const buyerMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: no letters could be revealed`
+          const targetMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; they revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; no letters were revealed`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
         } catch (e) {}
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
@@ -1205,8 +1224,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const buyerMsgLocal = `All Letters: revealed all letters from ${targetName}'s word`
           const targetMsgLocal = `All Letters: ${buyerName} revealed all letters of your word publicly`
-          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+          const buyerMessageHtml = `<strong class="power-name">All The Letters</strong>: revealed all letters from <em>${targetName}</em>'s word`
+          const targetMessageHtml = `<strong class="power-name">All The Letters</strong>: <em>${buyerName}</em> revealed all letters of your word publicly`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
         } catch (e) {}
         } else if (powerId === 'split_15') {
           // If the target word has 15+ letters, reveal the first half publicly and
@@ -1225,8 +1246,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
               const buyerMsgLocal = `Split 15: revealed first ${half} letters of ${targetName}'s word`
               const targetMsgLocal = `Split 15: ${buyerName} used Split 15 on you; the first ${half} letters were revealed publicly`
-              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letters, message: buyerMsgLocal } }
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letters, message: targetMsgLocal } }
+              const buyerMessageHtml = `<strong class="power-name">Split 15</strong>: revealed first <strong class="revealed-letter">${half}</strong> letters of <em>${targetName}</em>'s word`
+              const targetMessageHtml = `<strong class="power-name">Split 15</strong>: <em>${buyerName}</em> used Split 15 on you; the first <strong class="revealed-letter">${half}</strong> letters were revealed publicly`
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letters, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letters, message: targetMsgLocal, messageHtml: targetMessageHtml } }
 
               // add letters to revealed set (preserve any existing revealed letters)
               const existing = targetNode.revealed || []
@@ -1272,8 +1295,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // word too short: write buyer/target messages indicating nothing happened
               const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
               const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Split 15: target word is shorter than 15 letters; no effect` } }
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `Split 15 Side Effect: ${buyerName} used Split 15 on you; but your word is too short for anything to be revealed :)` } }
+              const buyerMsgShort = `Split 15: target word is shorter than 15 letters; no effect`
+              const targetMsgShort = `Split 15 Side Effect: ${buyerName} used Split 15 on you; but your word is too short for anything to be revealed :)`
+              const buyerMessageHtmlShort = `<strong class="power-name">Split 15</strong>: target word is shorter than <strong class="revealed-letter">15</strong> letters; no effect`
+              const targetMessageHtmlShort = `<strong class="power-name">Split 15</strong>: <em>${buyerName}</em> used Split 15 on you; but your word is too short for anything to be revealed :)`
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: buyerMsgShort, messageHtml: buyerMessageHtmlShort } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: targetMsgShort, messageHtml: targetMessageHtmlShort } }
             }
           } catch (e) {}
       } else if (powerId === 'full_reveal') {
@@ -1288,8 +1315,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const buyerMsgLocal = `Full Reveal: revealed ${targetName}'s word: ${targetWord}`
           const targetMsgLocal = `Full Reveal Side Effect: ${buyerName} used Full Reveal on you; your word was revealed publicly`
-          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+          const buyerMessageHtml = `<strong class="power-name">Full Reveal</strong>: revealed <em>${targetName}</em>'s word: <strong class="revealed-letter">${targetWord}</strong>`
+          const targetMessageHtml = `<strong class="power-name">Full Reveal</strong>: <em>${buyerName}</em> used Full Reveal on you; your word was revealed publicly`
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
         } catch (e) {}
       } else if (powerId === 'sound_check' || powerId === 'what_do_you_mean') {
         // sound_check: return exactly one rhyming word (Datamuse rel_rhy) that isn't the exact target
@@ -1432,8 +1461,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const targetMsgLocal = (powerId === 'sound_check')
             ? `Sound Check Side Effect: ${buyerName} knows your word sounds similar to ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).join(', ') || '... well, they don\'t know. Wanna give them a hint?'}`
             : `What Do You Mean Side Effect: ${buyerName} knows your word's definition is: ${((resultPayload && resultPayload.message) || "... well, they don't know it. Wanna give them a hint?")}`
-          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal } }
+
+          // HTML variants for client rendering (use CSS classes defined in src/styles.css)
+          const buyerMessageHtml = (powerId === 'sound_check')
+            ? `<strong class="power-name">Sound Check</strong>: sounds similar to ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).map(s => String(s)).join(', ') || 'none'}`
+            : `<strong class="power-name">Definition</strong>: ${((resultPayload && resultPayload.message) || "I don't know the definition.")}`
+          const targetMessageHtml = (powerId === 'sound_check')
+            ? `<strong class="power-name">Sound Check</strong>: <em>${buyerName}</em> knows your word sounds similar to ${((resultPayload && resultPayload.suggestions) || []).slice(0,3).map(s => String(s)).join(', ') || '... well, they don\'t know. Wanna give them a hint?'}`
+            : `<strong class="power-name">Definition</strong>: <em>${buyerName}</em> knows your word's definition is: ${((resultPayload && resultPayload.message) || "... well, they don't know it. Wanna give them a hint?")}`
+
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
         } catch (e) {}
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
@@ -1501,8 +1539,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // write privatePowerReveals entries for buyer and target so UI can show the results
           const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-          const buyerData = { ...buyerBase, result: { found, attempted: attemptedArray, message: buyerMsg } }
-          const targetData = { ...targetBase, result: { found, attempted: attemptedArray, message: targetMsg } }
+          const buyerMessageHtml = (found && found.length > 0)
+            ? `<strong class="power-name">Mind Leech</strong>: tried ${attemptedArray.length ? attemptedArray.map(x => `<strong class=\"revealed-letter\">${x}</strong>`).join(', ') : 'none'}; found ${found.map(f => `<strong class=\"revealed-letter\">${f.letter}</strong> (${f.count})`).join(', ')} in <em>${targetName}</em>'s word`
+            : `<strong class="power-name">Mind Leech</strong>: tried ${attemptedArray.length ? attemptedArray.map(x => `<strong class=\"revealed-letter\">${x}</strong>`).join(', ') : 'none'}; no letters from your word matched <em>${targetName}</em>'s word`
+          const targetMessageHtml = (found && found.length > 0)
+            ? `<strong class="power-name">Mind Leech</strong> Side Effect: <em>${buyerName}</em> found ${found.map(f => `<strong class=\"revealed-letter\">${f.letter}</strong> (${f.count})`).join(', ')}`
+            : `<strong class="power-name">Mind Leech</strong> Side Effect: <em>${buyerName}</em> used Mind Leech on you; they found no matching letters :)`
+
+          const buyerData = { ...buyerBase, result: { found, attempted: attemptedArray, message: buyerMsg, messageHtml: buyerMessageHtml } }
+          const targetData = { ...targetBase, result: { found, attempted: attemptedArray, message: targetMsg, messageHtml: targetMessageHtml } }
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
 
@@ -1575,10 +1620,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // recognizes the entry as a power-up result (same pattern as letter_for_letter).
     const vowels = (targetWord.match(/[aeiou]/ig) || []).length
     resultPayload = { vowels }
-    const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word.`
-    const targetMsg = `Vowel Vision: ${buyerName} saw ${vowels} vowel${vowels === 1 ? '' : 's'} from your word.`
-    const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg } }
-    const targetData = { ...targetBase, result: { vowels, message: targetMsg } }
+  const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word.`
+  const targetMsg = `Vowel Vision: ${buyerName} saw ${vowels} vowel${vowels === 1 ? '' : 's'} from your word.`
+  const buyerMessageHtml = `<strong class="power-name">Vowel Vision</strong>: There are <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} in <em>${targetName}</em>'s word.`
+  const targetMessageHtml = `<strong class="power-name">Vowel Vision</strong>: <em>${buyerName}</em> saw <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} from your word.`
+  const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg, messageHtml: buyerMessageHtml } }
+  const targetData = { ...targetBase, result: { vowels, message: targetMsg, messageHtml: targetMessageHtml } }
     updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
     updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
   } else if (powerId === 'letter_for_letter') {
@@ -1712,16 +1759,33 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const buyerBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
   const targetBase = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
   // include both the human-friendly message for the buyer and the raw private letter reveal so PlayerCircle can color it
-  const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
-  updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+  // Build an HTML variant for clients that prefer styled markup
+  try {
+    const bLetter = buyerLetter || (buyerResultPayload && (buyerResultPayload.letterFromTarget || buyerResultPayload.letter || buyerResultPayload.last)) || ''
+    let buyerMessageHtml = null
+    if (bLetter) {
+      if (typeof buyerAward === 'number' && buyerAward > 0) {
+        buyerMessageHtml = `<strong class="power-name">Letter for Letter</strong>: you revealed <strong class="revealed-letter">'${bLetter}'</strong> and earned +${buyerAward} points`
+      } else {
+        buyerMessageHtml = `<strong class="power-name">Letter for Letter</strong>: you revealed <strong class="revealed-letter">'${bLetter}'</strong>, no points were awarded`
+      }
+    } else if (buyerResultForSelf && buyerResultForSelf.message) {
+      buyerMessageHtml = `<strong class="power-name">Letter for Letter</strong>: ${buyerResultForSelf.message}`
+    }
+    const buyerData = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}), ...(buyerMessageHtml ? { messageHtml: buyerMessageHtml } : {}) } }
+    updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
+  } catch (e) {
+    updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { ...(buyerResultForSelf || {}), ...(buyerResultPayload || {}) } }
+  }
 
   // Special-case: for letter_for_letter, write a clear, target-facing message so the target
   // sees exactly: "B used letter for letter on you to reveal letter x" as requested.
-  try {
+      try {
     if (powerId === 'letter_for_letter') {
       const letterDisplay = (buyerLetter || (resultPayload && (resultPayload.letter || resultPayload.last || (Array.isArray(resultPayload.letters) && resultPayload.letters[0])))) || ''
       const msg = `Letter For Letter: ${playerIdToName[myId] || myId} revealed letter ${letterDisplay}`
-      updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: msg, letterFromBuyer: letterDisplay } }
+      const targetHtml = `<strong class="power-name">Letter For Letter</strong>: <em>${playerIdToName[myId] || myId}</em> revealed letter <strong class="revealed-letter">${letterDisplay}</strong>`
+      updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: msg, letterFromBuyer: letterDisplay, messageHtml: targetHtml } }
     }
   } catch (e) {}
 
@@ -1766,15 +1830,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // indicating the target had a letter revealed (actor is the target, and 'to' is the buyer id so it
           // renders inside the buyer's div when the target is viewing)
           const buyerDivKey = `${key}_buyer_${Date.now()}`
+          const buyerDivHtml = (typeof targetAward === 'number' && targetAward > 0)
+            ? `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed; they earned +${targetAward} points`
+            : `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed; no points were awarded`
           const buyerDivMsg = (typeof targetAward === 'number' && targetAward > 0)
-            ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; they earned +${targetAward} points`, letterFromBuyer: targetLetter }
-            : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; no points were awarded`, letterFromBuyer: targetLetter }
+            ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; they earned +${targetAward} points`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
+            : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; no points were awarded`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${buyerDivKey}`] = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(buyerDivMsg || {}), ...(targetResultPayload || {}) } }
 
           // Also store the side-effect payload under the BUYER's own node so the buyer can see the summary
           // in their own view (unchanged behavior)
           const buyerSideKey2 = `pu_side_from_${powerUpTarget}_${Date.now()}_${myId}`
-          const buyerSidePayload = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(targetMsg || {}), ...(targetResultPayload || {}) } }
+          // Build an HTML summary for the buyer-side payload as well
+          const buyerSideHtml = targetLetter ? `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed${(typeof targetAward === 'number' && targetAward > 0) ? `; they earned +${targetAward} points` : '; no points were awarded'}` : (targetMsg && targetMsg.message ? `<strong class="power-name">Letter for Letter</strong>: ${targetMsg.message}` : null)
+          const buyerSidePayload = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(targetMsg || {}), ...(targetResultPayload || {}), ...(buyerSideHtml ? { messageHtml: buyerSideHtml } : {}) } }
           updates[`players/${myId}/privatePowerReveals/${myId}/${buyerSideKey2}`] = buyerSidePayload
 
           // Instead of writing a personalized "you earned" message into the target's own div (which made the
@@ -1851,8 +1920,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const summary = Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].join(', ')}`).join('; ')
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Crowd Hint: revealed ${summary || 'no letters'}`, picks } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Crowd Hint` } }
+            const buyerMessageHtml = `<strong class="power-name">Crowd Hint</strong>: revealed ${Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].map(ch => `<strong class=\"revealed-letter\">${ch}</strong>`).join(', ')}`).join('; ') || 'no letters'}`
+            const targetMessageHtml = `<strong class="power-name">Crowd Hint</strong>: <em>${buyerName}</em> used Crowd Hint`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Crowd Hint: revealed ${summary || 'no letters'}`, picks, messageHtml: buyerMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Crowd Hint`, messageHtml: targetMessageHtml } }
           } catch (e) {}
         }
 
@@ -1873,8 +1944,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`usedLongestWordBonus/${myId}`] = true
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}` } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { winner, amount, message: `${buyerName} used Longest Word Bonus` } }
+            const buyerHtml = `<strong class="power-name">Longest Word Bonus</strong>: <strong class="revealed-letter">${playerIdToName[winner] || winner}</strong> received +${amount}`
+            const targetHtml = `<strong class="power-name">Longest Word Bonus</strong>: <em>${buyerName}</em> used Longest Word Bonus`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}`, messageHtml: buyerHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { winner, amount, message: `${buyerName} used Longest Word Bonus`, messageHtml: targetHtml } }
           } catch (e) {}
         }
 
@@ -1887,10 +1960,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`players/${freezeTarget}/frozenUntilTurnIndex`] = expires
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: freezeTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: freezeTarget }
+            const buyerHtml = `<strong class="power-name">Word Freeze</strong>: your word is frozen for one round`
+            const targetHtml = `<strong class="power-name">Word Freeze</strong>: <em>${buyerName}</em> used Word Freeze`
             // Inform the buyer that their word is frozen and add a message for the buyer's own private reveals
-            updates[`players/${myId}/privatePowerReveals/${freezeTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Word Freeze: your word is frozen for one round` } }
+            updates[`players/${myId}/privatePowerReveals/${freezeTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Word Freeze: your word is frozen for one round`, messageHtml: buyerHtml } }
             // Also add an entry under the frozen player's privatePowerReveals for consistency (buyer = target here)
-            updates[`players/${freezeTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Word Freeze` } }
+            updates[`players/${freezeTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Word Freeze`, messageHtml: targetHtml } }
           } catch (e) {}
         }
         if (powerId === 'price_surge') {
@@ -1902,7 +1977,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               updates[`priceSurge/${myId}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
             } catch (e) {}
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: null }
-            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 until your next turn` } }
+            const buyerHtml = `<strong class="power-name">Price Surge</strong>: everyone else's shop prices increased by <strong class="revealed-letter">+2</strong> until your next turn`
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 until your next turn`, messageHtml: buyerHtml } }
           } catch (e) {}
         }
         // Rare Trace: tell buyer how many occurrences of very-rare letters exist in the target's word
@@ -1916,8 +1992,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Rare Trace: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `Rare Trace was used on you by ${playerIdToName[myId] || myId}` } }
+            const buyerHtml = `<strong class="power-name">Rare Trace</strong>: there are <strong class="revealed-letter">${count}</strong> occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V in <em>${targetName}</em>'s word`
+            const targetHtml = `<strong class="power-name">Rare Trace</strong>: <em>${playerIdToName[myId] || myId}</em> used Rare Trace on you`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Rare Trace: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count, messageHtml: buyerHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `Rare Trace was used on you by ${playerIdToName[myId] || myId}`, messageHtml: targetHtml } }
           } catch (e) {}
         }
       } catch (e) {}

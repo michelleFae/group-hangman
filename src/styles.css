@@ -408,6 +408,19 @@ button[disabled] {
   font-size: 14px;
 }
 
+/* Power-up message inline HTML helpers -------------------------------------------------- */
+/* Use these classes when server-side code emits small HTML snippets (messageHtml) so
+   we avoid embedding inline styles. Keep rules specific and lightweight. */
+.power-name {
+  color: #2b8cff; /* blue accent for power-up names */
+  font-weight: 700;
+}
+.revealed-letter {
+  color: #ffcc00; /* yellow accent for revealed letters */
+  font-weight: 700;
+}
+
+
 /* Ensure power-up prices are dark inside modal/shop cards (override inherited light color) */
 .modal-dialog.card .powerup-price,
 .powerup-row .powerup-price {
