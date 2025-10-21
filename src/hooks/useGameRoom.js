@@ -189,34 +189,49 @@ export default function useGameRoom(roomId, playerName) {
       if (room.hostId !== uid) return
   // choose a word for Word Spy. If the room has a secretWordTheme enabled,
   // pick from that theme's curated list (animals, colours, elements, cppterms).
-  // Otherwise fall back to the generic NOUNS list.
+  // If no theme is active, fall back to the generic NOUNS list.
   let word = null
   try {
     const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
     let pool = null
-  if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
-  else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
-  else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
-  else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
-  else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
+    if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+    else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
+    else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
+    else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
+    else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
     else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
     else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
     else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null
-    // Ensure pool entries are single-word alphabetic strings and length >= 2
-    if (Array.isArray(pool) && pool.length > 0) {
+
+    // When a theme is active prefer selecting from the theme pool. Use a strict
+    // alphabetic filter first, then a relaxed filter if nothing passes. If no
+    // theme is active, fall back to the generic NOUNS list below.
+    if (theme && Array.isArray(pool) && pool.length > 0) {
       const filtered = pool.map(p => (p || '').toString().trim()).filter(p => /^[a-zA-Z]+$/.test(p) && p.length >= 2)
       if (filtered.length > 0) {
         word = filtered[Math.floor(Math.random() * filtered.length)]
+      } else {
+        // relaxed fallback: allow non-alpha but require length >= 2
+        const relaxed = pool.map(p => (p || '').toString().trim()).filter(p => p && p.length >= 2)
+        if (relaxed.length > 0) {
+          word = relaxed[Math.floor(Math.random() * relaxed.length)]
+        } else {
+          console.warn('startWordSpy: theme enabled but pool produced no usable entries for type', theme)
+        }
       }
     }
+    // If no theme is active, we'll pick from NOUNS below
   } catch (e) {
     word = null
   }
-        // fallback to a generic noun list if theme didn't produce a valid word
+  // If no theme was selected, fallback to a generic noun list
   try {
-    const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
-    if (Array.isArray(nounsList) && nounsList.length > 0) {
-      word = nounsList[Math.floor(Math.random() * nounsList.length)]
+    const themeActive = room && room.secretWordTheme && room.secretWordTheme.enabled
+    if (!themeActive) {
+      const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+      if (Array.isArray(nounsList) && nounsList.length > 0) {
+        word = nounsList[Math.floor(Math.random() * nounsList.length)]
+      }
     }
   } catch (e) {
     // last-resort hardcoded fallback
@@ -243,6 +258,10 @@ export default function useGameRoom(roomId, playerName) {
         startedAt: now,
         state: 'waiting', // waiting -> playing -> voting -> spyGuess -> reveal -> ended
         revealSequence: null,
+        // ensure any prior-round reveal artifacts are cleared so the new spy
+        // does not benefit from previous guesses
+        revealed: null,
+        lastReveal: null,
         lastRoundSummary: null
       }
       // clear player ready/votes/spyGuesses containers
@@ -543,19 +562,46 @@ export default function useGameRoom(roomId, playerName) {
           currentRound: nextRound,
           state: 'waiting'
         }
-        // pick a new word and spy — use shared NOUNS from data/nouns.js with a small fallback
+        // pick a new word and spy — prefer the room's secretWordTheme when enabled
         let word = null
-        
-        const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
-        if (Array.isArray(nounsList) && nounsList.length > 0) {
-          word = nounsList[Math.floor(Math.random() * nounsList.length)]
+        try {
+          const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
+          let pool = null
+          if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+          else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
+          else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
+          else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
+          else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
+          else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
+          else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
+          else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null
+
+          if (theme && Array.isArray(pool) && pool.length > 0) {
+            const filtered = pool.map(p => (p || '').toString().trim()).filter(p => /^[a-zA-Z]+$/.test(p) && p.length >= 2)
+            if (filtered.length > 0) word = filtered[Math.floor(Math.random() * filtered.length)]
+            else {
+              const relaxed = pool.map(p => (p || '').toString().trim()).filter(p => p && p.length >= 2)
+              if (relaxed.length > 0) word = relaxed[Math.floor(Math.random() * relaxed.length)]
+            }
+          } else {
+            // no theme active: pick from generic nouns
+            const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+            if (Array.isArray(nounsList) && nounsList.length > 0) word = nounsList[Math.floor(Math.random() * nounsList.length)]
+          }
+        } catch (e) {
+          // if anything fails, fall back to nouns
+          const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+          if (Array.isArray(nounsList) && nounsList.length > 0) word = nounsList[Math.floor(Math.random() * nounsList.length)]
         }
-        
+
         const playersList = Object.keys(room.players || {})
         const spyId = playersList[Math.floor(Math.random() * playersList.length)]
           newWordSpy.word = word
           newWordSpy.spyId = spyId
           newWordSpy.revealSequence = null
+          // clear revealed map and lastReveal carried over from previous round
+          newWordSpy.revealed = null
+          newWordSpy.lastReveal = null
           newWordSpy.state = 'waiting'
           newWordSpy.lastRoundSummary = null
           updates['wordSpy'] = newWordSpy

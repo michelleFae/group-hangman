@@ -156,7 +156,7 @@ button[disabled] {
 .wordmoney { color: var(--accent-2); font-weight:700 }
 .revealed { margin-top: 6px; color: var(--highlight); font-size: 13px }
 
-.turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:#ffffff; }
+.turn-indicator { text-align:center; margin-bottom: 8px; font-weight:700; color:#ffd000; }
 
 .room-password { margin: 12px 0; padding: 10px; border-radius: 12px; background: linear-gradient(90deg, rgba(107,79,59,0.06), rgba(90,107,124,0.04)); display:inline-block }
 
