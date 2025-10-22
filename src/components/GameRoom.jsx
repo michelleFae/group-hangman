@@ -961,8 +961,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       console.log("michelle 1")
       const me = (state?.players || []).find(p => p.id === myId) || {}
       if (!me.eliminated) return { ok: false }
-      console.log("michelle 2", me.ghostState)
-      if (!me.ghostState || me.ghostState.reentered) return { ok: false }
+  console.log("michelle 2", me.ghostState)
+  // Allow guesses when ghostState is undefined (client may not have written attempted state yet).
+  // Only block if the player has already re-entered.
+  if (me.ghostState && me.ghostState.reentered) return { ok: false }
       console.log("michelle 3")
       const challenge = state && state.ghostChallenge
       if (!challenge || !challenge.word) return { ok: false }
