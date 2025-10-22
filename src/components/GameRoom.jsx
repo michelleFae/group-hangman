@@ -956,15 +956,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Attempt a ghost guess (letter or full word). Ghosts cannot use power-ups.
   async function submitGhostGuess(letterOrWord) {
-    try {
+
       if (!myId) return { ok: false }
+      console.log("michelle 1")
       const me = (state?.players || []).find(p => p.id === myId) || {}
       if (!me.eliminated) return { ok: false }
+      console.log("michelle 2")
       if (!me.ghostState || me.ghostState.reentered) return { ok: false }
+      console.log("michelle 3")
       const challenge = state && state.ghostChallenge
       if (!challenge || !challenge.word) return { ok: false }
+      console.log("michelle 4")
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
+      console.log("michelle 5")
       if (!guess) return { ok: false }
+      console.log("michelle 6")
       // simple letter feedback: return which letters are correct in position if full word, or whether letter exists
       const target = (challenge.word || '').toString().toLowerCase()
       if (guess.length === 1) {
@@ -975,12 +981,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const roomRef = dbRef(db, `rooms/${roomId}`)
         const key = `g_${Date.now()}`
         const updates = {}
+        console.log("michelle 7")
         updates[`players/${myId}/ghostGuesses/${key}`] = { ts: Date.now(), guess: ch, positions }
         await dbUpdate(roomRef, updates)
+        console.log("michelle 8")
         return { ok: true, positions }
       } else {
         // full word guess — if correct, re-enter the game: set players/{myId}/eliminated=false and set their word to challenge.word
         const correct = guess === target
+        console.log("michelle 9")
         const roomRef = dbRef(db, `rooms/${roomId}`)
         const updates = {}
         const nowTs = Date.now()
@@ -1011,13 +1020,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const key = `g_${nowTs}`
           updates[`players/${myId}/ghostGuesses/${key}`] = { ts: nowTs, guess }
         }
+        console.log("michelle a 1")
         await dbUpdate(roomRef, updates)
+        console.log("michelle a 2")
         return { ok: true, correct }
       }
-    } catch (e) {
-      console.warn('submitGhostGuess failed', e)
-      return { ok: false }
-    }
   }
 
   // (Settings gear moved into the modeBadge) helper removed
@@ -4168,22 +4175,11 @@ try {
                 revealPreserveOrder={revealPreserveOrder}
                 revealShowBlanks={revealShowBlanks}
               />
-              {p.eliminated && ghostReEntryEnabled && p.id === myId && (() => {
-                try {
-                  const activePlayers = (state?.players || []).filter(x => x && !x.eliminated)
-                  if ((activePlayers || []).length >= 2) {
-                    const gstate = p.ghostState || {}
-                    if (!gstate.reentered) {
-                      return (
-                        <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
-                          <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
-                        </div>
-                      )
-                    }
-                  }
-                } catch (e) {}
-                return null
-              })()}
+              {p.eliminated && ghostReEntryEnabled && p.id === myId && (state?.players || []).filter(x => x && !x.eliminated).length >= 2 && !(p.ghostState && p.ghostState.reentered) && (
+                <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
+                  <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
+                </div>
+              )}
             </div>
           )
           })
