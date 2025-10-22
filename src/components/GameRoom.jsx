@@ -564,32 +564,40 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     try {
       const dd = state && state.lastDoubleDown
       if (!dd || !dd.ts) return
-      const key = String(dd.ts)
+      // compute a stable key even if ts is missing
+      const key = dd && (dd.ts || dd.id || dd._id) ? String(dd.ts || dd.id || dd._id) : JSON.stringify({ b: dd && dd.buyerId, t: dd && dd.targetId, l: dd && dd.letter, s: dd && dd.success })
       if (processedDoubleDownRef.current[key]) return
       processedDoubleDownRef.current[key] = true
 
       const buyer = dd.buyerName || playerIdToName[dd.buyerId] || dd.buyerId || 'Someone'
       const target = dd.targetName || playerIdToName[dd.targetId] || dd.targetId || 'a player'
       const letter = dd.letter || ''
-      const amount = typeof dd.amount === 'number' ? dd.amount : (dd.stake || 0)
+      const stake = typeof dd.stake === 'number' ? dd.stake : (typeof dd.amount === 'number' ? dd.amount : 0)
 
       if (dd.success) {
-        // success: show long green toast and spawn falling coins
+        // success: show long green toast with two lines and spawn falling coins
         const id = `dd_success_${key}`
-        const msg = `${buyer} wins the double down of letter '${letter}' on ${target}! (+${amount})`
-        setToasts(t => [...t, { id, text: msg, success: true }])
+        const main = `${buyer} wins the double down of letter ${letter ? `'${letter}'` : ''} on ${target}!`
+        const sub = `(They earned +2 per correct letter and 2× their stake of ${stake})`
+        const node = (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontWeight: 800 }}>{main}</div>
+            <div style={{ fontSize: 12, opacity: 0.95 }}>{sub}</div>
+          </div>
+        )
+        setToasts(t => [...t, { id, node, success: true }])
         // auto-hide after 10s (start fade at 9s)
         setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9000)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10000)
 
-        // spawn coin pieces for ~4.5s
+        // spawn coin pieces for ~4.5s (brief animation)
         const pieces = new Array(22).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.6, size: 10 + Math.random() * 12 }))
         setDdCoins(pieces)
         setTimeout(() => setDdCoins([]), 4500)
       } else {
-        // failure: short red toast indicating stake lost
+        // failure: short red toast indicating stake lost (no coins)
         const id = `dd_fail_${key}`
-        const msg = `${buyer} lost a double down stake of $${amount} on ${target}.`
+        const msg = `${buyer} did not win the double down; lost stake of $${stake}`
         setToasts(t => [...t, { id, text: msg, error: true }])
         setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 3200)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200)
@@ -1280,10 +1288,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
             // compose messages for buyer and target describing the picked letters
             const letterList = picked.map(l => `<strong class="revealed-letter">${l}</strong>`).join(picked.length === 2 ? ' and ' : ', ')
-            const buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here ${picked.length === 1 ? 'is' : 'are'} ${picked.length} previously unrevealed letter${picked.length === 1 ? '' : 's'}: ${letterList}`
-            const targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; ${picked.length === 1 ? 'we revealed' : 'we revealed'} ${letterList} publicly.`
-            const buyerMsgLocal = `I don't know the definition, but here ${picked.length === 1 ? 'is' : 'are'} ${picked.length} previously unrevealed letter${picked.length === 1 ? '' : 's'}: ${picked.join(', ')}`
-            const targetMsgLocal = `${buyerName} used Related Word; no definition was found, and ${picked.length === 1 ? 'we revealed' : 'we revealed'} ${picked.join(', ')} publicly.`
+            let buyerHtml
+            let targetHtml
+            let buyerMsgLocal
+            let targetMsgLocal
+            if (picked.length === 2) {
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here are 2 previously unrevealed letters: ${letterList}`
+              targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; we revealed ${letterList} publicly.`
+              buyerMsgLocal = `I don't know the definition, but here are 2 previously unrevealed letters: ${picked.join(', ')}`
+              targetMsgLocal = `${buyerName} used Related Word; no definition was found, and we revealed ${picked.join(', ')} publicly.`
+            } else if (picked.length === 1) {
+              // single remaining unrevealed letter — use the 'last letter' phrasing
+              const theLetter = picked[0]
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here is the last letter that is unrevealed: <strong class="revealed-letter">${theLetter}</strong>`
+              targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; we revealed the last unrevealed letter <strong class="revealed-letter">${theLetter}</strong> publicly.`
+              buyerMsgLocal = `I don't know the definition, but here is the last letter that is unrevealed: ${theLetter}`
+              targetMsgLocal = `${buyerName} used Related Word; no definition was found, and we revealed the last unrevealed letter ${theLetter} publicly.`
+            } else {
+              // picked.length === 0 — all letters already revealed
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, and all the letters of the word are revealed, so I can't help with more letters!`
+              targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but no definition was found; all letters are already revealed.`
+              buyerMsgLocal = `I don't know the definition, and all the letters of the word are revealed, so I can't help with more letters!`
+              targetMsgLocal = `${buyerName} used Related Word; no definition was found and all letters are already revealed.`
+            }
 
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: buyerMsgLocal, messageHtml: buyerHtml, letters: picked } }
             updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: targetMsgLocal, messageHtml: targetHtml, letters: picked } }
@@ -2955,6 +2982,21 @@ try {
               updates[`priceSurge/${nextPlayer}`] = null
             }
           } catch (e) {}
+          // Award the starter +1 to the player whose turn will begin (respect room starterBonus)
+          try {
+            const nextPlayer = order[nextIdx]
+            if (nextPlayer) {
+              const nextNode = (r && r.players && r.players[nextPlayer]) || {}
+              const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+              updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+              try {
+                if (r && r.starterBonus && r.starterBonus.enabled) {
+                  updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                }
+              } catch (e) {}
+            }
+          } catch (e) {}
           if (debug) console.log('TimerWatcher: writing timeout', { roomId, tkey, timedOutPlayer, expiredTurnStartedAt: r.currentTurnStartedAt || null })
           await dbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
@@ -3797,7 +3839,7 @@ try {
                 <span className="confetti-like" />
               </>
             )}
-            {t.text}
+            {t.node ? t.node : t.text}
           </div>
         ))}
       </div>
