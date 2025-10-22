@@ -554,6 +554,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // Use a deterministic id based on player and lastGain timestamp to avoid duplicate keys
             const toastId = key
             setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
+            // If this is a positive gain, spawn falling coin pieces so it visually matches Double Down wins
+            try {
+              const amountGain = Number(lg.amount) || 0
+              if (amountGain > 0) {
+                console.log('lastGain: spawning coins for positive gain', { player: p.id, amount: amountGain })
+                const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
+                setDdCoins(pieces)
+                // clear after same duration as dd coin animation
+                setTimeout(() => setDdCoins([]), 4000)
+              }
+            } catch (e) { console.warn('Could not spawn coins for lastGain', e) }
             setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
           }

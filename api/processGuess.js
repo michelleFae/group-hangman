@@ -74,6 +74,15 @@ module.exports = async (req, res) => {
     if (!target || !guesser) return res.status(400).json({ error: 'Target or guesser not found' })
 
     const updates = {}
+    // Helper to write the ephemeral lastDoubleDown and also append a permanent
+    // entry under doubleDownHistory so events are preserved for debugging.
+    const addLastDoubleDown = (payload) => {
+      try {
+        updates['lastDoubleDown'] = payload
+        const key = `doubleDownHistory/${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+        updates[key] = payload
+      } catch (e) { /* ignore */ }
+    }
     const isLetter = value.length === 1
 
     if (isLetter) {
@@ -169,7 +178,7 @@ module.exports = async (req, res) => {
               } catch (e) {}
               // announcement for all clients: brief double-down summary (ephemeral)
               try {
-                updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() }
+                addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() })
               } catch (e) {}
             } catch (e) {}
 
@@ -237,7 +246,7 @@ module.exports = async (req, res) => {
                     updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
                   } catch (e) {}
                     try {
-                      updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() }
+                      addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() })
                     } catch (e) {}
                 } catch (e) {}
                 // consume/clear the doubleDown entry so the DD badge is removed
@@ -322,7 +331,7 @@ module.exports = async (req, res) => {
                 updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
               } catch (e) {}
               try {
-                updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
+                addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() })
               } catch (e) {}
             } catch (e) {}
           }
@@ -377,8 +386,10 @@ module.exports = async (req, res) => {
                 const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
                 fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
               } catch (e) {}
-              try {
+                try {
                 fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
+                const key = `doubleDownHistory/${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+                fix[key] = fix['lastDoubleDown']
               } catch (e) {}
             fix[`players/${from}/doubleDown`] = null
             await roomRef.update(fix)
