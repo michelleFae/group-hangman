@@ -575,9 +575,9 @@ export default function PlayerCircle({
                             const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
                             const points = (Number(res.count || res.occurrences) || occ || 1) * 2
                             if (actorIsViewer) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word : <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word : <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                             }
-                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>{actorName}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>{actorName}</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
 
                           if (res && res.letterFromBuyer) {
@@ -585,9 +585,9 @@ export default function PlayerCircle({
                             const occ = Number(res.count || res.occurrences || res.hits) || 1
                             const points = occ * 2
                             if (player && viewerId && player.id === viewerId) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><strong style={{ color: powerNameColor }}>'{letter}'</strong> revealed; <strong style={{ color: revealedLetterColor }}>you got +${points}</strong>.</div>
+                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><strong style={{ color: revealedLetterColor }}>'{letter}'</strong> revealed; <strong style={{ color: revealedLetterColor }}>you got +${points}</strong>.</div>
                             }
-                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><em>{player.name}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><em>{player.name}</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
 
                           return <div style={chipStyle}><strong style={{ color: powerNameColor }}>{r.powerId}</strong>: {JSON.stringify(res)}</div>
@@ -597,7 +597,7 @@ export default function PlayerCircle({
                           try {
                             if (actorIsViewer) {
                               if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {
-                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Scope</strong>: {Number(res.letters)} letter{Number(res.letters) === 1 ? ' is' : 's are'} in the word</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter Scope</strong>:  <strong style={{ color: revealedLetterColor }}>{Number(res.letters)}</strong> letter{Number(res.letters) === 1 ? ' is' : 's are'} in the word</div>
                               }
                               if (r.powerId === 'vowel_vision' && typeof res.vowels === 'number') {
                                 return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Vowel Vision</strong>: There are <strong style={{ color: revealedLetterColor }}>{res.vowels}</strong> vowel{res.vowels === 1 ? '' : 's'}</div>

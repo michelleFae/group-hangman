@@ -1116,7 +1116,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
     { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-    { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
+    { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round (even if they have word freeze on!).', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
     { id: 'rare_trace', updateType:"important", name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
@@ -2165,10 +2165,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const summary = Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].join(', ')}`).join('; ')
-            const buyerMessageHtml = `<strong class="power-name">Crowd Hint</strong>: revealed ${Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].map(ch => `<strong class=\"revealed-letter\">${ch}</strong>`).join(', ')}`).join('; ') || 'no letters'}`
+            const buyerMessageHtml = `<strong class="power-name">Crowd Hint</strong>: revealed ${Object.keys(picks).map(pid => `<em>${playerIdToName[pid] || pid}</em>: ${picks[pid].map(ch => `<strong class=\"revealed-letter\">${ch}</strong>`).join(', ')}`).join('; ') || 'no letters'}`
             const targetMessageHtml = `<strong class="power-name">Crowd Hint</strong>: <em>${buyerName}</em> used Crowd Hint`
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Crowd Hint: revealed ${summary || 'no letters'}`, picks, messageHtml: buyerMessageHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `${buyerName} used Crowd Hint`, messageHtml: targetMessageHtml } }
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `<strong class="power-name">Crowd Hint</strong>: revealed ${summary || 'no letters'}`, picks, messageHtml: buyerMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `<strong class="power-name">Crowd Hint Played</strong>:<em>${buyerName}</em> used Crowd Hint.`, messageHtml: targetMessageHtml } }
           } catch (e) {}
         }
 
@@ -2222,8 +2222,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               updates[`priceSurge/${myId}`] = { amount: 2, by: myId, expiresAtTurnIndex: expiresAt }
             } catch (e) {}
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: null }
-            const buyerHtml = `<strong class="power-name">Price Surge</strong>: everyone else's shop prices increased by <strong class="revealed-letter">+2</strong> until your next turn`
-            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `Price Surge: everyone else's shop prices increased by +2 until your next turn`, messageHtml: buyerHtml } }
+            const buyerHtml = `<strong class="power-name">Price Surge</strong>: Everyone else's shop prices increased by <strong class="revealed-letter">+2</strong> until your next turn`
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { message: `<strong class="power-name">Price Surge</strong>: Everyone else's shop prices increased by +2 until your next turn`, messageHtml: buyerHtml } }
           } catch (e) {}
         }
         // Rare Trace: tell buyer how many occurrences of very-rare letters exist in the target's word
@@ -2237,10 +2237,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const buyerHtml = `<strong class="power-name">Rare Trace</strong>: there are <strong class="revealed-letter">${count}</strong> occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V in <em>${targetName}</em>'s word`
+            const buyerHtml = `<strong class="power-name">Rare Trace</strong>: There are <strong class="revealed-letter">${count}</strong> occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V in <em>${targetName}</em>'s word`
             const targetHtml = `<strong class="power-name">Rare Trace</strong>: <em>${playerIdToName[myId] || myId}</em> used Rare Trace on you`
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `Rare Trace: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count, messageHtml: buyerHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `Rare Trace was used on you by ${playerIdToName[myId] || myId}`, messageHtml: targetHtml } }
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `<strong class="power-name">Rare Trace</strong>: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count, messageHtml: buyerHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `<strong class="power-name">Rare Trace</strong>: was used on you by <em>${playerIdToName[myId] || myId}</em>`, messageHtml: targetHtml } }
           } catch (e) {}
         }
       } catch (e) {}

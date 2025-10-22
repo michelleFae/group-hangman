@@ -4,7 +4,7 @@
 // entry so the module exports a deduped, sorted array containing both singular
 // and plural forms (including common irregular plurals).
 const BASE_ANIMALS = [
-  'aardvark','alligator','ant','anteater','antelope','ape','armadillo','baboon','badger','bat','bear','beaver','bee','bison','boar','buffalo','butterfly','camel','canary','capybara','caribou','cat','caterpillar','cheetah','chicken','chimpanzee','chinchilla','cobra','cod','cougar','cow','coyote','crab','crow','deer','dingo','dog','dolphin','donkey','dove','duck','eagle','eel','elephant','elk','emu','falcon','ferret','fish','flamingo','fox','frog','gazelle','gerbil','giraffe','goat','goose','gorilla','grasshopper','grouse','guanaco','guinea','gull','hamster','hare','hawk','hedgehog','hippo', 'hippopotamus','hornet','horse','hummingbird','hyena','ibex','ibis','iguana','impala','jaguar','jay','kakapo','kangaroo','koala','krill','lemur','leopard','lion','lizard','llama','lobster','lynx','macaw','mole','monkey','moose','mosquito','moth','mouse','mule','narwhal','newt','nightingale','ocean','ocelot','octopus','opossum','orangutan','orca','ostrich','otter','owl','ox','oyster','panda','panther','parrot','peacock','pelican','penguin','pheasant','pigeon','pig', 'porcupine','porpoise','possum','puma','quail','rabbit','raccoon','rat','raven','reindeer','rhinoceros','rook','salamander','salmon','sandpiper','saola','scorpion','seahorse','seal','shark','sheep','shrimp','skunk','sloth','snail','snake','sparrow','spider','squid','squirrel','starfish','stingray','stork','swan','tapir','tarsier','termite','tiger','toad','tortoise','trout','turkey','turtle','vole','vulture','walrus','wasp','weasel','whale','wolf','wombat','woodpecker','yak','zebra',
+  'aardvark','alligator','ant','anteater','antelope','ape','armadillo','baboon','badger','bat','bear','beaver','bee','bison','boar','buffalo','butterfly','camel','canary','capybara','caribou','cat','caterpillar','cheetah','chicken','chimpanzee','chinchilla','cobra','cod','cougar','cow','coyote','crab','crow','deer','dingo','dog','dolphin','donkey','dove','duck','eagle','eel','elephant','elk','emu','falcon','ferret','fish','flamingo','fox','frog','gazelle','gerbil','giraffe','goat','goose','gorilla','grasshopper','grouse','guanaco','guinea','gull','hamster','hare','hawk','hedgehog','hippo', 'hippopotamus','hornet','horse','hummingbird','hyena','ibex','ibis','iguana','impala','jaguar','jay','kakapo','kangaroo','koala','krill','lemur','leopard','lion','lizard','llama','lobster','lynx','macaw','mole','monkey','moose','mosquito','moth','mouse','mule','narwhal','newt','nightingale','ocean','ocelot','octopus','opossum','orangutan','orca','ostrich','otter','owl','ox','oyster','melo','conch','whelk','murex','limpet','gastropod','panda','panther','parrot','peacock','pelican','penguin','pheasant','pigeon','pig', 'cyclops', 'capybara','porcupine','porpoise','possum','puma','quail','rabbit','raccoon','rat','raven','reindeer','rhinoceros','rook','salamander','salmon','sandpiper','saola','scorpion','seahorse','seal','shark','sheep','shrimp','skunk','sloth','snail','snake','sparrow','spider','squid','squirrel','starfish','stingray','stork','swan','tapir','tarsier','termite','tiger','toad','tortoise','trout','turkey','turtle','vole','vulture','walrus','wasp','weasel','whale','wolf','wombat','woodpecker','yak','zebra',
   'addax','vaquita','condor',
 
   // common dog breeds (single-word, lowercase)
@@ -15,6 +15,8 @@ const BASE_ANIMALS = [
 
   // additional single-word animals (birds, fish, exotic mammals, reptiles, etc.)
   'albatross','auk','anemone','angelfish','anglerfish','axolotl','barnacle','barracuda','beluga','bilby','binturong','booby','bonobo','caracal','cassowary','coati','condor','cormorant','curlew','echidna','gannet','gibbon','gnu','jackal','jerboa','kiwi','koi','lamprey','lemming','manatee','mink','murrelet','numbat','pangolin','perch','ptarmigan','quokka','quoll','remora','saki','shrew','skua','solenodon','starling','tern','uakari','vicuna','wallaby','weevil','wrasse','zorilla',
+  // seabirds / gull relatives
+  'seagull','kittiwake','shearwater','petrel','auklet',
   // added extra common animals
   'chipmunk','guppy','pony','mongoose','skink','civet','boa','pika','tarantula',
 
@@ -22,7 +24,7 @@ const BASE_ANIMALS = [
   'goldfish','tuna','carp','bass','sardine','anchovy','mackerel','halibut','haddock','herring','sole','flounder','cod','trout','salmon','tilapia','bream','grouper','goby','piranha','marlin','sailfish','swordfish','tarpon','catfish',
 
   // common insect/bug names
-  'cockroach','roach','beetle','ladybird','ladybug','mantis','cicada','dragonfly','damselfly','firefly','lightningbug','earwig','silverfish','centipede','millipede','aphid','weevil','grasshopper','lice',
+  'cockroach','roach','beetle','ladybird','ladybug','mantis','cicada','dragonfly','damselfly','firefly','lightningbug','earwig','silverfish','centipede','millipede','aphid','weevil','lice',
   // worm-related additions
   'worm','earthworm','mealworm','silkworm',
 
@@ -54,8 +56,13 @@ const BASE_ANIMALS = [
   // round-2 extra animals
   'alpaca','oryx','dikdik','ayeaye','tenrec','coelacanth','cuttlefish','urchin','gecko','python','viper','locust','magpie','toucan','marmoset','howler','ram','gander',
   // added per request
-  'zebrafish','zebu','zorse','zonkey', 'zooplankton'
-  , 'honeybadger','pangolin','axolotl'
+  'zebrafish','zebu','zorse','zonkey','zooplankton', 'honeybadger','pangolin','axolotl',
+
+  // neotropical rodents / related species added
+  // neotropical rodents / related species added
+  'agouti','paca','pacarana','acouchi','acouchy','coendou','peccary','javelina','tayassu',
+  // additional requested animals
+  'crane','nia','nene','nilgai','nandu','nudibranch',
 ]
 
 // A small set of well-known irregular plurals and no-change plurals
