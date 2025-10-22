@@ -961,7 +961,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       console.log("michelle 1")
       const me = (state?.players || []).find(p => p.id === myId) || {}
       if (!me.eliminated) return { ok: false }
-      console.log("michelle 2")
+      console.log("michelle 2", me.ghostState)
       if (!me.ghostState || me.ghostState.reentered) return { ok: false }
       console.log("michelle 3")
       const challenge = state && state.ghostChallenge
