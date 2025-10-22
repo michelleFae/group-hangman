@@ -575,9 +575,9 @@ export default function PlayerCircle({
                             const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
                             const points = (Number(res.count || res.occurrences) || occ || 1) * 2
                             if (actorIsViewer) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter:</strong><em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word — <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word — <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                             }
-                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter:</strong><em>{actorName}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>{actorName}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
 
                           if (res && res.letterFromBuyer) {
