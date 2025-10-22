@@ -3961,7 +3961,7 @@ try {
           {ddCoins && ddCoins.length > 0 ? ddCoins.map((c, i) => (
             <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
           )) : (
-            <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>DD overlay (debug) : no coins</div>
+            <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}></div>
           )}
         </div>
       )
