@@ -966,7 +966,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Only block if the player has already re-entered.
   if (me.ghostState && me.ghostState.reentered) return { ok: false }
       console.log("michelle 3", state)
-      const challenge = state && state.ghostChallenge
+      let challenge = state && state.ghostChallenge
+      // If challenge missing from local state due to race, attempt a one-time read from DB
+      if ((!challenge || !challenge.word) && typeof dbGet === 'function') {
+        try {
+          const roomRef = dbRef(db, `rooms/${roomId}/ghostChallenge`)
+          const snap = await dbGet(roomRef)
+          if (snap && snap.exists && snap.val) {
+            const val = typeof snap.val === 'function' ? snap.val() : snap.val
+            if (val && val.word) challenge = val
+          }
+        } catch (e) {
+          console.warn('Could not fetch ghostChallenge from DB', e)
+        }
+      }
       if (!challenge || !challenge.word) return { ok: false }
       console.log("michelle 4",letterOrWord)
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
