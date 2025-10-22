@@ -328,8 +328,7 @@ exports.processGuess = functions.database
     await snapshot.ref.remove()
 
     return null
-  })
-
+  });
 
 // Scheduled safety: every minute, advance any timed-out turns and apply penalty
 exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
@@ -439,5 +438,5 @@ exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(a
 
   await Promise.all(promises)
   return null
-})
+});
 

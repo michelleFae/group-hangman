@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react'
+import ReactDOM from 'react-dom'
 import PlayerCircle from './PlayerCircle'
 import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
@@ -68,6 +69,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
   const [ddCoins, setDdCoins] = useState([])
+  // portal root for dd overlay attached to document.body to avoid stacking-context issues
+  const [ddOverlayRoot, setDdOverlayRoot] = useState(null)
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -104,6 +107,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     joinRoom(password) // Pass the password to joinRoom
     return () => leaveRoom()
   }, [password])
+
+  // create a body-level container for the dd overlay to avoid ancestor stacking contexts
+  useEffect(() => {
+    try {
+      const id = `gh-dd-overlay-root-${roomId || 'global'}`
+      let el = document.getElementById(id)
+      if (!el) {
+        el = document.createElement('div')
+        el.id = id
+        document.body.appendChild(el)
+      }
+      setDdOverlayRoot(el)
+      return () => {
+        try { if (el && el.parentNode) el.parentNode.removeChild(el) } catch (e) {}
+      }
+    } catch (e) {}
+  }, [roomId])
 
   // local tick to refresh timers on screen
   // Pause the tick when the power-up modal is open to avoid frequent re-renders that
@@ -632,6 +652,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
     } catch (e) {}
   }, [ddCoins])
+
+  // Expose debug helpers on window so you can test from the browser console
+  useEffect(() => {
+    try {
+      // fetch raw lastDoubleDown from the DB
+      window.fetchLastDoubleDown = async () => {
+        try {
+          const snap = await dbGet(dbRef(db, `rooms/${roomId}/lastDoubleDown`))
+          console.log('DB lastDoubleDown:', snap.val())
+          return snap.val()
+        } catch (e) { console.warn('fetchLastDoubleDown failed', e); throw e }
+      }
+      // simulate coins locally (exposes existing simulateDoubleDown if available)
+      window.simulateDoubleDown = () => {
+        try {
+          if (typeof simulateDoubleDown === 'function') simulateDoubleDown()
+          else console.warn('simulateDoubleDown not available')
+        } catch (e) { console.warn('simulateDoubleDown failed', e) }
+      }
+    } catch (e) {}
+    return () => {
+      try { delete window.fetchLastDoubleDown } catch (e) {}
+      try { delete window.simulateDoubleDown } catch (e) {}
+    }
+  }, [roomId, simulateDoubleDown])
 
   // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
@@ -3902,13 +3947,24 @@ try {
   {
     ddCoins && ddCoins.length > 0 && (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)))
   }
-  <div className={`dd-coin-overlay debug-visible`} aria-hidden="true">
-      {ddCoins && ddCoins.length > 0 ? ddCoins.map((c, i) => (
-        <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
-      )) : (
-        <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>DD overlay (debug) — no coins</div>
-      )}
-    </div>
+  {
+    // build overlay node and portal it to body-level root when available to avoid stacking-context clipping
+    (() => {
+      const overlayNode = (
+        <div className={`dd-coin-overlay debug-visible`} aria-hidden="true">
+          {ddCoins && ddCoins.length > 0 ? ddCoins.map((c, i) => (
+            <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
+          )) : (
+            <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>DD overlay (debug) — no coins</div>
+          )}
+        </div>
+      )
+      if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+        try { return ReactDOM.createPortal(overlayNode, ddOverlayRoot) } catch (e) { return overlayNode }
+      }
+      return overlayNode
+    })()
+  }
   {/* Power-up modal rendered when requested */}
   {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
 
