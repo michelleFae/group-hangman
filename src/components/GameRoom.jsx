@@ -7,6 +7,7 @@ import COLOURS from '../data/colours'
 import ANIMALS from '../data/animals'
 import INSTRUMENTS from '../data/instruments'
 import ELEMENTS from '../data/elements'
+import NOUNS from '../data/nouns'
 import CPPTERMS from '../data/cppterms'
 import FRUITS_VEGS from '../data/fruits_vegetables'
 import OCCUPATIONS from '../data/occupations'
@@ -65,6 +66,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const powerupListRef = useRef(null)
   const powerupScrollRef = useRef(0)
   const multiHitSeenRef = useRef({})
+  // control whether certain power-ups reveal publicly (when available in UI)
+  const [powerUpRevealPublic, setPowerUpRevealPublic] = useState(false)
+  // Ghost Re-Entry setting (on by default)
+  const [ghostReEntryEnabled, setGhostReEntryEnabled] = useState(true)
+  const [ghostModalOpen, setGhostModalOpen] = useState(false)
+  const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
@@ -165,6 +172,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   setStarterEnabled(!!state?.starterBonus?.enabled);
   // default power-ups to enabled unless the room explicitly sets it to false
   setPowerUpsEnabled(state?.powerUpsEnabled ?? true);
+  // sync Ghost Re-Entry setting from room state (default true)
+  setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
     // showWordsOnEnd controls whether players' secret words are displayed on final standings
     if (typeof state?.showWordsOnEnd === 'boolean') setShowWordsOnEnd(!!state.showWordsOnEnd)
 
@@ -655,6 +664,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
   }, [state && state.lastDoubleDown])
 
+  // Watch for ghost re-entry announcements and notify once
+  const processedGhostAnnRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state && state.ghostAnnouncements ? state.ghostAnnouncements : {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedGhostAnnRef.current[k]) return
+        processedGhostAnnRef.current[k] = true
+        const a = anns[k] || {}
+        try { setToasts(t => [...t, { id: `ghost_ann_${k}`, text: `${a.name || a.player} has re-entered as a ghost!` }]) } catch (e) {}
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== `ghost_ann_${k}`)), 5000)
+      })
+    } catch (e) {}
+  }, [state && state.ghostAnnouncements])
+
   // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
   useEffect(() => {
     try {
@@ -862,6 +886,140 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }
   }
 
+  // Helper: pick a random word using current theme if enabled, else from NOUNS
+  function pickRandomWordForGhost() {
+    try {
+      if (secretThemeEnabled && secretThemeType) {
+        const type = secretThemeType
+        let pool = null
+        if (type === 'animals') pool = ANIMALS
+        else if (type === 'colours') pool = COLOURS
+        else if (type === 'instruments') pool = INSTRUMENTS
+        else if (type === 'elements') pool = ELEMENTS
+        else if (type === 'cpp') pool = CPPTERMS
+        else if (type === 'fruits') pool = FRUITS_VEGS
+        else if (type === 'occupations') pool = OCCUPATIONS
+        else if (type === 'countries') pool = COUNTRIES
+        else if (type === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length > 0) {
+          pool = state.secretWordTheme.custom.words
+        }
+        if (Array.isArray(pool) && pool.length > 0) {
+          const idx = Math.floor(Math.random() * pool.length)
+          return (pool[idx] || '').toString().toLowerCase()
+        }
+      }
+      // fallback: NOUNS
+      if (Array.isArray(NOUNS) && NOUNS.length > 0) {
+        const idx = Math.floor(Math.random() * NOUNS.length)
+        return (NOUNS[idx] || '').toString().toLowerCase()
+      }
+    } catch (e) {}
+    // final fallback: a short common noun
+    return 'apple'
+  }
+
+  // Request ghost re-entry: creates or joins a room-level ghostChallenge and records player intent
+  async function requestGhostReentry() {
+    if (!ghostReEntryEnabled) return false
+    if (!myId) return false
+    // only allow if eliminated and at least 2 uneliminated players remain
+    const me = (state?.players || []).find(p => p.id === myId) || {}
+    if (!me.eliminated) return false
+    const activePlayers = (state?.players || []).filter(p => p && !p.eliminated)
+    if ((activePlayers || []).length < 2) return false
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      // If no ghostChallenge exists or if it's resolved, create a fresh one
+      const existing = state && state.ghostChallenge
+      const now = Date.now()
+      const updates = {}
+      let challengeKey = existing && existing.key ? existing.key : `ghost_${now}`
+      let challengeWord = existing && existing.word ? existing.word : null
+      if (!challengeWord) {
+        // pick a random word and store at room ghostChallenge
+        challengeWord = pickRandomWordForGhost()
+        updates[`ghostChallenge`] = { key: challengeKey, word: challengeWord, ts: now }
+      }
+      // record player's pending ghost re-entry attempt state: allow only one re-entry per player
+      updates[`players/${myId}/ghostState`] = { reentered: false, attemptedAt: now, challengeKey }
+      // write multi-path updates
+      await dbUpdate(roomRef, updates)
+      // open local modal to attempt guesses (client-side)
+      setGhostModalOpen(true)
+      setGhostChallengeKeyLocal(challengeKey)
+      return true
+    } catch (e) {
+      console.warn('requestGhostReentry failed', e)
+      return false
+    }
+  }
+
+  // Attempt a ghost guess (letter or full word). Ghosts cannot use power-ups.
+  async function submitGhostGuess(letterOrWord) {
+    try {
+      if (!myId) return { ok: false }
+      const me = (state?.players || []).find(p => p.id === myId) || {}
+      if (!me.eliminated) return { ok: false }
+      if (!me.ghostState || me.ghostState.reentered) return { ok: false }
+      const challenge = state && state.ghostChallenge
+      if (!challenge || !challenge.word) return { ok: false }
+      const guess = (letterOrWord || '').toString().trim().toLowerCase()
+      if (!guess) return { ok: false }
+      // simple letter feedback: return which letters are correct in position if full word, or whether letter exists
+      const target = (challenge.word || '').toString().toLowerCase()
+      if (guess.length === 1) {
+        const ch = guess
+        const positions = []
+        for (let i = 0; i < target.length; i++) if (target[i] === ch) positions.push(i)
+        // record the guess privately under players/{myId}/ghostGuesses
+        const roomRef = dbRef(db, `rooms/${roomId}`)
+        const key = `g_${Date.now()}`
+        const updates = {}
+        updates[`players/${myId}/ghostGuesses/${key}`] = { ts: Date.now(), guess: ch, positions }
+        await dbUpdate(roomRef, updates)
+        return { ok: true, positions }
+      } else {
+        // full word guess — if correct, re-enter the game: set players/{myId}/eliminated=false and set their word to challenge.word
+        const correct = guess === target
+        const roomRef = dbRef(db, `rooms/${roomId}`)
+        const updates = {}
+        const nowTs = Date.now()
+        if (correct) {
+          updates[`players/${myId}/eliminated`] = false
+          updates[`players/${myId}/eliminatedAt`] = null
+          updates[`players/${myId}/word`] = target
+          updates[`players/${myId}/hasWord`] = true
+          // mark that this player has re-entered so they cannot re-enter again
+          updates[`players/${myId}/ghostState/reentered`] = true
+          updates[`players/${myId}/ghostState/reenteredAt`] = nowTs
+          // notify room: a ghost reentered — write into room.ghostAnnouncements to be observed by others
+          const annKey = `ga_${nowTs}`
+          updates[`ghostAnnouncements/${annKey}`] = { player: myId, name: playerIdToName[myId] || myId, ts: nowTs }
+          // When a ghost guesses the shared word correctly, record the previous target into ghostHistory
+          try {
+            updates[`ghostHistory/${nowTs}`] = { word: target, replacedBy: null, by: myId, ts: nowTs }
+          } catch (e) {}
+          // change the room challenge to a new random word so other ghosts face a new target
+          const newWord = pickRandomWordForGhost()
+          // update ghostHistory entry with what it was replaced by
+          try {
+            updates[`ghostHistory/${nowTs}`].replacedBy = newWord
+          } catch (e) {}
+          updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
+        } else {
+          // incorrect full-word guess : record attempt
+          const key = `g_${nowTs}`
+          updates[`players/${myId}/ghostGuesses/${key}`] = { ts: nowTs, guess }
+        }
+        await dbUpdate(roomRef, updates)
+        return { ok: true, correct }
+      }
+    } catch (e) {
+      console.warn('submitGhostGuess failed', e)
+      return { ok: false }
+    }
+  }
+
   // (Settings gear moved into the modeBadge) helper removed
 
   function SettingsModal({ open, onClose }) {
@@ -1034,6 +1192,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups enabled
             </label>
+            <label htmlFor="ghostReEntryEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Allow eliminated players to attempt re-entry as ghosts by guessing a random word">
+              <input id="ghostReEntryEnabled" name="ghostReEntryEnabled" type="checkbox" checked={ghostReEntryEnabled} onChange={e => { const nv = e.target.checked; setGhostReEntryEnabled(nv); updateRoomSettings({ ghostReEntryEnabled: !!nv }) }} /> Ghost Re-Entry enabled
+            </label>
             <label htmlFor="showWordsOnEnd" title="When enabled, each player's submitted secret word is shown on the final standings screen">
               <input id="showWordsOnEnd" name="showWordsOnEnd" type="checkbox" checked={showWordsOnEnd} onChange={e => { const nv = e.target.checked; setShowWordsOnEnd(nv); updateRoomSettings({ showWordsOnEnd: !!nv }) }} /> Show words on end screen
             </label>
@@ -1101,24 +1262,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Power-up definitions
   const POWER_UPS = [
     { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
-    { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 3, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
-    { id: 'letter_scope', updateType:"important", name: 'Letter Scope', price: 3, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
-    { id: 'one_random', updateType:"not important", name: 'One Random Letter', price: 3, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
-    { id: 'mind_leech', updateType:"not important", name: 'Mind Leech', price: 3, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
+    { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_scope', updateType:"important", name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
+    { id: 'one_random', updateType:"not important", name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
+    { id: 'mind_leech', updateType:"not important", name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
     { id: 'zeta_drop', updateType:"important", name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word, and all occurrences of it. You can\'t guess this letter to get points next turn.', powerupType: 'singleOpponentPowerup' },
     { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
-  { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 6, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 7, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word. It may be a letter that is already revealed!', powerupType: 'singleOpponentPowerup' },
-  { id: 'split_15', updateType:"not important", name: 'Split 15', price: 6, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
-    { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 7, desc: 'Suggests words with similar meaning.', powerupType: 'singleOpponentPowerup' },
-    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 8, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 9, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
+  { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word. How related though? Well... it depends!', powerupType: 'singleOpponentPowerup' },
+    { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 8, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word. It may be a letter that is already revealed!', powerupType: 'singleOpponentPowerup' },
+  { id: 'split_15', updateType:"not important", name: 'Split 15', price: 2, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
+    { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 8, desc: 'Gives a definition of the word. If we can\'t find a definition, we\'ll provide two previously unrevealed letters instead (with points!).', powerupType: 'singleOpponentPowerup' },
+    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 30, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 45, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 3, desc: 'Put your word on ice: no one can guess it until your turn comes back around.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-    { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the next round (even if they have word freeze on!).', powerupType: 'selfPowerup' },
+  { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Reveal a previously unrevealed letter from the target — you may reveal it publicly or keep it private for yourself.', powerupType: 'singleOpponentPowerup' },
+    { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 2, desc: 'Increase everyone else\'s shop prices by +2 for the next round (even if they have word freeze on)!', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
-    { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
+    { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 wordmoney to the player with the longest word. Visible to others when played. Can be used once per player, per game.', powerupType: 'selfPowerup' },
     { id: 'rare_trace', updateType:"important", name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
 
@@ -1340,6 +1502,53 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // treat non-404 errors as API being down
         datamuseDown = true;
         console.warn('Datamuse API error ', res);
+      }
+      // The Unseen: reveal a single previously unrevealed letter. Buyer may choose public or private reveal.
+      else if (powerId === 'the_unseen') {
+        try {
+          const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
+          const all = (targetWord || '').toLowerCase().split('').filter(Boolean)
+          // pick unique unrevealed letters
+          const uniques = Array.from(new Set(all)).filter(ch => !existing.includes(ch))
+          let picked = null
+          if (uniques.length > 0) picked = uniques[Math.floor(Math.random() * uniques.length)]
+          // if none left, fallback to any letter
+          if (!picked && all.length > 0) picked = all[Math.floor(Math.random() * all.length)]
+          if (picked) {
+            // decide public vs private: prefer explicit opt-in from opts.public, else UI state
+            const revealPublic = (typeof opts.public !== 'undefined') ? !!opts.public : !!powerUpRevealPublic
+            if (revealPublic) {
+              // public reveal: add letter to revealed (all occurrences), award buyer for newly revealed occurrences
+              resultPayload = { letter: picked }
+              // buyer/target private messages
+              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const buyerMsgLocal = `The Unseen: revealed '${picked}' from ${targetName}'s word` 
+              const targetMsgLocal = `The Unseen: ${buyerName} revealed '${picked}' from your word publicly`
+              const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word`
+              const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word publicly`
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
+            } else {
+              // private reveal: do not modify target.revealed, but add a privatePowerReveals entry for buyer with letterFromTarget
+              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+              const buyerMsgLocal = `The Unseen (private): you discovered '${picked}' in ${targetName}'s word` 
+              const targetMsgLocal = `The Unseen played on you by ${buyerName}`
+              const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: you discovered <strong class="revealed-letter">${picked}</strong> in <em>${targetName}</em>'s word (private)`
+              const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> used The Unseen on you` 
+              // For private reveal, store buyer-facing payload that includes letterFromTarget so PlayerCircle can color it
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letterFromTarget: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+              // Still write a terse entry for the target so they see an event occurred
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: targetMsgLocal, messageHtml: targetMessageHtml } }
+              // No public modifications
+            }
+          } else {
+            // no letter could be found
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `The Unseen: no unrevealed letters available` } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `${buyerName} used The Unseen on you; no letters available` } }
+          }
+        } catch (e) {}
       }
 
       if (!candidate){
@@ -2710,6 +2919,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             </div>
             <button className="shop-modal-close" onClick={onClose}>✖</button>
           </div>
+          <div style={{ padding: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <label style={{ fontSize: 13 }}>
+              <input type="checkbox" checked={powerUpRevealPublic} onChange={e => setPowerUpRevealPublic(!!e.target.checked)} /> Reveal The Unseen publicly
+            </label>
+          </div>
           <div className="powerup-list" ref={powerupListRef}>
             {(POWER_UPS || []).map(p => {
               // compute effective price for display (show surge applied if it affects buyer)
@@ -2787,7 +3001,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         )
                       })()
                       ) : (
-                      <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      p.id === 'the_unseen' ? (
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      ) : (
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                      )
                     )}
                   </div>
                 </div>
@@ -3435,6 +3653,22 @@ try {
               <PlayAgainControls isHost={isHost} myId={myId} players={players} />
             </div>
             <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
+            {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
+              <div className="card" style={{ marginTop: 12, padding: 10 }}>
+                <h4>Ghost challenge history</h4>
+                <div style={{ fontSize: 13 }}>
+                  {Object.keys(state.ghostHistory).sort().map(k => {
+                    const g = state.ghostHistory[k] || {}
+                    return (
+                      <div key={k} style={{ marginBottom: 6 }}>
+                        <strong style={{ marginRight: 8 }}>{g.word}</strong>
+                        {g.by ? <span style={{ color: '#888' }}> (solved by {playerIdToName[g.by] || g.by})</span> : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </>
@@ -3904,33 +4138,53 @@ try {
           }
 
           return (
-            <PlayerCircle key={p.id}
-                          player={playerWithViewer}
-                          gameMode={state?.gameMode}
-                          viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
-                          isSelf={p.id === myId}
-                          hostId={hostId}
-                          isHost={isHost}
-                          onRemove={removePlayer}
-                          viewerId={myId}
-                          phase={phase}
-                          hasSubmitted={!!p.hasWord}
-                          canGuess={canGuessComputed}
-                          ddActive={viewerDDActive}
-                          ddTarget={viewerDDTarget}
-                          onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }} 
-                          showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
-                          onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
-                          onSkip={skipTurn}
-                          playerIdToName={playerIdToName}
-                          timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
-                          starterApplied={!!state?.starterBonus?.applied}
-                          flashPenalty={wasPenalized}
-                          pendingDeduct={pendingDeducts[p.id] || 0}
-                          isWinner={p.id === state?.winnerId}
-                          powerUpDisabledReason={pupReason}
-                          revealPreserveOrder={revealPreserveOrder}
-                          revealShowBlanks={revealShowBlanks} />
+            <div key={`pc_wrap_${p.id}`} style={{ position: 'relative' }}>
+              <PlayerCircle
+                key={p.id}
+                player={playerWithViewer}
+                gameMode={state?.gameMode}
+                viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
+                isSelf={p.id === myId}
+                hostId={hostId}
+                isHost={isHost}
+                onRemove={removePlayer}
+                viewerId={myId}
+                phase={phase}
+                hasSubmitted={!!p.hasWord}
+                canGuess={canGuessComputed}
+                ddActive={viewerDDActive}
+                ddTarget={viewerDDTarget}
+                onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }}
+                showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
+                onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
+                onSkip={skipTurn}
+                playerIdToName={playerIdToName}
+                timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
+                starterApplied={!!state?.starterBonus?.applied}
+                flashPenalty={wasPenalized}
+                pendingDeduct={pendingDeducts[p.id] || 0}
+                isWinner={p.id === state?.winnerId}
+                powerUpDisabledReason={pupReason}
+                revealPreserveOrder={revealPreserveOrder}
+                revealShowBlanks={revealShowBlanks}
+              />
+              {p.eliminated && ghostReEntryEnabled && (() => {
+                try {
+                  const activePlayers = (state?.players || []).filter(x => x && !x.eliminated)
+                  if ((activePlayers || []).length >= 2) {
+                    const gstate = p.ghostState || {}
+                    if (!gstate.reentered) {
+                      return (
+                        <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
+                          <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
+                        </div>
+                      )
+                    }
+                  }
+                } catch (e) {}
+                return null
+              })()}
+            </div>
           )
           })
         })()}
@@ -3976,6 +4230,47 @@ try {
   }
   {/* Power-up modal rendered when requested */}
   {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
+
+  {/* Ghost Re-Entry modal for eliminated players */}
+  {ghostModalOpen && (
+    <div className="modal-backdrop">
+      <div className="modal card" style={{ maxWidth: 520 }}>
+        <h3>Ghost Re-entry</h3>
+        <div style={{ marginBottom: 8 }}>
+          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to get position feedback, or guess the full word to re-enter if correct. Ghosts cannot use power-ups. All ghosts share the same target; when one ghost guesses it correctly, the target changes for remaining ghosts.</p>
+          <div style={{ fontSize: 13, marginTop: 6 }}>
+            Current challenge: <strong>{(state && state.ghostChallenge && state.ghostChallenge.word) ? (state.ghostChallenge.word.split('').map((c,i) => '_').join('')) : '—'}</strong>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input id="ghost_guess_input" placeholder="letter or full word" />
+          <button onClick={async () => {
+            try {
+              const el = document.getElementById('ghost_guess_input')
+              const val = el ? el.value.trim() : ''
+              if (!val) return
+              const res = await submitGhostGuess(val)
+              if (!res || !res.ok) {
+                setToasts(t => [...t, { id: `ghost_err_${Date.now()}`, text: 'Could not submit guess' }])
+                return
+              }
+              if (typeof res.correct !== 'undefined') {
+                if (res.correct) {
+                  setToasts(t => [...t, { id: `ghost_reenter_ok_${Date.now()}`, text: 'Correct! You re-entered the game.' }])
+                  setGhostModalOpen(false)
+                } else {
+                  setToasts(t => [...t, { id: `ghost_wrong_${Date.now()}`, text: 'Incorrect guess.' }])
+                }
+              } else if (res.positions) {
+                setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: `Letter found at positions: ${res.positions.join(', ')}` }])
+              }
+            } catch (e) { console.warn(e) }
+          }}>Submit</button>
+          <button onClick={() => setGhostModalOpen(false)}>Close</button>
+        </div>
+      </div>
+    </div>
+  )}
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
