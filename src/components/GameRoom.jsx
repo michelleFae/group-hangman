@@ -563,9 +563,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   useEffect(() => {
     try {
       const dd = state && state.lastDoubleDown
-      if (!dd || !dd.ts) return
+      // Debug: log raw dd object when effect runs
+      if (!dd || !dd.ts) {
+        // still log when undefined to help debugging
+        // console output intentionally brief when no dd present
+        // console.log('lastDoubleDown effect: no dd or missing ts', dd)
+        return
+      }
       // compute a stable key even if ts is missing
       const key = dd && (dd.ts || dd.id || dd._id) ? String(dd.ts || dd.id || dd._id) : JSON.stringify({ b: dd && dd.buyerId, t: dd && dd.targetId, l: dd && dd.letter, s: dd && dd.success })
+      console.log('lastDoubleDown effect: received', { key, dd, processedBefore: !!processedDoubleDownRef.current[key] })
       if (processedDoubleDownRef.current[key]) return
       processedDoubleDownRef.current[key] = true
 
@@ -575,6 +582,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const stake = typeof dd.stake === 'number' ? dd.stake : (typeof dd.amount === 'number' ? dd.amount : 0)
 
       if (dd.success) {
+        console.log('lastDoubleDown: success path for', { buyer, target, letter, stake })
         // success: show long green toast with two lines and spawn falling coins
         const id = `dd_success_${key}`
         const main = `${buyer} wins the double down of letter ${letter ? `'${letter}'` : ''} on ${target}!`
@@ -593,9 +601,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
         // spawn coin pieces for ~4s (brief animation visible to everyone)
         const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
+        console.log('lastDoubleDown: spawning ddCoins', pieces.length, pieces)
         setDdCoins(pieces)
         setTimeout(() => setDdCoins([]), 4000)
       } else {
+        console.log('lastDoubleDown: failure path', { buyer, target, stake, dd })
         // failure: short red toast indicating stake lost (no coins)
         const id = `dd_fail_${key}`
         const msg = `${buyer} did not win the double down; lost stake of $${stake}`
@@ -608,6 +618,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // swallow errors to avoid breaking other effects
     }
   }, [state && state.lastDoubleDown])
+
+  // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
+  useEffect(() => {
+    try {
+      if (ddCoins && ddCoins.length > 0) {
+        console.log('ddCoins changed -> should render overlay. count:', ddCoins.length, ddCoins)
+      } else {
+        console.log('ddCoins cleared or empty')
+      }
+    } catch (e) {}
+  }, [ddCoins])
 
   // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
@@ -3846,16 +3867,15 @@ try {
         ))}
       </div>
 
-      {/* falling coins overlay for recent double-down wins */}
-      {ddCoins && ddCoins.length > 0 && (
-        <div className="dd-coin-overlay" aria-hidden="true">
-          {ddCoins.map((c, i) => (
-            <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
-          ))}
-        </div>
-      )}
-
   </div>{/* end app-content */}
+  {/* falling coins overlay for recent double-down wins (rendered at top-level so z-index works) */}
+  {ddCoins && ddCoins.length > 0 && (
+    <div className="dd-coin-overlay" aria-hidden="true">
+      {ddCoins.map((c, i) => (
+        <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
+      ))}
+    </div>
+  )}
   {/* Power-up modal rendered when requested */}
   {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
 

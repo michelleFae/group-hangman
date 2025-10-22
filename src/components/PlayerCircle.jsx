@@ -527,7 +527,7 @@ export default function PlayerCircle({
                   const updateType = (r && (r.updateType || r.updateType === '') ) ? r.updateType : null
                   // derive importance from explicit updateType or from known power metadata
                   const isImportant = (r && r.updateType === 'important') || (r && r.powerId && IMPORTANT_POWERS.has(r.powerId))
-                  console.log('🔥 rendering power-up result chip', { playerId: player.id, viewerId, actorId, actorIsViewer, powerId: r.powerId, result: res, updateType, isImportant })
+                  
                     // Use a darker, related palette and apply the gradient to the important chip
                     const chipStyle = isImportant
                       ? {
