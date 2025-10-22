@@ -554,17 +554,19 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // Use a deterministic id based on player and lastGain timestamp to avoid duplicate keys
             const toastId = key
             setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
-            // If this is a positive gain, spawn falling coin pieces so it visually matches Double Down wins
+            // If this is a positive gain and it's from a Double Down power-up, spawn falling coins
             try {
               const amountGain = Number(lg.amount) || 0
-              if (amountGain > 0) {
-                console.log('lastGain: spawning coins for positive gain', { player: p.id, amount: amountGain })
+              // Normalize reason (e.g. 'doubleDown', 'double_down') to a compact string for comparison
+              const reasonNorm = (lg.reason || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '')
+              const isDoubleDownGain = reasonNorm === 'doubledown'
+              if (amountGain > 0 && isDoubleDownGain) {
                 const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
                 setDdCoins(pieces)
                 // clear after same duration as dd coin animation
                 setTimeout(() => setDdCoins([]), 4000)
               }
-            } catch (e) { console.warn('Could not spawn coins for lastGain', e) }
+            } catch (e) { /* swallow debug spawn error */ }
             setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
           }
@@ -656,11 +658,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
   useEffect(() => {
     try {
-      if (ddCoins && ddCoins.length > 0) {
-        console.log('ddCoins changed -> should render overlay. count:', ddCoins.length, ddCoins)
-      } else {
-        console.log('ddCoins cleared or empty')
-      }
+      // ddCoins state changed — overlay rendering handled elsewhere. Keep console quiet in production.
     } catch (e) {}
   }, [ddCoins])
 
@@ -840,8 +838,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       setToasts(t => [...t, { id, node, success: true }])
       setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9500)
       setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10500)
-      const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
-      console.log('simulateDoubleDown: spawning ddCoins', pieces.length)
+  const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
       setDdCoins(pieces)
       setTimeout(() => setDdCoins([]), 4000)
     } catch (e) { console.warn('simulateDoubleDown failed', e) }
