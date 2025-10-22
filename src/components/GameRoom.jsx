@@ -4168,7 +4168,7 @@ try {
                 revealPreserveOrder={revealPreserveOrder}
                 revealShowBlanks={revealShowBlanks}
               />
-              {p.eliminated && ghostReEntryEnabled && (() => {
+              {p.eliminated && ghostReEntryEnabled && p.id === myId && (() => {
                 try {
                   const activePlayers = (state?.players || []).filter(x => x && !x.eliminated)
                   if ((activePlayers || []).length >= 2) {
@@ -4251,6 +4251,7 @@ try {
               if (!val) return
               const res = await submitGhostGuess(val)
               if (!res || !res.ok) {
+                console.warn('ghost guess submit failed', res)
                 setToasts(t => [...t, { id: `ghost_err_${Date.now()}`, text: 'Could not submit guess' }])
                 return
               }
