@@ -2146,6 +2146,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const picks = {}
             ;(state?.players || []).forEach(pp => {
               try {
+                // Skip if the player's word is frozen (Word Freeze power-up active)
+                const isFrozen = !!(pp && (pp.frozen || (typeof pp.frozenUntilTurnIndex !== 'undefined' && pp.frozenUntilTurnIndex !== null)))
+                if (isFrozen) return
                 const w = (pp && pp.word) ? pp.word.toLowerCase().split('') : []
                 if (w && w.length > 0) {
                   const ch = w[Math.floor(Math.random() * w.length)]
