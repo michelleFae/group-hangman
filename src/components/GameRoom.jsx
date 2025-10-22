@@ -764,6 +764,33 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     </div>
   )
 
+  // Debug helper: simulate a successful double-down (visible when ?debugDD=1 is in the URL)
+  const showDebugDD = typeof window !== 'undefined' && /[?&]debugDD=1\b/.test(window.location.search)
+  function simulateDoubleDown() {
+    try {
+      const buyer = (myName || 'You')
+      const target = 'Someone'
+      const stake = 3
+      const letter = 'x'
+      const id = `dd_debug_${Date.now()}`
+      const main = `${buyer} wins the double down of letter '${letter}' on ${target}!`
+      const sub = `(Simulated) They earned +2 per correct letter and 2× their stake of ${stake}`
+      const node = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontWeight: 800 }}>{main}</div>
+          <div style={{ fontSize: 12, opacity: 0.95 }}>{sub}</div>
+        </div>
+      )
+      setToasts(t => [...t, { id, node, success: true }])
+      setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9500)
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10500)
+      const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
+      console.log('simulateDoubleDown: spawning ddCoins', pieces.length)
+      setDdCoins(pieces)
+      setTimeout(() => setDdCoins([]), 4000)
+    } catch (e) { console.warn('simulateDoubleDown failed', e) }
+  }
+
   // Persist various room-level settings
   async function updateRoomSettings(changes) {
     try {
@@ -3872,14 +3899,16 @@ try {
 
   </div>{/* end app-content */}
   {/* falling coins overlay for recent double-down wins (rendered at top-level so z-index works) */}
-  {ddCoins && ddCoins.length > 0 && (
-    (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)),
-    <div className="dd-coin-overlay" aria-hidden="true">
-      {ddCoins.map((c, i) => (
+  {
+    ddCoins && ddCoins.length > 0 && (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)))
+  }
+  <div className={`dd-coin-overlay debug-visible`} aria-hidden="true">
+      {ddCoins && ddCoins.length > 0 ? ddCoins.map((c, i) => (
         <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
-      ))}
-    </div>)
-  )}
+      )) : (
+        <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>DD overlay (debug) — no coins</div>
+      )}
+    </div>
   {/* Power-up modal rendered when requested */}
   {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
 
