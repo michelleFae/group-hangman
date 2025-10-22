@@ -303,6 +303,15 @@ button[disabled] {
 .toast { background: rgba(0,0,0,0.8); color: var(--text); padding: 10px 14px; border-radius: 10px; font-weight:700; box-shadow: 0 8px 18px rgba(0,0,0,0.7); opacity: 0; transform: translateY(-6px); animation: toast-in .28s forwards }
 @keyframes toast-in { to { opacity: 1; transform: translateY(0) } }
 
+/* Success / error variants for toasts */
+.toast-success { background: linear-gradient(90deg,#2e7d32,#66bb6a); color: #fff }
+.toast-error { background: linear-gradient(90deg,#b71c1c,#e53935); color: #fff }
+
+/* Double-down coin overlay */
+.dd-coin-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; overflow: visible; z-index: 10000 }
+.coin-piece { position: absolute; top: -8vh; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffd54f, #ffb300); box-shadow: 0 6px 12px rgba(0,0,0,0.4); transform: translateY(0) scale(1); animation: coin-fall 2.6s cubic-bezier(.2,.7,0,1) forwards }
+@keyframes coin-fall { 0% { transform: translateY(0) rotate(0deg); opacity: 1 } 60% { opacity: 1 } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.95 } }
+
 /* Multi-hit toast */
 .multi-hit-toast { position: relative; overflow: visible; }
 .multi-hit-toast .confetti-like { position: absolute; left: -8px; top: -24px; width: 12px; height: 12px; border-radius: 2px; animation: mh-fall 900ms ease-out forwards }

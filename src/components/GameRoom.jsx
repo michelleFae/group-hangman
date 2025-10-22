@@ -64,6 +64,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const powerupListRef = useRef(null)
   const powerupScrollRef = useRef(0)
   const multiHitSeenRef = useRef({})
+  // dedupe double-down room announcements so we only show them once per ts
+  const processedDoubleDownRef = useRef({})
+  // coin pieces shown when a double-down is won
+  const [ddCoins, setDdCoins] = useState([])
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -555,6 +559,46 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
   }, [state?.players, state?.timeouts])
 
+  // Watch for room-level Double Down announcements (written by server on resolution)
+  useEffect(() => {
+    try {
+      const dd = state && state.lastDoubleDown
+      if (!dd || !dd.ts) return
+      const key = String(dd.ts)
+      if (processedDoubleDownRef.current[key]) return
+      processedDoubleDownRef.current[key] = true
+
+      const buyer = dd.buyerName || playerIdToName[dd.buyerId] || dd.buyerId || 'Someone'
+      const target = dd.targetName || playerIdToName[dd.targetId] || dd.targetId || 'a player'
+      const letter = dd.letter || ''
+      const amount = typeof dd.amount === 'number' ? dd.amount : (dd.stake || 0)
+
+      if (dd.success) {
+        // success: show long green toast and spawn falling coins
+        const id = `dd_success_${key}`
+        const msg = `${buyer} wins the double down of letter '${letter}' on ${target}! (+${amount})`
+        setToasts(t => [...t, { id, text: msg, success: true }])
+        // auto-hide after 10s (start fade at 9s)
+        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9000)
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10000)
+
+        // spawn coin pieces for ~4.5s
+        const pieces = new Array(22).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.6, size: 10 + Math.random() * 12 }))
+        setDdCoins(pieces)
+        setTimeout(() => setDdCoins([]), 4500)
+      } else {
+        // failure: short red toast indicating stake lost
+        const id = `dd_fail_${key}`
+        const msg = `${buyer} lost a double down stake of $${amount} on ${target}.`
+        setToasts(t => [...t, { id, text: msg, error: true }])
+        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 3200)
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200)
+      }
+    } catch (e) {
+      // swallow errors to avoid breaking other effects
+    }
+  }, [state && state.lastDoubleDown])
+
   // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
     if (!state || !state.players) return
@@ -959,7 +1003,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 1, desc: 'Put your word on ice: no one can guess it until your turn comes back around. You will also not gain +1 at the start of your turn.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
     { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 5, desc: 'Increase everyone else\'s shop prices by +2 for the rest of the game.', powerupType: 'selfPowerup' },
-    { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly and are no-score.', powerupType: 'selfPowerup' },
+    { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 coins to the player with the longest word. Visible to others when played. One-time per player, per game.', powerupType: 'selfPowerup' },
     { id: 'rare_trace', updateType:"important", name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
@@ -3678,7 +3722,7 @@ try {
 
       <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} className={`toast ${t.multi ? 'multi-hit-toast' : ''} ${t.removing ? 'removing' : ''}`}>
+          <div key={t.id} className={`toast ${t.multi ? 'multi-hit-toast' : ''} ${t.removing ? 'removing' : ''} ${t.success ? 'toast-success' : ''} ${t.error ? 'toast-error' : ''}`}>
             {t.multi && (
               <>
                 <span className="confetti-like" />
@@ -3690,6 +3734,15 @@ try {
           </div>
         ))}
       </div>
+
+      {/* falling coins overlay for recent double-down wins */}
+      {ddCoins && ddCoins.length > 0 && (
+        <div className="dd-coin-overlay" aria-hidden="true">
+          {ddCoins.map((c, i) => (
+            <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
+          ))}
+        </div>
+      )}
 
   </div>{/* end app-content */}
   {/* Power-up modal rendered when requested */}

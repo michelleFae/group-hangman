@@ -160,12 +160,16 @@ module.exports = async (req, res) => {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))` } }
+                const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
               // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
               try {
                 const ddKeyTarget = `double_down_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr, amount: award, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>` } }
+              } catch (e) {}
+              // announcement for all clients: brief double-down summary (ephemeral)
+              try {
+                updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() }
               } catch (e) {}
             } catch (e) {}
 
@@ -190,11 +194,11 @@ module.exports = async (req, res) => {
             try {
               const ddKey2 = `double_down_noscore_${Date.now()}`
               const letterStr2 = letter
-              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr2, amount: 0, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
+              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr2, amount: 0, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
               try {
                 const ddKey2Target = `double_down_noscore_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr2, amount: 0, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr2, amount: 0, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
               } catch (e) {}
             } catch (e) {}
           }
@@ -226,11 +230,11 @@ module.exports = async (req, res) => {
                 try {
                   const ddKey3 = `double_down_loss_${Date.now()}`
                   const letterStr3 = letter
-                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
                   updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
                   try {
                     const ddKey3Target = `double_down_loss_target_${Date.now()}`
-                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
                   } catch (e) {}
                 } catch (e) {}
                 // consume/clear the doubleDown entry so the DD badge is removed
@@ -308,11 +312,11 @@ module.exports = async (req, res) => {
             // write a private power-up result entry indicating the loss on word guess
             try {
               const ddKey4 = `double_down_loss_word_${Date.now()}`
-              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
+              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey4}`] = ddPayload4
               try {
                 const ddKey4Target = `double_down_loss_word_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
               } catch (e) {}
             } catch (e) {}
           }
