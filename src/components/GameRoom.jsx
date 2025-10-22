@@ -570,11 +570,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // console.log('lastDoubleDown effect: no dd or missing ts', dd)
         return
       }
-      // compute a stable key even if ts is missing
-      const key = dd && (dd.ts || dd.id || dd._id) ? String(dd.ts || dd.id || dd._id) : JSON.stringify({ b: dd && dd.buyerId, t: dd && dd.targetId, l: dd && dd.letter, s: dd && dd.success })
-      console.log('lastDoubleDown effect: received', { key, dd, processedBefore: !!processedDoubleDownRef.current[key] })
-      if (processedDoubleDownRef.current[key]) return
-      processedDoubleDownRef.current[key] = true
+  // compute a stable key even if ts is missing
+  // Include success and amount in the key so that an update that overwrites
+  // lastDoubleDown with a different result (e.g. failure -> success) will still fire.
+  const baseId = dd && (dd.ts || dd.id || dd._id) ? String(dd.ts || dd.id || dd._id) : JSON.stringify({ b: dd && dd.buyerId, t: dd && dd.targetId, l: dd && dd.letter })
+  const key = `${baseId}|s:${dd.success ? 1 : 0}|a:${typeof dd.amount !== 'undefined' ? dd.amount : (typeof dd.stake !== 'undefined' ? dd.stake : '')}`
+  console.log('lastDoubleDown effect: received', { key, dd, processedBefore: !!processedDoubleDownRef.current[key] })
+  if (processedDoubleDownRef.current[key]) return
+  processedDoubleDownRef.current[key] = true
 
       const buyer = dd.buyerName || playerIdToName[dd.buyerId] || dd.buyerId || 'Someone'
       const target = dd.targetName || playerIdToName[dd.targetId] || dd.targetId || 'a player'
@@ -3870,11 +3873,12 @@ try {
   </div>{/* end app-content */}
   {/* falling coins overlay for recent double-down wins (rendered at top-level so z-index works) */}
   {ddCoins && ddCoins.length > 0 && (
+    (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)),
     <div className="dd-coin-overlay" aria-hidden="true">
       {ddCoins.map((c, i) => (
         <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
       ))}
-    </div>
+    </div>)
   )}
   {/* Power-up modal rendered when requested */}
   {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}

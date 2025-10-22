@@ -308,8 +308,9 @@ button[disabled] {
 .toast-error { background: linear-gradient(90deg,#b71c1c,#e53935); color: #fff }
 
 /* Double-down coin overlay */
-.dd-coin-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; overflow: visible; z-index: 11000 }
-.coin-piece { display: block; position: absolute; top: -8vh; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffd54f, #ffb300); box-shadow: 0 6px 12px rgba(0,0,0,0.4); transform: translateY(0) scale(1); animation: coin-fall 2.6s cubic-bezier(.2,.7,0,1) forwards; will-change: transform, opacity }
+.dd-coin-overlay { position: fixed; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; overflow: visible; z-index: 11000; /* debug: subtle outline to confirm overlay exists */ outline: 2px dashed rgba(255,255,255,0.02); }
+.dd-coin-overlay.debug-visible { outline-color: rgba(255,255,255,0.06) }
+.coin-piece { display: block; position: absolute; top: -8vh; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffd54f, #ffb300); box-shadow: 0 6px 12px rgba(0,0,0,0.4); transform: translateY(0) scale(1); animation: coin-fall 2.6s cubic-bezier(.2,.7,0,1) forwards; will-change: transform, opacity; transform: translateZ(0); backface-visibility: hidden }
 @keyframes coin-fall { 0% { transform: translateY(0) rotate(0deg); opacity: 1 } 60% { opacity: 1 } 100% { transform: translateY(110vh) rotate(360deg); opacity: 0.95 } }
 
 /* Multi-hit toast */
