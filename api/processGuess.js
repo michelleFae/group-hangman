@@ -236,6 +236,9 @@ module.exports = async (req, res) => {
                     const ddKey3Target = `double_down_loss_target_${Date.now()}`
                     updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
                   } catch (e) {}
+                    try {
+                      updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() }
+                    } catch (e) {}
                 } catch (e) {}
                 // consume/clear the doubleDown entry so the DD badge is removed
                 updates[`players/${from}/doubleDown`] = null
@@ -318,6 +321,9 @@ module.exports = async (req, res) => {
                 const ddKey4Target = `double_down_loss_word_target_${Date.now()}`
                 updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
               } catch (e) {}
+              try {
+                updates['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
+              } catch (e) {}
             } catch (e) {}
           }
           updates[`players/${from}/doubleDown`] = null
@@ -370,6 +376,9 @@ module.exports = async (req, res) => {
                 // also add a buyer-targeted fallback entry so buyer sees this in the target tile
                 const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
                 fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
+              } catch (e) {}
+              try {
+                fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
               } catch (e) {}
             fix[`players/${from}/doubleDown`] = null
             await roomRef.update(fix)

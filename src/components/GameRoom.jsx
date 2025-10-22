@@ -585,21 +585,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div style={{ fontSize: 12, opacity: 0.95 }}>{sub}</div>
           </div>
         )
+        // show toast for at least 10s
         setToasts(t => [...t, { id, node, success: true }])
         // auto-hide after 10s (start fade at 9s)
-        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9000)
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10000)
+        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 9500)
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 10500)
 
-        // spawn coin pieces for ~4.5s (brief animation)
-        const pieces = new Array(22).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.6, size: 10 + Math.random() * 12 }))
+        // spawn coin pieces for ~4s (brief animation visible to everyone)
+        const pieces = new Array(24).fill(0).map(() => ({ left: Math.random() * 100, delay: Math.random() * 0.8, size: 10 + Math.random() * 14 }))
         setDdCoins(pieces)
-        setTimeout(() => setDdCoins([]), 4500)
+        setTimeout(() => setDdCoins([]), 4000)
       } else {
         // failure: short red toast indicating stake lost (no coins)
         const id = `dd_fail_${key}`
         const msg = `${buyer} did not win the double down; lost stake of $${stake}`
+        // show the failure toast briefly (no coins) — keep visible ~4s
         setToasts(t => [...t, { id, text: msg, error: true }])
-        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 3200)
+        setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 3000)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200)
       }
     } catch (e) {
