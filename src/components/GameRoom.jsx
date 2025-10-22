@@ -1222,14 +1222,81 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // resultPayload = { message: 'Related word: no result' }
         }
 
-        resultPayload = { message: buyerMsg }
+        // If no related-word candidate was found, reveal up to 2 previously unrevealed
+        // letters from the target's word publicly and award the buyer for any newly
+        // revealed occurrences (2 points per occurrence). Provide a friendly
+        // private message using the requested wording.
+        try {
+          const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
+          const existingSet = new Set(existing)
+          const allLetters = (targetWord || '').toLowerCase().split('').filter(Boolean)
+          // find unique unrevealed letters
+          const uniques = Array.from(new Set(allLetters)).filter(ch => !existingSet.has(ch))
+          // pick up to 2 letters at random from uniques
+          const pickCount = Math.min(2, uniques.length)
+          const picked = []
+          const pool = uniques.slice()
+          while (picked.length < pickCount && pool.length > 0) {
+            const idx = Math.floor(Math.random() * pool.length)
+            picked.push(pool.splice(idx,1)[0])
+          }
 
+          if (picked.length > 0) {
+            // add picked letters to public revealed set
+            const newRevealedSet = new Set([...(existing || []), ...picked])
+            updates[`players/${powerUpTarget}/revealed`] = Array.from(newRevealedSet)
 
-        const buyerData = { ...buyerBase, result: { message: buyerMsg } }
-        const targetData = { ...targetBase, result: { message: targetMsg } }
+            // compute award for buyer: 2 points per occurrence of each picked letter
+            try {
+              const meNow = (state?.players || []).find(p => p.id === myId) || {}
+              const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost
+              let awardTotal = 0
+              const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
+              picked.forEach(letter => {
+                try {
+                  const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === letter).length
+                  if (count > 0) {
+                    awardTotal += 2 * count
+                    // merge into privateHits
+                    let merged = false
+                    for (let i = 0; i < prevHitsNow.length; i++) {
+                      const h = prevHitsNow[i]
+                      if (h && h.type === 'letter' && h.letter === letter) {
+                        prevHitsNow[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                        merged = true
+                        break
+                      }
+                    }
+                    if (!merged) prevHitsNow.push({ type: 'letter', letter, count, ts: Date.now() })
+                  }
+                } catch (e) {}
+              })
+              if (awardTotal > 0) {
+                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+                updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
+                updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
+              }
+            } catch (e) {}
 
-        updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
-        updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+            // compose messages for buyer and target describing the picked letters
+            const letterList = picked.map(l => `<strong class="revealed-letter">${l}</strong>`).join(picked.length === 2 ? ' and ' : ', ')
+            const buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here ${picked.length === 1 ? 'is' : 'are'} ${picked.length} previously unrevealed letter${picked.length === 1 ? '' : 's'}: ${letterList}`
+            const targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; ${picked.length === 1 ? 'we revealed' : 'we revealed'} ${letterList} publicly.`
+            const buyerMsgLocal = `I don't know the definition, but here ${picked.length === 1 ? 'is' : 'are'} ${picked.length} previously unrevealed letter${picked.length === 1 ? '' : 's'}: ${picked.join(', ')}`
+            const targetMsgLocal = `${buyerName} used Related Word; no definition was found, and ${picked.length === 1 ? 'we revealed' : 'we revealed'} ${picked.join(', ')} publicly.`
+
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: buyerMsgLocal, messageHtml: buyerHtml, letters: picked } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: targetMsgLocal, messageHtml: targetHtml, letters: picked } }
+          } else {
+            // nothing to reveal — fallback to existing simple messages
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: `Related Word: no result found` } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: `Related Word: ${buyerName} used Related Word on you. They revealed no related word` } }
+          }
+        } catch (e) {
+          // if anything goes wrong, fall back to the original simple message
+          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: `Related Word: no result found` } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: `Related Word: ${buyerName} used Related Word on you. They revealed no related word` } }
+        }
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
         const letters = (targetWord || '').split('')
