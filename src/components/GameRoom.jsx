@@ -965,14 +965,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Allow guesses when ghostState is undefined (client may not have written attempted state yet).
   // Only block if the player has already re-entered.
   if (me.ghostState && me.ghostState.reentered) return { ok: false }
-      console.log("michelle 3")
+      console.log("michelle 3", state)
       const challenge = state && state.ghostChallenge
       if (!challenge || !challenge.word) return { ok: false }
-      console.log("michelle 4")
+      console.log("michelle 4",letterOrWord)
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
-      console.log("michelle 5")
+      console.log("michelle 5", guess)
       if (!guess) return { ok: false }
-      console.log("michelle 6")
+      console.log("michelle 6", challenge)
       // simple letter feedback: return which letters are correct in position if full word, or whether letter exists
       const target = (challenge.word || '').toString().toLowerCase()
       if (guess.length === 1) {
