@@ -98,7 +98,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
             setJoinError('Password is incorrect. Please try again.')
             return
           }
-          // allow rejoin with stored anon id — caller will preserve server-side name
+          // allow rejoin with stored anon id : caller will preserve server-side name
           setJoinError('')
           onJoin(room, '', '')
           return
@@ -228,7 +228,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   <div style={{display:'flex',flexDirection:'column',gap:6}}>
     <input ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} />
     {name && name.toString().length > 14 && (
-      <div className="small-error" style={{color:'#d9534f'}}>Display name too long — it will be truncated to 14 characters.</div>
+      <div className="small-error" style={{color:'#d9534f'}}>Display name too long : it will be truncated to 14 characters.</div>
     )}
   </div>
 

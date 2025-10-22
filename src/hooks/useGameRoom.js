@@ -355,16 +355,16 @@ export default function useGameRoom(roomId, playerName) {
 
       // require a clear majority before resolving votes
       if (!top || topCount < majorityNeeded) {
-        // no clear majority — do not advance; return tally so caller can show UI
+        // no clear majority : do not advance; return tally so caller can show UI
         await update(roomRef, { ['wordSpy/lastTally']: tally })
         return { top, topCount, votes }
       }
 
-      // We have a majority — resolve
+      // We have a majority : resolve
       // If the majority picked the actual spy, award voters +4 and allow spy to guess
       const ws = room.wordSpy || {}
       if (top === (ws && ws.spyId)) {
-        // majority correctly identified the spy — move to spy-guess phase.
+        // majority correctly identified the spy : move to spy-guess phase.
         // Do NOT write lastRoundSummary here; wait until the spy either guesses correctly
         // or exhausts all attempts, then submitSpyGuess will write the round summary and move to reveal.
         updates['phase'] = 'wordspy_spyguess'
@@ -390,7 +390,7 @@ export default function useGameRoom(roomId, playerName) {
           updates[rrKey] = rr
         } catch (e) {}
       } else {
-        // majority picked wrong person — award spy 5 and award +3 to any players who voted for the actual spy
+        // majority picked wrong person : award spy 5 and award +3 to any players who voted for the actual spy
         updates['phase'] = 'wordspy_reveal'
         updates['wordSpy/state'] = 'spyWonByWrongGuess'
         updates['wordSpy/lastTally'] = tally
@@ -522,7 +522,7 @@ export default function useGameRoom(roomId, playerName) {
             updates[seqKey] = { ts: guessTs, letters: revealedLetters }
           } catch (e) {}
         } catch (e) {}
-          // reveal mapping already set above; no auto-tally here — tally is handled by tallyWordSpyVotes
+          // reveal mapping already set above; no auto-tally here : tally is handled by tallyWordSpyVotes
           // If this was the spy's final attempt, end the spy-guess phase and show round summary
           try {
             if (attemptNumber >= 3) {
@@ -562,7 +562,7 @@ export default function useGameRoom(roomId, playerName) {
           currentRound: nextRound,
           state: 'waiting'
         }
-        // pick a new word and spy — prefer the room's secretWordTheme when enabled
+        // pick a new word and spy : prefer the room's secretWordTheme when enabled
         let word = null
         try {
           const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
@@ -938,7 +938,7 @@ export default function useGameRoom(roomId, playerName) {
     }
 
     // Ensure every player has an explicit starting wordmoney set. Do not overwrite
-    // existing numeric values — only initialize missing entries so the first-player
+    // existing numeric values : only initialize missing entries so the first-player
     // +1 award is always computed relative to the room-configured starting value.
     try {
       // Prefer an explicit startingWordmoney passed in options (host UI) so
@@ -1169,7 +1169,7 @@ export default function useGameRoom(roomId, playerName) {
           // can refresh and see the same end screen. Only transfer or delete the room
           // when the game is not in the 'ended' phase.
           if (room.phase === 'ended') {
-            console.log('leaveRoom: host leaving during ended phase — preserving room and host node to allow refresh/rejoin')
+            console.log('leaveRoom: host leaving during ended phase : preserving room and host node to allow refresh/rejoin')
             // stop heartbeat but do not remove the host node or room
             try { stopHeartbeat() } catch (e) {}
             return
@@ -1183,7 +1183,7 @@ export default function useGameRoom(roomId, playerName) {
             try { await update(roomRef, ups) } catch (e) { console.warn('Could not transfer host on leave', e) }
             return
           } else {
-            // no other players — remove room entirely
+            // no other players : remove room entirely
             try { await dbSet(roomRef, null) } catch (e) { console.warn('Could not remove empty room on host leave', e) }
             return
           }
@@ -1240,7 +1240,7 @@ export default function useGameRoom(roomId, playerName) {
           // fall through to DB queue push
         }
       } else {
-        console.warn('Not authenticated for serverless call — falling back to DB queue')
+        console.warn('Not authenticated for serverless call : falling back to DB queue')
       }
     }
 

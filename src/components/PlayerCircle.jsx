@@ -380,7 +380,7 @@ export default function PlayerCircle({
             <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
             {/* Frozen badge: visible when player is frozen (others see it) */}
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
-              <div className="frozen-badge" title="Player is frozen — guesses disabled">❄️ Frozen</div>
+              <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
           </div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center' }}>{player.name}</div>
@@ -406,7 +406,7 @@ export default function PlayerCircle({
             <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
               {isSelf ? (
                 showOwnWord ? (
-                  // If in Word Spy and the viewer is the spy, don't reveal the word — show a neutral message
+                  // If in Word Spy and the viewer is the spy, don't reveal the word : show a neutral message
                   (gameMode === 'wordSpy' && viewerIsSpy) ? (
                     <span style={{ fontStyle: 'italic', color: '#cfcfcf' }}>you are the spy</span>
                   ) : (
@@ -437,7 +437,7 @@ export default function PlayerCircle({
                 const targetName = (playerIdToName && playerIdToName[ddTarget]) || ddTarget || 'the selected player'
                 // Consider frozen state: when a player is frozen by a power-up, others should not be able to guess them
                 const isFrozen = !!(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)))
-                const titleText = isEliminated ? 'Player eliminated' : (isFrozen ? 'Player is frozen — guesses disabled' : (ddLocked ? `Double Down active — only ${targetName} may be guessed` : 'Guess this word'))
+                const titleText = isEliminated ? 'Player eliminated' : (isFrozen ? 'Player is frozen : guesses disabled' : (ddLocked ? `Double Down active : only ${targetName} may be guessed` : 'Guess this word'))
                 const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
                 return (
                   <>
@@ -575,7 +575,7 @@ export default function PlayerCircle({
                             const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
                             const points = (Number(res.count || res.occurrences) || occ || 1) * 2
                             if (actorIsViewer) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word — <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
+                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word : <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                             }
                             return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>{actorName}</em> revealed <strong style={{ color: powerNameColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
                           }
@@ -616,7 +616,7 @@ export default function PlayerCircle({
                               if (r.powerId === 'related_word' && res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Related Word</strong>: {res.message}</div>
                               if (r.powerId === 'dice_of_doom' && res && typeof res.roll === 'number') {
                                 const letters = Array.isArray(res.letters) ? res.letters.join(', ') : ''
-                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Dice of Doom</strong>: rolled <strong style={{ color: revealedLetterColor }}>{res.roll}</strong>{letters ? <> — revealed: <strong style={{ color: revealedLetterColor }}>{letters}</strong></> : null}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Dice of Doom</strong>: rolled <strong style={{ color: revealedLetterColor }}>{res.roll}</strong>{letters ? <> : revealed: <strong style={{ color: revealedLetterColor }}>{letters}</strong></> : null}</div>
                               }
                               if (r.powerId === 'all_letter_reveal' && res && Array.isArray(res.letters)) {
                                 return <div style={chipStyle}><strong style={{ color: powerNameColor }}>All Letter Reveal</strong>: revealed <strong style={{ color: revealedLetterColor }}>{res.letters.length}</strong> unique letter{res.letters.length === 1 ? '' : 's'}</div>
@@ -624,7 +624,7 @@ export default function PlayerCircle({
                               if (r.powerId === 'full_reveal' && res && typeof res.full === 'string') {
                                 return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Full Reveal</strong>: the word was revealed</div>
                               }
-                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Sound Check</strong>: suggestions — {Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}</div>
+                              if (r.powerId === 'sound_check' && res && res.suggestions) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Sound Check</strong>: suggestions : {Array.isArray(res.suggestions) ? res.suggestions.join(', ') : String(res.suggestions)}</div>
                               if (r.powerId === 'what_do_you_mean' && res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Definition</strong>: {res.message}</div>
                               if (r.powerId === 'mind_leech' && res && Array.isArray(res.found)) {
                                 const found = res.found.map(f => `${f.letter}×${f.count}`).join(', ')

@@ -37,7 +37,7 @@ function pluralize(word) {
   if (IRREGULARS[word]) return IRREGULARS[word]
   // words ending with consonant + 'y' -> replace y with ies
   if (/[^aeiou]y$/.test(word)) return word.replace(/y$/, 'ies')
-  // words ending with 'o' sometimes take 'es' — handle common ones above, otherwise add 's'
+  // words ending with 'o' sometimes take 'es' : handle common ones above, otherwise add 's'
   if (word.endsWith('o')) return word + 's'
   // default: add 's'
   return word + 's'

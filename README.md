@@ -109,11 +109,11 @@ How guesses are processed (overview)
 --
 There are two supported approaches in this repo:
 
-1. Serverless HTTP handler (recommended for Vercel) — `api/processGuess.js`:
+1. Serverless HTTP handler (recommended for Vercel) : `api/processGuess.js`:
    - Verifies the caller's Firebase ID token using Admin SDK.
    - Validates turn order, processes letter/word guesses, applies wordmoney changes, reveals letters, marks eliminations, and advances the turn.
 
-2. Firebase Cloud Function / queue consumer — `functions/index.js`:
+2. Firebase Cloud Function / queue consumer : `functions/index.js`:
    - Reference implementation that consumes the DB queue and can also run scheduled jobs for timed turns and eviction of stale anonymous players.
    - Useful if you prefer Firebase-native execution or need scheduled background jobs. Some scheduled features may require Blaze.
 

@@ -411,7 +411,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const expectedHangRef = useRef({})
   const prevHostRef = useRef(null)
 
-  // viewer id (derived from hook or firebase auth) — declare early to avoid TDZ in effects
+  // viewer id (derived from hook or firebase auth) : declare early to avoid TDZ in effects
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
 
   // Track whether we've observed the current player in the room previously so we only
@@ -429,7 +429,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         return
       }
       if (!present && wasPresentRef.current) {
-        // we were present before and now we aren't — redirect to main page
+        // we were present before and now we aren't : redirect to main page
         try {
           // attempt a replace so back button doesn't return to removed room
           window.location.replace('/')
@@ -476,7 +476,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             if (!multiHitSeenRef.current[key]) {
               multiHitSeenRef.current[key] = true
               const toastId = `mh_${Date.now()}`
-              setToasts(t => [...t, { id: toastId, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found — +${2*e.count}`, multi: true }])
+              setToasts(t => [...t, { id: toastId, text: `Nice! ${e.count}× "${e.letter.toUpperCase()}" found : +${2*e.count}`, multi: true }])
               setTimeout(() => {
                 setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x))
               }, 7000)
@@ -543,7 +543,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       })
     } catch (e) {}
 
-    // recent gain events (lastGain) — show once per (player,ts)
+    // recent gain events (lastGain) : show once per (player,ts)
     try {
       players.forEach(p => {
         const lg = p.lastGain
@@ -645,7 +645,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // failure: short red toast indicating stake lost (no coins)
         const id = `dd_fail_${key}`
         const msg = `${buyer} did not win the double down; lost stake of $${stake}`
-        // show the failure toast briefly (no coins) — keep visible ~4s
+        // show the failure toast briefly (no coins) : keep visible ~4s
         setToasts(t => [...t, { id, text: msg, error: true }])
         setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, removing: true } : x)), 3000)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200)
@@ -658,7 +658,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
   useEffect(() => {
     try {
-      // ddCoins state changed — overlay rendering handled elsewhere. Keep console quiet in production.
+      // ddCoins state changed : overlay rendering handled elsewhere. Keep console quiet in production.
     } catch (e) {}
   }, [ddCoins])
 
@@ -942,7 +942,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             if (parts.length > 0) {
                               const invalid = parts.filter(w => !/^[a-z]+$/.test(w) || /\s/.test(w))
                               if (invalid.length > 0) {
-                                // Preserve whatever the user has typed in the input — do NOT clear or overwrite
+                                // Preserve whatever the user has typed in the input : do NOT clear or overwrite
                                 // the ref or local state so they can fix the comma-separated list in-place.
                                 setCustomError(`Invalid words: ${invalid.slice(0,6).join(', ')}${invalid.length > 6 ? ', …' : ''}. Words must be single words with letters only.`)
                                 // Do not touch prevCustomSerializedRef, customTitleRef, or customCsvRef here.
@@ -990,7 +990,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         }}>Clear</button>
                       </div>
                       <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
-                        Example: ribbon,candy,cake,balloon,balloons — leave blank to allow any word (no validation)
+                        Example: ribbon,candy,cake,balloon,balloons : leave blank to allow any word (no validation)
                       </div>
                       {customError && <div style={{ marginTop: 8, color: '#900', fontSize: 13 }}>{customError}</div>}
                     </div>
@@ -1311,36 +1311,43 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // Related word: use Datamuse rel_trg (related target words) and return a short word word
         let buyerMsg = `Related Word: no result found`
         let targetMsg = `Related Word: ${buyerName} used Related Word on you. They revealed no related word`
-        try {
-          const q = encodeURIComponent(targetWord || '')
-          const url = `https://api.datamuse.com/words?rel_trg=${q}&max=6`
-          const res = await fetch(url)
-          if (res && res.ok) {
-            const list = await res.json()
-            const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
-            const candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
-            
-              if (candidate) {
-                buyerMsg = `Related Word: '${candidate}'.`
-                targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
-                const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: '<strong class="revealed-letter">${candidate}</strong>'`
-                const targetMessageHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> used Related Word on you and revealed '<strong class="revealed-letter">${candidate}</strong>' as a related word.`
-                const buyerDataLocal = { ...buyerBase, result: { message: buyerMsg, messageHtml: buyerMessageHtml } }
-                const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml } }
-                updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerDataLocal
-                updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetDataLocal
-                // explicit entries written above; fall through so default writer won't overwrite them (it checks for existing keys)
-              }
-          }
-        } catch (e) {
-          // resultPayload = { message: 'Related word: no result' }
+        let datamuseDown = false;
+        let candidate = null;
+        // fetch related words from Datamuse API
+        
+        const q = encodeURIComponent(targetWord || '')
+        const url = `https://api.datamuse.com/words?rel_trg=${q}&max=1`
+        const res = await fetch(url)
+        console.log('Related Word fetch', res)
+        if (res && res.ok) {
+          const list = await res.json()
+          const words = Array.isArray(list) ? list.map(i => i.word).filter(Boolean) : []
+          candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
+          
+            if (candidate) {
+              buyerMsg = `Related Word: '${candidate}'.`
+              targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
+              const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: '<strong class="revealed-letter">${candidate}</strong>'`
+              const targetMessageHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> used Related Word on you and revealed '<strong class="revealed-letter">${candidate}</strong>' as a related word.`
+              const buyerDataLocal = { ...buyerBase, result: { message: buyerMsg, messageHtml: buyerMessageHtml } }
+              const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml } }
+              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerDataLocal
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetDataLocal
+              // explicit entries written above; fall through so default writer won't overwrite them (it checks for existing keys)
+            }
         }
+        else if (res && res.status !== 404) {
+        // treat non-404 errors as API being down
+        datamuseDown = true;
+        console.warn('Datamuse API error ', res);
+      }
 
+      if (!candidate){
         // If no related-word candidate was found, reveal up to 2 previously unrevealed
         // letters from the target's word publicly and award the buyer for any newly
         // revealed occurrences (2 points per occurrence). Provide a friendly
         // private message using the requested wording.
-        try {
+        
           const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
           const existingSet = new Set(existing)
           const allLetters = (targetWord || '').toLowerCase().split('').filter(Boolean)
@@ -1354,20 +1361,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const idx = Math.floor(Math.random() * pool.length)
             picked.push(pool.splice(idx,1)[0])
           }
-
-          if (picked.length > 0) {
             // add picked letters to public revealed set
             const newRevealedSet = new Set([...(existing || []), ...picked])
             updates[`players/${powerUpTarget}/revealed`] = Array.from(newRevealedSet)
 
             // compute award for buyer: 2 points per occurrence of each picked letter
-            try {
+
               const meNow = (state?.players || []).find(p => p.id === myId) || {}
               const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost
               let awardTotal = 0
               const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
               picked.forEach(letter => {
-                try {
+                
                   const count = (targetWord || '').split('').filter(ch => (ch || '').toLowerCase() === letter).length
                   if (count > 0) {
                     awardTotal += 2 * count
@@ -1383,14 +1388,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     }
                     if (!merged) prevHitsNow.push({ type: 'letter', letter, count, ts: Date.now() })
                   }
-                } catch (e) {}
               })
               if (awardTotal > 0) {
                 updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
                 updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
                 updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
-            } catch (e) {}
 
             // compose messages for buyer and target describing the picked letters
             const letterList = picked.map(l => `<strong class="revealed-letter">${l}</strong>`).join(picked.length === 2 ? ' and ' : ', ')
@@ -1399,37 +1402,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             let buyerMsgLocal
             let targetMsgLocal
             if (picked.length === 2) {
-              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here are 2 previously unrevealed letters: ${letterList}`
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know a related word, but here are 2 previously unrevealed letters: ${letterList}`
               targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; we revealed ${letterList} publicly.`
               buyerMsgLocal = `I don't know the definition, but here are 2 previously unrevealed letters: ${picked.join(', ')}`
               targetMsgLocal = `${buyerName} used Related Word; no definition was found, and we revealed ${picked.join(', ')} publicly.`
             } else if (picked.length === 1) {
-              // single remaining unrevealed letter — use the 'last letter' phrasing
+              // single remaining unrevealed letter : use the 'last letter' phrasing
               const theLetter = picked[0]
-              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, but here is the last letter that is unrevealed: <strong class="revealed-letter">${theLetter}</strong>`
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know a related word, but here is the last letter that is unrevealed: <strong class="revealed-letter">${theLetter}</strong>`
               targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but got no definition; we revealed the last unrevealed letter <strong class="revealed-letter">${theLetter}</strong> publicly.`
-              buyerMsgLocal = `I don't know the definition, but here is the last letter that is unrevealed: ${theLetter}`
+              buyerMsgLocal = `I don't know a related word, but here is the last letter that is unrevealed: ${theLetter}`
               targetMsgLocal = `${buyerName} used Related Word; no definition was found, and we revealed the last unrevealed letter ${theLetter} publicly.`
             } else {
-              // picked.length === 0 — all letters already revealed
-              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know the definition, and all the letters of the word are revealed, so I can't help with more letters!`
+              // picked.length === 0 : all letters already revealed
+              buyerHtml = `<strong class="power-name">Related Word</strong>: I don't know a related word, and all the letters of the word are revealed, so I can't help with more letters!`
               targetHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> tried Related Word but no definition was found; all letters are already revealed.`
-              buyerMsgLocal = `I don't know the definition, and all the letters of the word are revealed, so I can't help with more letters!`
+              buyerMsgLocal = `I don't know a related word, and all the letters of the word are revealed, so I can't help with more letters!`
               targetMsgLocal = `${buyerName} used Related Word; no definition was found and all letters are already revealed.`
             }
 
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: buyerMsgLocal, messageHtml: buyerHtml, letters: picked } }
             updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: targetMsgLocal, messageHtml: targetHtml, letters: picked } }
-          } else {
-            // nothing to reveal — fallback to existing simple messages
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: `Related Word: no result found` } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: `Related Word: ${buyerName} used Related Word on you. They revealed no related word` } }
-          }
-        } catch (e) {
-          // if anything goes wrong, fall back to the original simple message
-          updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: `Related Word: no result found` } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: `Related Word: ${buyerName} used Related Word on you. They revealed no related word` } }
-        }
+
+      }
+        
+
+        
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
         const letters = (targetWord || '').split('')
@@ -2093,7 +2091,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // Instead of writing a personalized "you earned" message into the target's own div (which made the
           // target's tile show that sentence), write a tiny color-override private reveal entry so that
           // newly-public letters revealed by letter_for_letter render in the buyer's color on the target's own word.
-          // Only do this when the buyer actually revealed a new letter (buyerAward > 0) — if the letter was
+          // Only do this when the buyer actually revealed a new letter (buyerAward > 0) : if the letter was
           // already revealed, keep the normal public/red rendering.
           try {
             if (buyerLetter && typeof buyerAward === 'number' && buyerAward > 0) {
@@ -2437,7 +2435,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           let buyerMsg = null
           if (letterDisplay) {
             if (oneRandomAward && oneRandomAward > 0) {
-              buyerMsg = { message: `One Random Letter: revealed '${letterDisplay}' — you earned +${oneRandomAward}`, letter }
+              buyerMsg = { message: `One Random Letter: revealed '${letterDisplay}' : you earned +${oneRandomAward}`, letter }
             } else {
               buyerMsg = { message: `One Random Letter: revealed '${letterDisplay}', no points awarded (already revealed)`, letter }
             }
@@ -2573,7 +2571,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         // remove any existing double-down tips first to avoid duplicates
         setToasts(t => (t || []).filter(x => !(x && typeof x.text === 'string' && x.text.startsWith && x.text.startsWith('Double Down active'))))
         // add the new tip
-        setToasts(t => [...t, { id: tipId, text: `Double Down active — make a guess now to earn your stake per occurrence.` }])
+        setToasts(t => [...t, { id: tipId, text: `Double Down active : make a guess now to earn your stake per occurrence.` }])
         // auto-hide the tip after the same interval as other toasts (fade then remove)
         setTimeout(() => setToasts(t => t.map(x => x.id === tipId ? { ...x, removing: true } : x)), 3200)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== tipId)), 4200)
@@ -2833,7 +2831,7 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
-  // determine starting wordmoney to apply for resets — prefer room setting, fallback to 2
+  // determine starting wordmoney to apply for resets : prefer room setting, fallback to 2
   const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
@@ -2860,7 +2858,7 @@ try {
   const ok = await attemptReset(updates)
         if (ok) {
           const idOk = `rematch_host_ok_${Date.now()}`
-          setToasts(t => [...t, { id: idOk, text: 'Room restarted — waiting for players to rejoin.' }])
+          setToasts(t => [...t, { id: idOk, text: 'Room restarted : waiting for players to rejoin.' }])
           // auto-dismiss: fade then remove after short delay
           setTimeout(() => { setToasts(t => t.map(x => x.id === idOk ? { ...x, removing: true } : x)) }, 3200)
           setTimeout(() => { setToasts(t => t.filter(x => x.id !== idOk)) }, 4200)
@@ -3025,7 +3023,7 @@ try {
 
       return false
     } catch (e) {
-      console.warn('isEnglishWord unexpected error — permitting word', e)
+      console.warn('isEnglishWord unexpected error : permitting word', e)
       return true
     }
   }
@@ -3259,7 +3257,7 @@ try {
           // If the selected theme is 'custom' and the host provided a custom set, it overrides theme validation entirely.
               if (secretThemeType === 'custom' && state?.secretWordTheme && state.secretWordTheme.custom) {
             const wordsArr = Array.isArray(state.secretWordTheme.custom.words) ? state.secretWordTheme.custom.words : null
-            // wordsArr === null means host did not save words (treat as no custom list) — fall through to theme checks
+            // wordsArr === null means host did not save words (treat as no custom list) : fall through to theme checks
                 if (Array.isArray(wordsArr)) {
               // If the array has length > 0, enforce membership in that array.
               if (wordsArr.length > 0) {
@@ -3269,7 +3267,7 @@ try {
                   return
                 }
               }
-              // If array is empty, host means "allow any word" — treat as valid and continue
+              // If array is empty, host means "allow any word" : treat as valid and continue
               // Do not return here; allow flow to proceed to submitWord
             }
           }
@@ -3289,7 +3287,7 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate animal — try again')
+            setWordError('Could not validate animal : try again')
             return
           }
         } else if (secretThemeType === 'instruments') {
@@ -3301,11 +3299,11 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate instrument — try again')
+            setWordError('Could not validate instrument : try again')
             return
           }
         } else if (secretThemeType === 'elements') {
-          // Built-in periodic elements validation — use list
+          // Built-in periodic elements validation : use list
           try {
             const arr = Array.isArray(ELEMENTS) ? ELEMENTS : (ELEMENTS && ELEMENTS.default ? ELEMENTS.default : [])
             if (!arr.includes(candidate.toLowerCase())) {
@@ -3313,11 +3311,11 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate element — try again')
+            setWordError('Could not validate element : try again')
             return
           }
         } else if (secretThemeType === 'cpp') {
-          // Built-in C++ terms validation — use list
+          // Built-in C++ terms validation : use list
           try {
             const arr = Array.isArray(CPPTERMS) ? CPPTERMS : (CPPTERMS && CPPTERMS.default ? CPPTERMS.default : [])
             if (!arr.includes(candidate.toLowerCase())) {
@@ -3325,7 +3323,7 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate C++ term — try again')
+            setWordError('Could not validate C++ term : try again')
             return
           }
         } else if (secretThemeType === 'fruits') {
@@ -3336,7 +3334,7 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate fruit/vegetable — try again')
+            setWordError('Could not validate fruit/vegetable : try again')
             return
           }
         } else if (secretThemeType === 'occupations') {
@@ -3347,7 +3345,7 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate occupation — try again')
+            setWordError('Could not validate occupation : try again')
             return
           }
         } else if (secretThemeType === 'countries') {
@@ -3358,12 +3356,12 @@ try {
               return
             }
           } catch (e) {
-            setWordError('Could not validate country — try again')
+            setWordError('Could not validate country : try again')
             return
           }
         }
       } catch (e) {
-        setWordError('Theme validation failed — try again')
+        setWordError('Theme validation failed : try again')
         return
       }
     }
@@ -3373,7 +3371,7 @@ try {
       if (success) setSubmitted(true)
       else setWordError('Submission rejected by server')
     } catch (e) {
-      setWordError('Submission failed — please try again')
+      setWordError('Submission failed : please try again')
     }
   }
   // If the game has ended, render only the victory screen. This return comes after all hooks
@@ -3390,7 +3388,7 @@ try {
           ))}
 
           <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
-          <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
+          <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
           <div className="standings card" style={{ marginTop: 12 }}>
             <h4>Final standings</h4>
@@ -3530,7 +3528,7 @@ try {
           if ((state.phase === 'wordspy_wait' || ws.state === 'waiting')) {
             return (
               <div className="notice card">
-                <h4>Word Spy — Round {ws.currentRound} / {ws.roundsRemaining + ws.currentRound - 1}</h4>
+                <h4>Word Spy : Round {ws.currentRound} / {ws.roundsRemaining + ws.currentRound - 1}</h4>
                 <div>
                   {!isSpy ? (
                     <>
@@ -3539,7 +3537,7 @@ try {
                     </>
                   ) : (
                     <>
-                      <p>You are the spy — keep the word secret. Your goal is to guess the word later.</p>
+                      <p>You are the spy : keep the word secret. Your goal is to guess the word later.</p>
                       <p>When others are ready, the host will start the playing phase.</p>
                     </>
                   )}
@@ -3561,7 +3559,7 @@ try {
             const sLeft = Math.ceil(msLeft / 1000)
             return (
               <div className="notice card">
-                <h4>Word Spy — Playing</h4>
+                <h4>Word Spy : Playing</h4>
                 {!isSpy ? (
                   <div>
                     <p>Word: <strong style={{ letterSpacing: 2 }}>{ws.word}</strong></p>
@@ -3569,7 +3567,7 @@ try {
                   </div>
                 ) : (
                   <div>
-                    <p>You are the spy — you don't see the word. Watch the discussion and try to blend in.</p>
+                    <p>You are the spy : you don't see the word. Watch the discussion and try to blend in.</p>
                     <p>Time left: <strong>{sLeft}s</strong></p>
                   </div>
                 )}
@@ -3606,7 +3604,7 @@ try {
                     if (lt && lt.top && lt.topCount < majorityNeeded) {
                       return (
                         <div style={{ marginTop: 8, color: '#fff', background: '#b02a37', padding: 8, borderRadius: 6 }}>
-                          No clear majority — change your vote until there is a clear majority (need {majorityNeeded} of {totalPlayers}).
+                          No clear majority : change your vote until there is a clear majority (need {majorityNeeded} of {totalPlayers}).
                         </div>
                       )
                     }
@@ -3697,7 +3695,7 @@ try {
 
             return (
               <div className="notice card">
-                <h4>Spy Guess — Round {ws.currentRound || ws.current || 1}</h4>
+                <h4>Spy Guess : Round {ws.currentRound || ws.current || 1}</h4>
                 <div style={{ marginBottom: 8 }}>
                   <strong>Word length:</strong> {(ws.word || '').length} letters
                 </div>
@@ -3793,7 +3791,7 @@ try {
       )}
 
   <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
-    {players.length === 0 && <div>No players yet — wait for others to join.</div>}
+    {players.length === 0 && <div>No players yet : wait for others to join.</div>}
         {/* Timer moved to fixed overlay near turn indicator */}
         {(() => {
           // defensive: ensure players is an array of objects (some DB writes may briefly produce non-object entries)
@@ -3832,7 +3830,7 @@ try {
             setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_err_${pid}_`)))), 5200)
             return false
           }
-          // derive viewer-specific private data. viewer's node lives under state.players keyed by id — we need to find viewer's full object
+          // derive viewer-specific private data. viewer's node lives under state.players keyed by id : we need to find viewer's full object
           const viewerNode = players.find(x => x.id === myId) || {}
           // viewerNode may contain privateWrong, privateHits, privateWrongWords and private powerup data
           const viewerPrivate = {
@@ -3894,7 +3892,7 @@ try {
           else if (p.id === myId) pupReason = 'Cannot target yourself'
           else if (p.eliminated) pupReason = 'Player is eliminated'
           else if (myId !== currentTurnId) pupReason = 'Not your turn'
-          else if (ddShopLocked) pupReason = 'Double Down placed — make your guess first'
+          else if (ddShopLocked) pupReason = 'Double Down placed : make your guess first'
           else {
             const me = (state?.players || []).find(x => x.id === myId) || {}
             const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
@@ -3963,7 +3961,7 @@ try {
           {ddCoins && ddCoins.length > 0 ? ddCoins.map((c, i) => (
             <span key={i} className="coin-piece" style={{ left: `${c.left}%`, animationDelay: `${c.delay}s`, width: `${c.size}px`, height: `${c.size}px` }} />
           )) : (
-            <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>DD overlay (debug) — no coins</div>
+            <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>DD overlay (debug) : no coins</div>
           )}
         </div>
       )
@@ -4030,7 +4028,7 @@ try {
                   )}
                 </>
               ) : (
-                <div style={{ padding: '8px 12px' }}>Submitted — waiting for others</div>
+                <div style={{ padding: '8px 12px' }}>Submitted : waiting for others</div>
               )}
             </div>
             <div className="submit-waiting">
@@ -4060,7 +4058,7 @@ try {
             ))}
 
             <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
-            <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over — better luck next time.'}</p>
+            <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
             <div className="standings card" style={{ marginTop: 12 }}>
               <h4>Final standings</h4>

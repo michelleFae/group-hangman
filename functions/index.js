@@ -187,7 +187,7 @@ exports.processGuess = functions.database
           } catch (e) {}
         }
       } else {
-        // letter was already fully revealed — treat this as a wrong guess
+        // letter was already fully revealed : treat this as a wrong guess
         const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
         if (!prevWrong.includes(letter)) {
           prevWrong.push(letter)

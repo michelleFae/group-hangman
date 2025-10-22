@@ -212,12 +212,12 @@ module.exports = async (req, res) => {
             } catch (e) {}
           }
         } else {
-          // letter was already fully revealed — treat this as a wrong guess
+          // letter was already fully revealed : treat this as a wrong guess
           const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
           if (!prevWrong.includes(letter)) {
             prevWrong.push(letter)
             updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them — unless they have an active hang shield
+            // reward the target for a wrong guess against them : unless they have an active hang shield
             const prevTargetHang = typeof target.wordmoney === 'number' ? target.wordmoney : 0
             const shield = target.hangShield
             if (shield && shield.active) {
@@ -324,11 +324,11 @@ module.exports = async (req, res) => {
             // write a private power-up result entry indicating the loss on word guess
             try {
               const ddKey4 = `double_down_loss_word_${Date.now()}`
-              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
+              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess. Lost <strong class="revealed-letter"> $${stake}</strong>` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey4}`] = ddPayload4
               try {
                 const ddKey4Target = `double_down_loss_word_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess — lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
               } catch (e) {}
               try {
                 addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() })
@@ -379,12 +379,12 @@ module.exports = async (req, res) => {
             const fix = {}
             fix[deductionKey] = Math.max(0, prevGHang - stake)
             const lossKey = `double_down_loss_fallback_${Date.now()}`
-            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
+            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
             fix[`${ddKeyBase}/${lossKey}`] = ddPayload
               try {
                 // also add a buyer-targeted fallback entry so buyer sees this in the target tile
                 const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
-                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `Double Down: wrong guess — lost -$${stake}` } }
+                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
               } catch (e) {}
                 try {
                 fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
@@ -427,11 +427,11 @@ module.exports = async (req, res) => {
       endedAt: Date.now()
     }
     await roomRef.update(gameOverUpdates)
-    console.log("Game over — winner:", winner.name)
+    console.log("Game over : winner:", winner.name)
 
     return res.status(200).json({ ok: true })
   }
-    // If we get here the guess was processed and the game continues — return success
+    // If we get here the guess was processed and the game continues : return success
     return res.status(200).json({ ok: true })
   } catch (err) {
     console.error('processGuess error', err)
