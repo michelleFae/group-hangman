@@ -972,10 +972,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const roomRef = dbRef(db, `rooms/${roomId}/ghostChallenge`)
           const snap = await dbGet(roomRef)
-          // Use the snapshot API correctly (snap.exists() and snap.val())
-          const exists = snap && (typeof snap.exists === 'function' ? snap.exists() : !!snap.val)
-          if (exists) {
-            const val = (typeof snap.val === 'function') ? snap.val() : snap.val
+          // Safely extract snapshot value whether snap.val is a function (Firebase) or
+          // a plain property (testing/mocks). Call functions where appropriate.
+          if (snap) {
+            let val = null
+            try {
+              val = (typeof snap.val === 'function') ? snap.val() : snap.val
+            } catch (err) {
+              // defensively attempt to read .val when available
+              try { val = snap.val() } catch (e) { val = null }
+            }
             if (val && val.word) challenge = val
           }
         } catch (e) {
@@ -1295,11 +1301,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and publicly reveal that specific letter, and all occurences of it! You get points if the letter was not revealed before, for every occurence of the letter. Other players will not be given any information about the letter\'s position.', powerupType: 'singleOpponentPowerup' },
   { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word, visible to only you. How related though? Well... it depends!', powerupType: 'singleOpponentPowerup' },
     { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word. Only you can see the suggestion.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 25, desc: 'Rolls a dice and publicly reveal that many letters at random from the target\'s word. It may be a letter that is already revealed, but if it isn\'t, you get points for each occurence of the letter!', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 22, desc: 'Rolls a dice and publicly reveal that many letters at random from the target\'s word. It may be a letter that is already revealed, but if it isn\'t, you get points for each occurence of the letter!', powerupType: 'singleOpponentPowerup' },
   { id: 'split_15', updateType:"not important", name: 'Split 15', price: 2, desc: 'If the target word has 15 or more letters, publicly reveal the first half of the word publicly. You earn points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 8, desc: 'Gives a definition of the word. If we can\'t find a definition, we\'ll provide two previously unrevealed letters instead (with points!).', powerupType: 'singleOpponentPowerup' },
-    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 40, desc: 'Publicly reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 60, desc: 'Publicly reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 35, desc: 'Publicly reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 55, desc: 'Publicly reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
     { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 3, desc: 'Put your word on ice: no one can guess it or play power ups on it until your turn comes back around.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
   { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Publicly reveal a previously unrevealed letter from the target.', powerupType: 'singleOpponentPowerup' },
