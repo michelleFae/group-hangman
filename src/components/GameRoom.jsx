@@ -1299,7 +1299,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 45, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
     { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 3, desc: 'Put your word on ice: no one can guess it until your turn comes back around.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-  { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Reveal a previously unrevealed letter from the target — you may reveal it publicly or keep it private for yourself.', powerupType: 'singleOpponentPowerup' },
+  { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Reveal a previously unrevealed letter from the target. You may reveal it publicly or keep it private for yourself.', powerupType: 'singleOpponentPowerup' },
     { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 2, desc: 'Increase everyone else\'s shop prices by +2 for the next round (even if they have word freeze on)!', powerupType: 'selfPowerup' },
     { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 wordmoney to the player with the longest word. Visible to others when played. Can be used once per player, per game.', powerupType: 'selfPowerup' },
@@ -1525,7 +1525,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         datamuseDown = true;
         console.warn('Datamuse API error ', res);
       }
-      // The Unseen: reveal a single previously unrevealed letter. Buyer may choose public or private reveal.
+      // The Unseen: reveal a single previously unrevealed letter publicly (always public)
       else if (powerId === 'the_unseen') {
         try {
           const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
@@ -1537,34 +1537,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // if none left, fallback to any letter
           if (!picked && all.length > 0) picked = all[Math.floor(Math.random() * all.length)]
           if (picked) {
-            // decide public vs private: prefer explicit opt-in from opts.public, else UI state
-            const revealPublic = (typeof opts.public !== 'undefined') ? !!opts.public : !!powerUpRevealPublic
-            if (revealPublic) {
-              // public reveal: add letter to revealed (all occurrences), award buyer for newly revealed occurrences
-              resultPayload = { letter: picked }
-              // buyer/target private messages
-              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-              const buyerMsgLocal = `The Unseen: revealed '${picked}' from ${targetName}'s word` 
-              const targetMsgLocal = `The Unseen: ${buyerName} revealed '${picked}' from your word publicly`
-              const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word`
-              const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word publicly`
-              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
-            } else {
-              // private reveal: do not modify target.revealed, but add a privatePowerReveals entry for buyer with letterFromTarget
-              const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-              const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-              const buyerMsgLocal = `The Unseen (private): you discovered '${picked}' in ${targetName}'s word` 
-              const targetMsgLocal = `The Unseen played on you by ${buyerName}`
-              const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: you discovered <strong class="revealed-letter">${picked}</strong> in <em>${targetName}</em>'s word (private)`
-              const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> used The Unseen on you` 
-              // For private reveal, store buyer-facing payload that includes letterFromTarget so PlayerCircle can color it
-              updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letterFromTarget: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-              // Still write a terse entry for the target so they see an event occurred
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: targetMsgLocal, messageHtml: targetMessageHtml } }
-              // No public modifications
-            }
+            // Always perform a public reveal: add letter to revealed (all occurrences), award buyer for newly revealed occurrences
+            resultPayload = { letter: picked }
+            // buyer/target private messages to describe the public reveal
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const buyerMsgLocal = `The Unseen: revealed '${picked}' from ${targetName}'s word`
+            const targetMsgLocal = `The Unseen: ${buyerName} revealed '${picked}' from your word publicly`
+            const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word`
+            const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word publicly`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
           } else {
             // no letter could be found
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `The Unseen: no unrevealed letters available` } }
@@ -2928,9 +2911,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   function PowerUpModal({ open, targetId, onClose }) {
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
-  const me = (state?.players || []).find(p => p.id === myId) || {}
+    const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.wordmoney) || 0
   const isLobby = phase === 'lobby'
+  const isMyTurn = (myId === currentTurnId)
     return (
       <div className={`modal-overlay shop-modal ${powerUpOpen ? 'open' : 'closed'}`} role="dialog" aria-modal="true">
         <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
@@ -2940,11 +2924,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <small>Use these to influence the round</small>
             </div>
             <button className="shop-modal-close" onClick={onClose}>✖</button>
-          </div>
-          <div style={{ padding: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <label style={{ fontSize: 13 }}>
-              <input type="checkbox" checked={powerUpRevealPublic} onChange={e => setPowerUpRevealPublic(!!e.target.checked)} /> Reveal The Unseen publicly
-            </label>
           </div>
           <div className="powerup-list" ref={powerupListRef}>
             {(POWER_UPS || []).map(p => {
@@ -2994,7 +2973,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
                         {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || state?.phase === 'wordspy_playing'} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       </div>
                     ) : p.id === 'double_down' ? (
                       (() => {
@@ -3009,7 +2988,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                               <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing'} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -3024,9 +3003,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       })()
                       ) : (
                       p.id === 'the_unseen' ? (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       ) : (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                       )
                     )}
                   </div>
@@ -4147,10 +4126,10 @@ try {
           // determine why the power-up button should be disabled (if anything)
           const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
           let pupReason = null
+          // If power-ups are disabled, hide/disable the power-up affordance entirely
           if (!powerUpsEnabled) pupReason = 'Power-ups are disabled'
           else if (p.id === myId) pupReason = 'Cannot target yourself'
           else if (p.eliminated) pupReason = 'Player is eliminated'
-          else if (myId !== currentTurnId) pupReason = 'Not your turn'
           else if (ddShopLocked) pupReason = 'Double Down placed : make your guess first'
           else {
             const me = (state?.players || []).find(x => x.id === myId) || {}
@@ -4177,7 +4156,10 @@ try {
                 ddActive={viewerDDActive}
                 ddTarget={viewerDDTarget}
                 onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }}
-                showPowerUpButton={powerUpsEnabled && (myId === currentTurnId) && p.id !== myId}
+                // Show the Power-up button whenever power-ups are enabled and this tile is not the viewer
+                // (buyers may open the shop even when it's not their turn). Individual Buy buttons
+                // are disabled in the modal unless it is the buyer's turn.
+                showPowerUpButton={powerUpsEnabled && p.id !== myId}
                 onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
                 onSkip={skipTurn}
                 playerIdToName={playerIdToName}
