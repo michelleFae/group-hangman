@@ -1491,6 +1491,37 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
+      } // The Unseen: reveal a single previously unrevealed letter publicly (always public)
+      else if (powerId === 'the_unseen') {
+        
+          const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
+          const all = (targetWord || '').toLowerCase().split('').filter(Boolean)
+          // pick unique unrevealed letters
+          const uniques = Array.from(new Set(all)).filter(ch => !existing.includes(ch))
+          let picked = null
+          if (uniques.length > 0) picked = uniques[Math.floor(Math.random() * uniques.length)]
+          // if none left, fallback to any letter
+          if (!picked && all.length > 0) picked = all[Math.floor(Math.random() * all.length)]
+          if (picked) {
+            // Always perform a public reveal: add letter to revealed (all occurrences), award buyer for newly revealed occurrences
+            resultPayload = { letter: picked }
+            // buyer/target private messages to describe the public reveal
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
+            const buyerMsgLocal = `The Unseen: revealed '${picked}' from ${targetName}'s word`
+            const targetMsgLocal = `The Unseen: ${buyerName} revealed '${picked}' from your word publicly`
+            const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word.`
+            const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word.`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
+          } else {
+            // no letter could be found
+            const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: No letters left to reveal from <em>${targetName}</em>'s word.`
+            const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word.`
+            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `The Unseen: no unrevealed letters available`, messageHtml: buyerMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `${buyerName} used The Unseen on you; no letters available`, messageHtml: targetMessageHtml } }
+          }
+       
       } else if (powerId === 'related_word') {
         // Related word: use Datamuse rel_trg (related target words) and return a short word word
         let buyerMsg = `Related Word: no result found`
@@ -1525,36 +1556,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         datamuseDown = true;
         console.warn('Datamuse API error ', res);
       }
-      // The Unseen: reveal a single previously unrevealed letter publicly (always public)
-      else if (powerId === 'the_unseen') {
-        try {
-          const existing = (targetNode.revealed || []).map(x => (x || '').toLowerCase())
-          const all = (targetWord || '').toLowerCase().split('').filter(Boolean)
-          // pick unique unrevealed letters
-          const uniques = Array.from(new Set(all)).filter(ch => !existing.includes(ch))
-          let picked = null
-          if (uniques.length > 0) picked = uniques[Math.floor(Math.random() * uniques.length)]
-          // if none left, fallback to any letter
-          if (!picked && all.length > 0) picked = all[Math.floor(Math.random() * all.length)]
-          if (picked) {
-            // Always perform a public reveal: add letter to revealed (all occurrences), award buyer for newly revealed occurrences
-            resultPayload = { letter: picked }
-            // buyer/target private messages to describe the public reveal
-            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const buyerMsgLocal = `The Unseen: revealed '${picked}' from ${targetName}'s word`
-            const targetMsgLocal = `The Unseen: ${buyerName} revealed '${picked}' from your word publicly`
-            const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word`
-            const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word publicly`
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
-          } else {
-            // no letter could be found
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `The Unseen: no unrevealed letters available` } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `${buyerName} used The Unseen on you; no letters available` } }
-          }
-        } catch (e) {}
-      }
+      
 
       if (!candidate){
         // If no related-word candidate was found, reveal up to 2 previously unrevealed
