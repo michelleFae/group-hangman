@@ -967,6 +967,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   if (me.ghostState && me.ghostState.reentered) return { ok: false }
       console.log("michelle 3", state)
       let challenge = state && state.ghostChallenge
+      // Coerce legacy/string-shaped challenge to an object
+      if (challenge && typeof challenge === 'string') challenge = { word: challenge }
       // If challenge missing from local state due to race, attempt a one-time read from DB
       if ((!challenge || !challenge.word) && typeof dbGet === 'function') {
         try {
@@ -986,6 +988,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           }
         } catch (e) {
           console.warn('Could not fetch ghostChallenge from DB', e)
+        }
+      }
+      // If still missing, try reading the 'word' child directly (some environments may store it as a primitive)
+      if ((!challenge || !challenge.word) && typeof dbGet === 'function') {
+        try {
+          const wordRef = dbRef(db, `rooms/${roomId}/ghostChallenge/word`)
+          const snap2 = await dbGet(wordRef)
+          if (snap2) {
+            try {
+              const val2 = (typeof snap2.val === 'function') ? snap2.val() : snap2.val
+              if (val2 && typeof val2 === 'string') challenge = { word: val2 }
+            } catch (e) {
+              try {
+                const v2 = snap2.val && snap2.val()
+                if (v2 && typeof v2 === 'string') challenge = { word: v2 }
+              } catch (ee) {
+                console.warn('Could not get ghostChallenge.word from DB', ee)
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Could not fetch ghostChallenge.word from DB', e)
+          // ignore - best-effort fallback
         }
       }
       console.log("michelle 3a", challenge)
@@ -2389,12 +2414,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               } catch (e) {}
             })
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
             const summary = Object.keys(picks).map(pid => `${playerIdToName[pid] || pid}: ${picks[pid].join(', ')}`).join('; ')
             const buyerMessageHtml = `<strong class="power-name">Crowd Hint</strong>: revealed ${Object.keys(picks).map(pid => `<em>${playerIdToName[pid] || pid}</em>: ${picks[pid].map(ch => `<strong class=\"revealed-letter\">${ch}</strong>`).join(', ')}`).join('; ') || 'no letters'}`
-            const targetMessageHtml = `<strong class="power-name">Crowd Hint</strong>: <em>${buyerName}</em> used Crowd Hint`
+            // Write the summary only under the BUYER's privatePowerReveals so it appears in the buyer's tile
+            // for everyone viewing the room. Do NOT write an entry under the target's privatePowerReveals
+            // to avoid the message appearing in the target's own tile.
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `<strong class="power-name">Crowd Hint</strong>: revealed ${summary || 'no letters'}`, picks, messageHtml: buyerMessageHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `<strong class="power-name">Crowd Hint Played</strong>:<em>${buyerName}</em> used Crowd Hint.`, messageHtml: targetMessageHtml } }
           } catch (e) {}
         }
 
@@ -2413,12 +2438,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               updates[`players/${winner}/lastGain`] = { amount, by: myId, reason: powerId, ts: Date.now() }
             }
             updates[`usedLongestWordBonus/${myId}`] = true
-            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
-            const buyerHtml = `<strong class="power-name">Longest Word Bonus</strong>: <strong class="revealed-letter">${playerIdToName[winner] || winner}</strong> received +${amount}`
-            const targetHtml = `<strong class="power-name">Longest Word Bonus</strong>: <em>${buyerName}</em> used Longest Word Bonus`
-            updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}`, messageHtml: buyerHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { winner, amount, message: `${buyerName} used Longest Word Bonus`, messageHtml: targetHtml } }
+            // Only write a private message for the BUYER under their own viewer key so
+            // it appears only on the buyer's screen (not in the target's tile or on others' views).
+            const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
+            const buyerHtml = `<strong class="power-name">Longest Word Bonus</strong>: <strong class="revealed-letter">${playerIdToName[winner] || winner}</strong> received +${amount}. <em>Only you know why :)</em>`
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}`, messageHtml: buyerHtml } }
           } catch (e) {}
         }
 

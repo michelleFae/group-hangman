@@ -1114,6 +1114,47 @@ export default function useGameRoom(roomId, playerName) {
           turnTimeoutSeconds: turnTimeout,
           timed
         }
+          // Ensure a ghostChallenge exists at the start of playing phase so eliminated
+          // players can attempt re-entry immediately. If absent, pick a random word
+          // from the room's secret theme or fallback noun list.
+          try {
+            const nowTs = Date.now()
+            if (!roomRoot.ghostChallenge || !roomRoot.ghostChallenge.word) {
+              let gw = null
+              try {
+                const theme = roomRoot && roomRoot.secretWordTheme && roomRoot.secretWordTheme.enabled ? (roomRoot.secretWordTheme.type || null) : null
+                let pool = null
+                if (theme === 'animals') pool = (ANIMALS && ANIMALS.default) ? ANIMALS.default : ANIMALS
+                else if (theme === 'fruits') pool = (FRUITS_VEGS && FRUITS_VEGS.default) ? FRUITS_VEGS.default : FRUITS_VEGS
+                else if (theme === 'occupations') pool = (OCCUPATIONS && OCCUPATIONS.default) ? OCCUPATIONS.default : OCCUPATIONS
+                else if (theme === 'countries') pool = (COUNTRIES && COUNTRIES.default) ? COUNTRIES.default : COUNTRIES
+                else if (theme === 'instruments') pool = (INSTRUMENTS && INSTRUMENTS.default) ? INSTRUMENTS.default : INSTRUMENTS
+                else if (theme === 'colours') pool = (COLOURS && COLOURS.default) ? COLOURS.default : COLOURS
+                else if (theme === 'elements') pool = (ELEMENTS && ELEMENTS.default) ? ELEMENTS.default : ELEMENTS
+                else if (theme === 'cpp') pool = (CPPTERMS && CPPTERMS.default) ? CPPTERMS.default : CPPTERMS
+                if (pool && Array.isArray(pool) && pool.length > 0) {
+                  const filtered = pool.map(p => (p || '').toString().trim()).filter(p => /^[a-zA-Z]+$/.test(p) && p.length >= 2)
+                  if (filtered.length > 0) gw = filtered[Math.floor(Math.random() * filtered.length)]
+                  else {
+                    const relaxed = pool.map(p => (p || '').toString().trim()).filter(p => p && p.length >= 2)
+                    if (relaxed.length > 0) gw = relaxed[Math.floor(Math.random() * relaxed.length)]
+                  }
+                }
+              } catch (e) {}
+              if (!gw) {
+                try {
+                  const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+                  if (Array.isArray(nounsList) && nounsList.length > 0) gw = nounsList[Math.floor(Math.random() * nounsList.length)]
+                } catch (e) {}
+              }
+              if (!gw) gw = 'apple'
+              updates['ghostChallenge'] = { key: `ghost_${nowTs}`, word: (gw || 'apple').toString().toLowerCase(), ts: nowTs }
+              try {
+                // Helpful log for debugging: surface when we auto-create the ghostChallenge
+                console.info(`Auto-created ghostChallenge for room ${roomId}:`, updates['ghostChallenge'])
+              } catch (e) {}
+            }
+          } catch (e) { console.warn('Could not initialize ghostChallenge at round start', e) }
         // mark starterBonus as applied so we don't attempt to re-award later
         if (roomRoot.starterBonus && roomRoot.starterBonus.enabled) updates['starterBonus/applied'] = true
         // Award +1 to the first player in turnOrder as a starting bonus; be additive to any existing staged value
