@@ -1880,13 +1880,70 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       const defs = [sense.definition];
                   
 
-                      return defs.some(def => {
-                        if (!def.includes(raw)) {
-                          resultPayload = { message: def };
-                          return true; // stops all nested loops
+                        
+                        // Enhanced definition selection + sanitization
+                        const badWords = ['penis','vagina', 'fuck'].map(s => s.toLowerCase())
+                        // First pass: prefer a def that does NOT include the raw word and contains NO bad words
+                        let picked = null
+                        for (const def of defs) {
+                          try {
+                          const dLow = (def || '').toString().toLowerCase()
+                          if (raw && dLow.includes(raw.toLowerCase())) continue
+                          const hasBad = badWords.some(b => dLow.includes(b))
+                          if (hasBad) continue
+                          picked = { rawDef: def }
+                          break
+                          } catch (e) { /* ignore and continue */ }
                         }
-                        return false;
-                      });
+                        if (picked) {
+                          resultPayload = { message: picked.rawDef }
+                          return true
+                        }
+
+                        // Second pass: find a def that includes the raw word and produce a redacted HTML variant.
+                        for (const def of defs) {
+                          try {
+                          const d = (def || '').toString()
+                          const dLow = d.toLowerCase()
+                          if (!raw || !dLow.includes(raw.toLowerCase())) continue
+
+                          // Replace foul words with "[foul word]" (case-insensitive, whole-word)
+                          let sanitized = d
+                          try {
+                            const foulRe = new RegExp(`\\b(${badWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')})\\b`, 'ig')
+                            sanitized = sanitized.replace(foulRe, '[foul word]')
+                          } catch (e) {}
+
+                          // Replace occurrences of the raw word with a visible redaction for dark backgrounds.
+                          // Use a strong tag with a readable color; keep a plain-text fallback.
+                          try {
+                            const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                            const rawRe = new RegExp(`\\b${escaped}\\b`, 'ig')
+                            const redactedHtml = `<strong style="color:#ff7b72">[redacted word]</strong>`
+                            const messageHtml = sanitized.replace(rawRe, redactedHtml)
+                            resultPayload = { message: sanitized.replace(new RegExp(`\\b${escaped}\\b`, 'ig'), '[redacted word]'), messageHtml }
+                          } catch (e) {
+                            // fallback if regex fails
+                            resultPayload = { message: sanitized }
+                          }
+                          return true
+                          } catch (e) { /* continue */ }
+                        }
+
+                        // Final fallback: pick the first available def but sanitize foul words
+                        for (const def of defs) {
+                          try {
+                          let sanitized = (def || '').toString()
+                          try {
+                            const foulRe = new RegExp(`\\b(${badWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')})\\b`, 'ig')
+                            sanitized = sanitized.replace(foulRe, '[foul word]')
+                          } catch (e) {}
+                          resultPayload = { message: sanitized }
+                          return true
+                          } catch (e) {}
+                        }
+                        return false
+                        
                     })
                   );
                 } else {
@@ -2426,23 +2483,46 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (powerId === 'longest_word_bonus') {
           try {
             const playersArr = (state?.players || [])
-            let winner = null
+            // Find the longest word length, then award ALL players who match that length
             let best = -1
-            playersArr.forEach(pp => { try { const l = (pp.word || '').toString().length || 0; if (l > best) { best = l; winner = pp.id } } catch (e) {} })
+            try {
+              playersArr.forEach(pp => { try { const l = (pp.word || '').toString().length || 0; if (l > best) best = l } catch (e) {} })
+            } catch (e) { best = -1 }
             const amount = 10
-            if (winner) {
-              const prev = (state?.players || []).find(p => p.id === winner) || {}
-              const prevHang = Number(prev.wordmoney) || 0
-              const baseNow = (typeof updates[`players/${winner}/wordmoney`] !== 'undefined') ? Number(updates[`players/${winner}/wordmoney`]) : prevHang
-              updates[`players/${winner}/wordmoney`] = Math.max(0, Number(baseNow) + amount)
-              updates[`players/${winner}/lastGain`] = { amount, by: myId, reason: powerId, ts: Date.now() }
+            const winners = []
+            if (best > 0) {
+              playersArr.forEach(pp => {
+                try {
+                  const l = (pp.word || '').toString().length || 0
+                  if (l === best) winners.push(pp.id)
+                } catch (e) {}
+              })
             }
+            // Award amount to every winner found
+            if (winners.length > 0) {
+              // expose for downstream UI/toast rendering
+              resultPayload = { winners, amount }
+              winners.forEach(wid => {
+                try {
+                  const prev = (state?.players || []).find(p => p.id === wid) || {}
+                  const prevHang = Number(prev.wordmoney) || 0
+                  const baseNow = (typeof updates[`players/${wid}/wordmoney`] !== 'undefined') ? Number(updates[`players/${wid}/wordmoney`]) : prevHang
+                  updates[`players/${wid}/wordmoney`] = Math.max(0, Number(baseNow) + amount)
+                  updates[`players/${wid}/lastGain`] = { amount, by: myId, reason: powerId, ts: Date.now() }
+                } catch (e) {}
+              })
+            }
+            // mark that this buyer used their longest_word_bonus
             updates[`usedLongestWordBonus/${myId}`] = true
             // Only write a private message for the BUYER under their own viewer key so
-            // it appears only on the buyer's screen (not in the target's tile or on others' views).
+            // it appears only on the buyer's screen (not in others' tiles).
             const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: myId }
-            const buyerHtml = `<strong class="power-name">Longest Word Bonus</strong>: <strong class="revealed-letter">${playerIdToName[winner] || winner}</strong> received +${amount}. <em>Only you know why :)</em>`
-            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { winner, amount, message: `Longest Word Bonus: ${playerIdToName[winner] || winner} received +${amount}`, messageHtml: buyerHtml } }
+            const winnerNames = (winners.length > 0) ? winners.map(id => playerIdToName[id] || id) : []
+            const buyerMsg = winners.length === 0
+              ? `Longest Word Bonus: no eligible words found` 
+              : `Longest Word Bonus: ${winnerNames.join(', ')} received +${amount}`
+            const buyerHtml = `<strong class="power-name">Longest Word Bonus</strong>: <strong class="revealed-letter">${winnerNames.join(', ')}</strong> received +${amount}. <em>Only you know why :)</em>`
+            updates[`players/${myId}/privatePowerReveals/${myId}/${key}`] = { ...buyerBaseLocal, result: { winners, amount, message: buyerMsg, messageHtml: buyerHtml } }
           } catch (e) {}
         }
 
@@ -2813,10 +2893,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } catch (e) {}
       // add a dismissible success toast for power-up application
       const pupToastId = `pup_ok_${Date.now()}`
-      // For longest_word_bonus, show the winner's display name; otherwise show the target
-      const pupText = (powerId === 'longest_word_bonus' && resultPayload && resultPayload.winner)
-        ? `${pu.name}: ${playerIdToName[resultPayload.winner] || resultPayload.winner} +${resultPayload.amount}`
-        : `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}`
+      // For longest_word_bonus, show the winner(s) display name(s); otherwise show the target
+      let pupText = `${pu.name} applied to ${playerIdToName[powerUpTarget] || powerUpTarget}`
+      try {
+        if (powerId === 'longest_word_bonus' && resultPayload) {
+          if (Array.isArray(resultPayload.winners) && resultPayload.winners.length > 0) {
+            const names = resultPayload.winners.map(id => playerIdToName[id] || id).join(', ')
+            pupText = `${pu.name}: ${names} +${resultPayload.amount}`
+          } else if (resultPayload.winner) {
+            pupText = `${pu.name}: ${playerIdToName[resultPayload.winner] || resultPayload.winner} +${resultPayload.amount}`
+          }
+        }
+      } catch (e) {}
       setToasts(t => [...t, { id: pupToastId, text: pupText }])
       if (powerId === 'double_down') {
         // remind the buyer they can still guess while the double-down is active
