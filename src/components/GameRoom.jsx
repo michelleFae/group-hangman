@@ -972,14 +972,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const roomRef = dbRef(db, `rooms/${roomId}/ghostChallenge`)
           const snap = await dbGet(roomRef)
-          if (snap && snap.exists && snap.val) {
-            const val = typeof snap.val === 'function' ? snap.val() : snap.val
+          // Use the snapshot API correctly (snap.exists() and snap.val())
+          const exists = snap && (typeof snap.exists === 'function' ? snap.exists() : !!snap.val)
+          if (exists) {
+            const val = (typeof snap.val === 'function') ? snap.val() : snap.val
             if (val && val.word) challenge = val
           }
         } catch (e) {
           console.warn('Could not fetch ghostChallenge from DB', e)
         }
       }
+      console.log("michelle 3a", challenge)
       if (!challenge || !challenge.word) return { ok: false }
       console.log("michelle 4",letterOrWord)
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
