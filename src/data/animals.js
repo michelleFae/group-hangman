@@ -47,7 +47,7 @@ const BASE_ANIMALS = [
   'puppy','pup','kitten','calf','foal','kid','joey','cub','chick','duckling','piglet','gosling','fawn','leveret','puggle','fry','tadpole','larva',
 
   // mythical / legendary animals
-  'phoenix','unicorn','dragon','griffin','kraken','chimera','hydra','mermaid','basilisk','pegasus',
+  'phoenix','unicorn','dragon','griffin','kraken','chimera','hydra','mermaid','basilisk','pegasus','lioness',
 
   // extinct animals / prehistoric species
   'dodo','auroch','moa','passengerpigeon','woollymammoth','smilodon','mastodon','glyptodon','thylacine','quagga',
@@ -74,6 +74,9 @@ const IRREGULARS = {
   // allow both common plurals
   octopus: ['octopuses','octopi'],
   platypus: ['platypuses','platypi','platypodes'],
+  lioness: ['lionesses'],
+  deer: ['deer'],
+  sheep: ['sheep'],
 }
 
 // Words whose plural is identical to singular
