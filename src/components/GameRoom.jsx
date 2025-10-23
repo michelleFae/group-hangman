@@ -1286,25 +1286,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Power-up definitions
   const POWER_UPS = [
-    { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word. Both players get points unless the letter has already been revealed privately (though power ups played by other players or by you) or publicly before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
-    { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Tells you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
-    { id: 'letter_scope', updateType:"important", name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has.', powerupType: 'singleOpponentPowerup' },
-    { id: 'one_random', updateType:"not important", name: 'One Random Letter', price: 4, desc: 'Reveal one random letter. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
-    { id: 'mind_leech', updateType:"not important", name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess your opponent's word. You can guess these letter to get points next turn, if it is not already revealed!", powerupType: 'singleOpponentPowerup' },
-    { id: 'zeta_drop', updateType:"important", name: 'Zeta Drop', price: 5, desc: 'Reveal the last letter of the word, and all occurrences of it. You can\'t guess this letter to get points next turn.', powerupType: 'singleOpponentPowerup' },
-    { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and reveal that specific letter.', powerupType: 'singleOpponentPowerup' },
-  { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word. How related though? Well... it depends!', powerupType: 'singleOpponentPowerup' },
-    { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word.', powerupType: 'singleOpponentPowerup' },
-    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 8, desc: 'Rolls a dice and reveals that many letters at random from the target\'s word. It may be a letter that is already revealed!', powerupType: 'singleOpponentPowerup' },
-  { id: 'split_15', updateType:"not important", name: 'Split 15', price: 2, desc: 'If the target word has 15 or more letters, reveal the first half of the word publicly. Buyer earns points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word, only to each other. Both players get points unless the letter has already been revealed before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
+    { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Privately tells just you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_scope', updateType:"important", name: 'Letter Scope', price: 4, desc: 'Find out how many letters the word has. The information is revealed to only you.', powerupType: 'singleOpponentPowerup' },
+    { id: 'one_random', updateType:"not important", name: 'One Random Letter', price: 4, desc: 'Publicly reveal one random letter from your target\'s word. It may be a letter that is already revealed, in which case, you won\'t get points for it!', powerupType: 'singleOpponentPowerup' },
+    { id: 'mind_leech', updateType:"not important", name: 'Mind Leech', price: 4, desc: "The letters that are revealed from your word will be used to guess letters in your opponent's word. Only you will be able to see the revealed letters!", powerupType: 'singleOpponentPowerup' },
+    { id: 'zeta_drop', updateType:"important", name: 'Zeta Drop', price: 5, desc: 'Publicly reveal the last letter of the word, and all occurrences of it (other people will not be told it is the last letter though 😉. You get points if the letter was previously not revealed.', powerupType: 'singleOpponentPowerup' },
+    { id: 'letter_peek', updateType:"important", name: 'Letter Peek', price: 5, desc: 'Pick a position and publicly reveal that specific letter, and all occurences of it! You get points if the letter was not revealed before, for every occurence of the letter. Other players will not be given any information about the letter\'s position.', powerupType: 'singleOpponentPowerup' },
+  { id: 'related_word', updateType:"important", name: 'Related Word', price: 5, desc: 'Get a related word, visible to only you. How related though? Well... it depends!', powerupType: 'singleOpponentPowerup' },
+    { id: 'sound_check', updateType:"important", name: 'Sound Check', price: 8, desc: 'Suggests a word that sounds like the target word. Only you can see the suggestion.', powerupType: 'singleOpponentPowerup' },
+    { id: 'dice_of_doom', updateType:"not important", name: 'Dice of Doom', price: 25, desc: 'Rolls a dice and publicly reveal that many letters at random from the target\'s word. It may be a letter that is already revealed, but if it isn\'t, you get points for each occurence of the letter!', powerupType: 'singleOpponentPowerup' },
+  { id: 'split_15', updateType:"not important", name: 'Split 15', price: 2, desc: 'If the target word has 15 or more letters, publicly reveal the first half of the word publicly. You earn points for any previously unrevealed letters.', powerupType: 'singleOpponentPowerup' },
     { id: 'what_do_you_mean', updateType:"important", name: 'What Do You Mean', price: 8, desc: 'Gives a definition of the word. If we can\'t find a definition, we\'ll provide two previously unrevealed letters instead (with points!).', powerupType: 'singleOpponentPowerup' },
-    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 30, desc: 'Reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 45, desc: 'Reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
-    { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 3, desc: 'Put your word on ice: no one can guess it until your turn comes back around.', powerupType: 'selfPowerup' },
+    { id: 'all_letter_reveal', updateType:"not important", name: 'All The Letters', price: 40, desc: 'Publicly reveal all letters in shuffled order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'full_reveal', updateType:"important", name: 'Full Reveal', price: 60, desc: 'Publicly reveal the entire word instantly, in order.', powerupType: 'singleOpponentPowerup' },
+    { id: 'word_freeze', updateType:"not important", name: 'Word Freeze', price: 3, desc: 'Put your word on ice: no one can guess it or play power ups on it until your turn comes back around.', powerupType: 'selfPowerup' },
     { id: 'double_down', updateType:"not important", name: 'Double Down', price: 1, desc: 'Stake some wordmoney; next correct guess yields double the stake you put down, for each correct letter. In addition to the stake, you will also get the default +2 when a letter is correctly guessed. Beware: you will lose the stake on a wrong guess.', powerupType: 'selfPowerup' },
-  { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Reveal a previously unrevealed letter from the target. You may reveal it publicly or keep it private for yourself.', powerupType: 'singleOpponentPowerup' },
+  { id: 'the_unseen', updateType: "important", name: 'The Unseen', price: 6, desc: 'Publicly reveal a previously unrevealed letter from the target.', powerupType: 'singleOpponentPowerup' },
     { id: 'price_surge', updateType:"not important", name: 'Price Surge', price: 2, desc: 'Increase everyone else\'s shop prices by +2 for the next round (even if they have word freeze on)!', powerupType: 'selfPowerup' },
-    { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
+    { id: 'crowd_hint', updateType:"not important", name: 'Crowd Hint', price: 5, desc: 'Publicly reveal one random letter from everyone\'s word, including yours. Letters are revealed publicly, but you recieve no points for them.', powerupType: 'selfPowerup' },
     { id: 'longest_word_bonus', updateType:"important", name: 'Longest Word Bonus', price: 5, desc: 'Grant +10 wordmoney to the player with the longest word. Visible to others when played. Can be used once per player, per game.', powerupType: 'selfPowerup' },
     { id: 'rare_trace', updateType:"important", name: 'Rare Trace', price: 2, desc: 'Reports how many rare letters (Q, X, Z, J, K, V) appear in the target\'s word.', powerupType: 'singleOpponentPowerup' }
   ]
@@ -1649,30 +1649,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         
       } else if (powerId === 'dice_of_doom') {
         const roll = Math.floor(Math.random() * 6) + 1
-        const letters = (targetWord || '').split('')
-        const revealCount = Math.min(letters.length, roll)
-        // pick revealCount random indices
-        const indices = []
-        const available = Array.from({ length: letters.length }, (_,i) => i)
-        while (indices.length < revealCount && available.length > 0) {
+        // Pick up to `roll` distinct letters (unique characters) from the target word.
+        // Previously we sampled indices which could produce the same character multiple
+        // times if the word contains repeated letters (e.g. "boot" -> 'o' twice).
+        const wordChars = (targetWord || '').toLowerCase().split('').filter(Boolean)
+        const uniqueChars = Array.from(new Set(wordChars))
+        const revealCount = Math.min(uniqueChars.length, roll)
+        const revealedLetters = []
+        const available = uniqueChars.slice()
+        while (revealedLetters.length < revealCount && available.length > 0) {
           const idx = Math.floor(Math.random() * available.length)
-          indices.push(available.splice(idx,1)[0])
+          revealedLetters.push(available.splice(idx, 1)[0])
         }
-        // convert indices to the actual letters so payload exposes letters instead of numeric indices
-        const revealedLetters = indices.map(i => (targetWord[i] || '').toLowerCase()).filter(Boolean)
         resultPayload = { roll, letters: revealedLetters }
         // write explicit buyer/target privatePowerReveals so buyer always sees result
-        try {
+        
           const buyerBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const targetBaseLocal = { powerId, ts: Date.now(), from: myId, to: powerUpTarget }
           const buyerMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `Dice of Doom: revealed ${revealedLetters.join(', ')}` : `Dice of Doom: no letters could be revealed`
           const targetMsgLocal = (revealedLetters && revealedLetters.length > 0) ? `Dice of Doom: ${buyerName} used Dice of Doom on you; they revealed ${revealedLetters.join(', ')}` : `${buyerName} used Dice of Doom on you; no letters were revealed`
           const revealedHtml = (revealedLetters && revealedLetters.length > 0) ? revealedLetters.map(l => `<strong class="revealed-letter">${l}</strong>`).join(', ') : null
-          const buyerMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: no letters could be revealed`
+          const buyerMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: Rolled ${roll}, revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: rolled ${roll}, but no letters could be revealed`
           const targetMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; they revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; no letters were revealed`
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
-        } catch (e) {}
+       
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
         // also reveal all letters publicly (but shuffled order is kept in private payload)
