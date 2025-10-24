@@ -76,6 +76,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
   const [ddCoins, setDdCoins] = useState([])
+  // transient overlay events when ghosts re-enter so we can show animated UI for everyone
+  const [ghostReenterEvents, setGhostReenterEvents] = useState([])
   // portal root for dd overlay attached to document.body to avoid stacking-context issues
   const [ddOverlayRoot, setDdOverlayRoot] = useState(null)
   const [recentPenalty, setRecentPenalty] = useState({})
@@ -700,6 +702,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const a = anns[k] || {}
         try { setToasts(t => [...t, { id: `ghost_ann_${k}`, text: `${a.name || a.player} has re-entered as a ghost!` }]) } catch (e) {}
         setTimeout(() => setToasts(t => t.filter(x => x.id !== `ghost_ann_${k}`)), 5000)
+        // also trigger a full-screen overlay with floating ghost emojis for 5s
+        try {
+          const name = a && (a.name || a.player) ? (a.name || a.player) : 'Someone'
+          setGhostReenterEvents(prev => [...prev, { id: k, name, ts: Date.now() }])
+          setTimeout(() => setGhostReenterEvents(prev => prev.filter(x => x.id !== k)), 5000)
+        } catch (e) {}
       })
     } catch (e) {}
   }, [state && state.ghostAnnouncements])
@@ -735,6 +743,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try { delete window.simulateDoubleDown } catch (e) {}
     }
   }, [roomId, simulateDoubleDown])
+
+  // inject CSS for ghost re-enter overlay and animations once
+  useEffect(() => {
+    try {
+      const id = 'gh-ghost-overlay-style'
+      if (!document.getElementById(id)) {
+        const s = document.createElement('style')
+        s.id = id
+        s.innerHTML = `
+          .ghost-reenter-overlay { position: fixed; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; z-index: 12000 }
+          .ghost-reenter-card { pointer-events: auto; background: rgba(0,0,0,0.6); color: #fff; padding: 18px 26px; border-radius: 12px; font-weight: 800; font-size: 20px; backdrop-filter: blur(4px); }
+          .ghost-floating { position: absolute; left: 0; right: 0; top: 30%; bottom: 0; pointer-events: none; overflow: visible }
+          .ghost-floating .ghost-emoji { position: absolute; top: 60%; font-size: 28px; transform: translateY(0) scale(1); opacity: 0; animation-name: ghFloatUp; animation-duration: 4s; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
+          @keyframes ghFloatUp { 0% { transform: translateY(0) scale(0.9); opacity: 0 } 10% { opacity: 1 } 100% { transform: translateY(-60vh) scale(1.1); opacity: 0 } }
+        `
+        document.head.appendChild(s)
+      }
+    } catch (e) {}
+  }, [])
 
   // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
@@ -1114,6 +1141,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // that viewers might have stored under their own player objects keyed by this player id.
             try {
               (state?.players || []).forEach(p => {
+                // avoid writing descendant paths when we also null the entire branch for the re-entering player
+                if (!p || !p.id) return
+                if (p.id === myId) return
                 try { updates[`players/${p.id}/privatePowerReveals/${myId}`] = null } catch (e) {}
                 try { updates[`players/${p.id}/privateWrong/${myId}`] = null } catch (e) {}
                 try { updates[`players/${p.id}/privateWrongWords/${myId}`] = null } catch (e) {}
@@ -3884,6 +3914,12 @@ try {
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
+      {/* Preserve reveal order indicator shown in lobby and playing phases */}
+      {(phase === 'lobby' || phase === 'playing') && (
+        <div style={{ position: 'fixed', left: 18, top: 18, zIndex: 9998, fontSize: 12, color: '#ddd', background: 'rgba(0,0,0,0.18)', padding: '4px 8px', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }}>
+          Preserve reveal order: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'On' : 'Off') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
+        </div>
+      )}
       {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
         <div style={{ right: 18, zIndex: 1 }} className="turn-timer">
           <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
@@ -4406,6 +4442,29 @@ try {
           )) : (
             <div style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.9)', fontSize: 12 }}></div>
           )}
+        </div>
+      )
+      if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+        try { return ReactDOM.createPortal(overlayNode, ddOverlayRoot) } catch (e) { return overlayNode }
+      }
+      return overlayNode
+    })()
+  }
+  {/* Ghost re-enter overlay (floating ghosts + centered message) */}
+  {
+    ghostReenterEvents && ghostReenterEvents.length > 0 && (() => {
+      const overlayNode = (
+        <div className="ghost-reenter-overlay" aria-hidden="true">
+          {ghostReenterEvents.map(ev => (
+            <div key={ev.id} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+              <div className="ghost-reenter-card">{`${ev.name}'s ghost re-entered the game!`}</div>
+              <div className="ghost-floating" aria-hidden>
+                {new Array(12).fill(0).map((_,i) => (
+                  <span key={i} className="ghost-emoji" style={{ left: `${10 + Math.random()*80}%`, animationDelay: `${Math.random()*1.2}s`, fontSize: `${20 + Math.random()*28}px` }}>👻</span>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )
       if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
