@@ -4517,13 +4517,24 @@ try {
       <div className="modal card" style={{ maxWidth: 520 }}>
         <h3>Ghost Re-entry</h3>
         <div style={{ marginBottom: 8 }}>
-          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to know if they (and other occurrences of them) are in the word or not, or guess the full word to re-enter the game, if correct. You can only make a guess every 15 seconds, because ghosts need time to think. Ghosts cannot use power-ups. All ghosts share the same target word; when one ghost guesses it correctly, the target word changes for remaining ghosts. Note, correct letters show up shuffled and may not be in the order they originally are in the target word.</p>
+          <div style={{ color: '#f5f5f5', fontFamily: 'Inter, sans-serif', lineHeight: 1.6, backgroundColor: '#2b2b2b', padding: 20, borderRadius: 12, maxWidth: 600, margin: 'auto' }}>
+            <h2 style={{ color: '#ffcc00', textAlign: 'center' }}>👻 Ghost Mode</h2>
+            <p><span style={{ color: '#00e5ff' }}>As a ghost</span>, your goal is to guess a shared mystery word.</p>
+            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+              <li>🅰️ Guess <span style={{ color: '#90ee90' }}>letters</span> to reveal all their occurrences.</li>
+              <li>💡 When you think you know it, guess the <span style={{ color: '#ffa07a' }}>full word</span> to rejoin the game.</li>
+              <li>🔀 Correct letters appear <span style={{ color: '#ff69b4' }}>shuffled</span>, not in order.</li>
+              <li>🎯 If your room has a theme, the word fits it, but may ignore the "bonus letter" rule.</li>
+              <li>⏳ You can guess <span style={{ color: '#ffcc00' }}>once every 15 seconds</span>. Ghosts need time to think.</li>
+              <li>🌍 All ghosts share the same word. When one solves it, a <span style={{ color: '#00e5ff' }}>new word</span> appears for the rest.</li>
+            </ul>
+          </div>
           {/* Show the current challenge and the viewer's ghost guesses (ordered by guess time).
               Correct letters are shown in guess-order and include duplicates (one entry per occurrence).
               Wrong guesses (letters or full-word attempts) are shown separately. */}
           <div style={{ fontSize: 13, marginTop: 6 }}>
             {(() => {
-              try {
+              
                 const gw = (state && state.ghostChallenge && state.ghostChallenge.word) ? String(state.ghostChallenge.word) : null
                 // render blanks as spaced underscores: "_ _ _"
                 const blanks = gw ? gw.split('').map(() => '_').join(' ') : '—'
@@ -4538,8 +4549,8 @@ try {
                         </span>
                       ) : null}
                       <span
-                        title="Ghosts share the same target word — the length is shown to help guesses."
-                        aria-label="Ghosts share the same target word — the length is shown to help guesses."
+                        title="Ghosts share the same target word. The length is shown to help guesses."
+                        aria-label="Ghosts share the same target word. The length is shown to help guesses."
                         style={{ marginLeft: 8, color: '#888', fontSize: 13, cursor: 'help' }}
                       >
                         ℹ
@@ -4547,7 +4558,6 @@ try {
                     </div>
                   </div>
                 )
-              } catch (e) { return <div>Current challenge: <strong>—</strong></div> }
             })()}
             {(() => {
               try {
