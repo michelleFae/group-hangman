@@ -4522,7 +4522,33 @@ try {
               Correct letters are shown in guess-order and include duplicates (one entry per occurrence).
               Wrong guesses (letters or full-word attempts) are shown separately. */}
           <div style={{ fontSize: 13, marginTop: 6 }}>
-            <div>Current challenge: <strong>{(state && state.ghostChallenge && state.ghostChallenge.word) ? (state.ghostChallenge.word.split('').map((c,i) => '_').join('')) : '—'}</strong></div>
+            {(() => {
+              try {
+                const gw = (state && state.ghostChallenge && state.ghostChallenge.word) ? String(state.ghostChallenge.word) : null
+                // render blanks as spaced underscores: "_ _ _"
+                const blanks = gw ? gw.split('').map(() => '_').join(' ') : '—'
+                const lettersCount = gw ? gw.length : null
+                return (
+                  <div>
+                    <div>
+                      Current challenge: <strong>{blanks}</strong>
+                      {lettersCount ? (
+                        <span style={{ marginLeft: 8, color: '#666', fontSize: 12 }}>
+                          ({lettersCount} letter{lettersCount === 1 ? '' : 's'})
+                        </span>
+                      ) : null}
+                      <span
+                        title="Ghosts share the same target word — the length is shown to help guesses."
+                        aria-label="Ghosts share the same target word — the length is shown to help guesses."
+                        style={{ marginLeft: 8, color: '#888', fontSize: 13, cursor: 'help' }}
+                      >
+                        ℹ
+                      </span>
+                    </div>
+                  </div>
+                )
+              } catch (e) { return <div>Current challenge: <strong>—</strong></div> }
+            })()}
             {(() => {
               try {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
