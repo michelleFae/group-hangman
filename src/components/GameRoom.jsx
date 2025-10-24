@@ -3893,6 +3893,27 @@ try {
                 </div>
               </div>
             )}
+            {/* If ghost re-entry is enabled, also show the active/last ghost target word at the bottom of the victory screen */}
+            {ghostReEntryEnabled && (() => {
+              try {
+                let wordToShow = null
+                if (state && state.ghostChallenge && state.ghostChallenge.word) wordToShow = state.ghostChallenge.word
+                else if (state && state.ghostHistory) {
+                  const keys = Object.keys(state.ghostHistory || {}).sort()
+                  if (keys.length) {
+                    const last = state.ghostHistory[keys[keys.length-1]] || {}
+                    if (last && last.word) wordToShow = last.word
+                  }
+                }
+                if (!wordToShow) return null
+                return (
+                  <div className="card" style={{ marginTop: 12, padding: 10 }}>
+                    <h4>Ghost target word</h4>
+                    <div style={{ fontSize: 16 }}><strong>{wordToShow}</strong></div>
+                  </div>
+                )
+              } catch (e) { return null }
+            })()}
           </div>
         </div>
       </>
