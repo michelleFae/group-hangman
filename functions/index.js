@@ -20,12 +20,14 @@ exports.processGuess = functions.database
   .onCreate(async (snapshot, context) => {
     const { roomId, pushId } = context.params
     const entry = snapshot.val()
+    console.log('M: New guess entry:', entry)
     if (!entry) return null
 
     const from = entry.from
     const targetId = entry.target
     const payload = entry.payload || {}
     const value = (payload.value || '').toString().trim()
+    console.log('M:Processing guess from', from, 'to', targetId, 'value:', value)
     if (!from || !targetId || !value) {
       // remove the queue entry and exit
       await snapshot.ref.remove()
@@ -241,12 +243,14 @@ exports.processGuess = functions.database
         }
       }
     } else {
+      console.log('M:Processing guess from', from, 'to', targetId, 'value:', value)
       const guessWord = lc(value)
       const targetWord = lc(target.word || '')
       if (!targetWord) {
         await snapshot.ref.remove()
         return null
       }
+      console.log('M:Comparing guessWord', guessWord, 'to targetWord', targetWord)
 
       if (guessWord === targetWord) {
         // correct word: reveal all unique letters, award wordmoney, eliminate
@@ -268,7 +272,7 @@ exports.processGuess = functions.database
               // record a visible recent gain for the combined amount (+5 + stake)
        
                 // compute net gain (may be adjusted later when other deltas apply)
-                const netGain = (hangDeltas[from] || 0)
+                const netGain = (hangDeltas[from] || 0) + stake
                 console.log('Double Down net gain:', netGain)
                 updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
  
