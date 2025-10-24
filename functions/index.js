@@ -257,29 +257,31 @@ exports.processGuess = functions.database
   hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
         // If the guesser had an active Double Down, also award their stake back on a correct full-word guess
-        try {
+        
           const dd = guesser.doubleDown
+          console.log('Double Down active?', dd)
           if (dd && dd.active) {
             const stake = Number(dd.stake) || 0
             if (stake > 0) {
               // add stake to their hang delta (they win their stake back)
               hangDeltas[from] = (hangDeltas[from] || 0) + stake
               // record a visible recent gain for the combined amount (+5 + stake)
-              try {
+       
                 // compute net gain (may be adjusted later when other deltas apply)
                 const netGain = (hangDeltas[from] || 0)
+                console.log('Double Down net gain:', netGain)
                 updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
-              } catch (e) {}
+ 
               // write a private power-up reveal so the buyer sees the double-down resolution
-              try {
+            
                 const ddKey = `double_down_word_${Date.now()}`
                 updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
-              } catch (e) {}
+              
               // clear the doubleDown so the DD badge is removed and they must buy again
-              try { updates[`players/${from}/doubleDown`] = null } catch (e) {}
+              updates[`players/${from}/doubleDown`] = null 
             }
           }
-        } catch (e) {}
+        
 
   // mark eliminated and add guessedBy for word
   updates[`players/${targetId}/eliminated`] = true
