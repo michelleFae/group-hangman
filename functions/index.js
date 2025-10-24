@@ -134,31 +134,40 @@ exports.processGuess = functions.database
           // award 2 wordmoney per newly revealed occurrence (as a delta)
           // include any doubleDown extra if active
           const dd = guesser.doubleDown
+          // normalize some vars for use in payloads/messages
+          const letterStr = letter
+          let stake = 0
           let award = (2 * toAdd)
           if (dd && dd.active) {
-            const stake = Number(dd.stake) || 0
+            stake = Number(dd.stake) || 0
             if (stake > 0) {
               // award the stake per newly revealed occurrence
               const extra = stake * toAdd
               award += extra
-                // consume the doubleDown entry after use
-                updates[`players/${from}/doubleDown`] = null
-                // subtract the original stake once (buyer pays the stake on resolution)
-              if (toAdd == 0) {
-                //nothing guessed
-                award = award - stake
-              }
+              // consume the doubleDown entry after use
+              updates[`players/${from}/doubleDown`] = null
             }
           }
-            // apply net delta (award already reduced by original stake if applicable)
-            hangDeltas[from] = (hangDeltas[from] || 0) + award
-            // record a visible recent gain so clients show the correct wordmoney delta (net)
-            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
+          // apply net delta
+          hangDeltas[from] = (hangDeltas[from] || 0) + award
+          // record a visible recent gain so clients show the correct wordmoney delta (net)
+          updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
           // write a private power-up result entry for the guesser so only they see the double-down result
           try {
             const ddKey = `double_down_${Date.now()}`
-            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award} (+2 per previously unrevealed letter, + (2*stake)).` } }
+            const ddPayload = {
+              powerId: 'double_down',
+              ts: Date.now(),
+              from: from,
+              to: from,
+              result: {
+                letter: letterStr,
+                amount: award,
+                stake: stake,
+                message: `Double Down: guessed '${letterStr}' with stake $${stake} and netted +$${award} (includes +2 per letter and +$${stake}×occurrences).`
+              }
+            }
             updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
           } catch (e) {}
 
