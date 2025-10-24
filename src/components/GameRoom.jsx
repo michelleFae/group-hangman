@@ -72,6 +72,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostReEntryEnabled, setGhostReEntryEnabled] = useState(true)
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
+  // live per-second cooldown display for ghost guesses (seconds remaining)
+  const [ghostCooldownSec, setGhostCooldownSec] = useState(0)
+  useEffect(() => {
+    // update every second while modal is open so the UI shows a live countdown
+    if (!ghostModalOpen) {
+      try { setGhostCooldownSec(0) } catch (e) {}
+      return undefined
+    }
+    let mounted = true
+    function tick() {
+      try {
+        const me = (state?.players || []).find(p => p.id === myId) || {}
+        const last = Number(me.ghostLastGuessAt || 0)
+        const cooldownMs = 15000
+        const now = Date.now()
+        const remainingMs = last ? Math.max(0, cooldownMs - (now - last)) : 0
+        const sec = Math.ceil(remainingMs / 1000)
+        if (mounted) setGhostCooldownSec(sec)
+      } catch (e) {}
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => { mounted = false; clearInterval(id) }
+  }, [state?.players, myId, ghostModalOpen, tick])
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
@@ -1014,6 +1038,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
       }
       console.log("michelle 3a", challenge)
+      // Enforce per-player cooldown: prevent rapid repeated guesses. Return retryAfter (ms) when blocked.
+      try {
+        const meNode = (state?.players || []).find(p => p.id === myId) || {}
+        const lastTs = Number(meNode.ghostLastGuessAt || 0)
+        const now = Date.now()
+        const cooldownMs = 15000
+        if (lastTs && (now - lastTs) < cooldownMs) {
+          return { ok: false, retryAfter: Math.max(0, cooldownMs - (now - lastTs)) }
+        }
+      } catch (e) {}
       if (!challenge || !challenge.word) return { ok: false }
       console.log("michelle 4",letterOrWord)
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
@@ -1028,10 +1062,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         for (let i = 0; i < target.length; i++) if (target[i] === ch) positions.push(i)
         // record the guess privately under players/{myId}/ghostGuesses
         const roomRef = dbRef(db, `rooms/${roomId}`)
-        const key = `g_${Date.now()}`
-        const updates = {}
+  const key = `g_${Date.now()}`
+  const updates = {}
         console.log("michelle 7")
         updates[`players/${myId}/ghostGuesses/${key}`] = { ts: Date.now(), guess: ch, positions }
+  // record timestamp for last guess to enforce cooldown
+  updates[`players/${myId}/ghostLastGuessAt`] = Date.now()
         await dbUpdate(roomRef, updates)
         console.log("michelle 8")
         return { ok: true, positions }
@@ -1062,7 +1098,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // update ghostHistory entry with what it was replaced by
           try {
             updates[`ghostHistory/${nowTs}`].replacedBy = newWord
-            } catch (e) {}
+          } catch (e) {}
+          // record this player's last guess time so they enter cooldown after a full-word correct guess as well
+          try { updates[`players/${myId}/ghostLastGuessAt`] = nowTs } catch (e) {}
             // Clear all players' ghostGuesses so everyone sees a fresh challenge when it rotates
             try {
               (state?.players || []).forEach(pp => {
@@ -1074,6 +1112,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // incorrect full-word guess : record attempt
           const key = `g_${nowTs}`
           updates[`players/${myId}/ghostGuesses/${key}`] = { ts: nowTs, guess }
+          // record timestamp for last guess to enforce cooldown
+          updates[`players/${myId}/ghostLastGuessAt`] = nowTs
         }
         console.log("michelle a 1")
         await dbUpdate(roomRef, updates)
@@ -4402,35 +4442,59 @@ try {
             })()}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input id="ghost_guess_input" placeholder="letter or full word" />
-          <button onClick={async () => {
-            try {
-              const el = document.getElementById('ghost_guess_input')
-              const val = el ? el.value.trim() : ''
-              if (!val) return
-              const res = await submitGhostGuess(val)
-              if (!res || !res.ok) {
-                console.warn('ghost guess submit failed', res)
-                setToasts(t => [...t, { id: `ghost_err_${Date.now()}`, text: 'Could not submit guess' }])
-                return
-              }
-              if (typeof res.correct !== 'undefined') {
-                if (res.correct) {
-                  setToasts(t => [...t, { id: `ghost_reenter_ok_${Date.now()}`, text: 'Correct! You re-entered the game.' }])
-                  setGhostModalOpen(false)
-                } else {
-                  setToasts(t => [...t, { id: `ghost_wrong_${Date.now()}`, text: 'Incorrect guess.' }])
-                }
-              } else if (res.positions) {
-                // Avoid exposing exact positions in toasts; modal shows the letters below the challenge.
-                setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: 'Letter found.' }])
-                try { if (el) el.value = '' } catch (e) {}
-              }
-            } catch (e) { console.warn(e) }
-          }}>Submit</button>
-          <button onClick={() => setGhostModalOpen(false)}>Close</button>
-        </div>
+        {(() => {
+          try {
+            // use live countdown computed in state so the UI updates every second
+            const disabled = ghostCooldownSec > 0
+            const remainingSec = ghostCooldownSec
+            return (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input id="ghost_guess_input" placeholder="letter or full word" disabled={disabled} />
+                <button disabled={disabled} onClick={async () => {
+                  try {
+                    const el = document.getElementById('ghost_guess_input')
+                    const val = el ? el.value.trim() : ''
+                    if (!val) return
+                    const res = await submitGhostGuess(val)
+                    if (!res || !res.ok) {
+                      // If server returned a retryAfter, surface friendly message
+                      if (res && res.retryAfter) {
+                        const sec = Math.ceil(Number(res.retryAfter || 0) / 1000)
+                        setToasts(t => [...t, { id: `ghost_cooldown_${Date.now()}`, text: `You can only make a guess every 15 seconds. Try again in ${sec}s.` }])
+                        return
+                      }
+                      console.warn('ghost guess submit failed', res)
+                      setToasts(t => [...t, { id: `ghost_err_${Date.now()}`, text: 'Could not submit guess' }])
+                      return
+                    }
+                    if (typeof res.correct !== 'undefined') {
+                      if (res.correct) {
+                        setToasts(t => [...t, { id: `ghost_reenter_ok_${Date.now()}`, text: 'Correct! You re-entered the game.' }])
+                        setGhostModalOpen(false)
+                      } else {
+                        setToasts(t => [...t, { id: `ghost_wrong_${Date.now()}`, text: 'Incorrect guess.' }])
+                      }
+                    } else if (res.positions) {
+                      // Avoid exposing exact positions in toasts; modal shows the letters below the challenge.
+                      setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: 'Letter found.' }])
+                      try { if (el) el.value = '' } catch (e) {}
+                    }
+                  } catch (e) { console.warn(e) }
+                }}>{disabled ? `Wait ${remainingSec}s` : 'Submit'}</button>
+                <button onClick={() => setGhostModalOpen(false)}>Close</button>
+                <div style={{ marginLeft: 12, fontSize: 13, color: disabled ? '#b00' : '#666' }}>
+                  You can only make a guess every 15 seconds{disabled ? ` — wait ${remainingSec}s` : ''}.
+                </div>
+              </div>
+            )
+          } catch (e) { return (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input id="ghost_guess_input" placeholder="letter or full word" />
+              <button onClick={async () => { try { const el = document.getElementById('ghost_guess_input'); const val = el ? el.value.trim() : ''; if (!val) return; await submitGhostGuess(val) } catch (er) {} }}>Submit</button>
+              <button onClick={() => setGhostModalOpen(false)}>Close</button>
+            </div>
+          ) }
+        })()}
       </div>
     </div>
   )}
