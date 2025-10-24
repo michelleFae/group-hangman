@@ -144,6 +144,10 @@ export default function PlayerCircle({
   const ownerWord = player.word || ''
   const revealedSet = new Set(revealed || [])
 
+  // If every letter in the owner's word is revealed (e.g., correct full-word guess),
+  // always render letters in their original order regardless of revealPreserveOrder.
+  const allLettersRevealed = (ownerWord || '').split('').every(ch => revealedSet.has((ch || '').toLowerCase()))
+
   const fullWordRendered = ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
     // if this letter is publicly revealed but a private reveal asked to override public color,
@@ -168,6 +172,76 @@ export default function PlayerCircle({
 
   // Build revealedPositions according to revealPreserveOrder / revealShowBlanks settings.
   let revealedPositions = null
+  if (allLettersRevealed) {
+    // Use full ordered rendering so the revealed div shows letters in word order
+    revealedPositions = fullWordRendered
+  } else
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   if (!isSelf && !revealPreserveOrder) {
     // Show letters in guessed order (derived from private reveals and privateHits),
     // expanding by occurrence count in the owner's word.

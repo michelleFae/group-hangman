@@ -14,12 +14,12 @@ function simulateFullWordResolution({ from, targetId, guessWord, targetWord, gue
   // correct word: award +5 as a delta.
   hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
-  // Double Down resolution
-  try {
+  
     const dd = guesser.doubleDown
+    console.log('Double Down active?', dd)
     if (dd && dd.active) {
-      const stake = Number(dd.stake) || 0
-      if (stake > 0) {
+        const stake = Number(dd.stake) || 0
+        if (stake > 0) {
         // add stake to their hang delta (they win their stake back)
         hangDeltas[from] = (hangDeltas[from] || 0) + stake
         // record a visible recent gain for the combined amount (+5 + stake)
@@ -29,12 +29,9 @@ function simulateFullWordResolution({ from, targetId, guessWord, targetWord, gue
         updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: now, from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
         // clear the doubleDown so the DD badge is removed and they must buy again
         updates[`players/${from}/doubleDown`] = null
-      }
+        }
     }
-  } catch (e) {
-    // ignore
-  }
-
+  
   // mark eliminated and add guessedBy for word
   updates[`players/${targetId}/eliminated`] = true
   updates[`players/${targetId}/eliminatedAt`] = now
