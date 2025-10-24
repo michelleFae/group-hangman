@@ -74,6 +74,7 @@ module.exports = async (req, res) => {
     if (!target || !guesser) return res.status(400).json({ error: 'Target or guesser not found' })
 
     const updates = {}
+  const hangDeltas = {}
     // Helper to write the ephemeral lastDoubleDown and also append a permanent
     // entry under doubleDownHistory so events are preserved for debugging.
     const addLastDoubleDown = (payload) => {
@@ -104,7 +105,7 @@ module.exports = async (req, res) => {
         const existing = prevRevealed.filter(x => x === letter).length
         const toAdd = Math.max(0, count - existing)
 
-  if (toAdd > 0) {
+      if (toAdd > 0) {
           // reveal newly found occurrences only and award for those
           for (let i = 0; i < toAdd; i++) prevRevealed.push(letter)
           updates[`players/${targetId}/revealed`] = prevRevealed
@@ -141,10 +142,13 @@ module.exports = async (req, res) => {
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
             let award = (2 * toAdd)
 
+            // Make stake available in this scope so we can reference it even if no DD is active
+            let stake = 0
+
             // Apply double-down bonus if the guesser staked
             const dd = guesser.doubleDown
             if (dd && dd.active) {
-              const stake = Number(dd.stake) || 0
+              stake = Number(dd.stake) || 0
               if (stake > 0) {
                 // award the stake per newly revealed occurrence
                 const extra = stake * toAdd
@@ -153,14 +157,15 @@ module.exports = async (req, res) => {
                 updates[`players/${from}/doubleDown`] = null
                 // subtract the original stake once (buyer pays the stake on resolution)
                 if (toAdd == 0) {
-                  //nothing guessed
+                  // nothing guessed
                   award = award - stake
-              }
+                }
               }
             }
-              updates[`players/${from}/wordmoney`] = prevHang + award
-              // mark that this guess produced a correct reveal and award
-              guessWasCorrect = true
+            // For letter guesses we apply award directly to the player's wordmoney
+            updates[`players/${from}/wordmoney`] = prevHang + award
+            // mark that this guess produced a correct reveal and award
+            guessWasCorrect = true
             // record a visible recent gain so clients show the correct wordmoney delta
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
 
@@ -169,7 +174,7 @@ module.exports = async (req, res) => {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
-                const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))` } }
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))` } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
               // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
               try {
@@ -281,34 +286,32 @@ module.exports = async (req, res) => {
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
 
-  // correct word: award +5 as a delta.
-  hangDeltas[from] = (hangDeltas[from] || 0) + 5
+        // correct word: award +5 as a delta.
+        hangDeltas[from] = (hangDeltas[from] || 0) + 5
 
         // If the guesser had an active Double Down, also award their stake back on a correct full-word guess
-        
-          const dd = guesser.doubleDown
-          console.log('Double Down active?', dd)
-          if (dd && dd.active) {
-            const stake = Number(dd.stake) || 0
-            if (stake > 0) {
-              // add stake to their hang delta (they win their stake back)
-              hangDeltas[from] = (hangDeltas[from] || 0) + stake
-              // record a visible recent gain for the combined amount (+5 + stake)
-       
-                // compute net gain (may be adjusted later when other deltas apply)
-                const netGain = (hangDeltas[from] || 0) + stake
-                console.log('Double Down net gain:', netGain)
-                updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
- 
-              // write a private power-up reveal so the buyer sees the double-down resolution
-            
-                const ddKey = `double_down_word_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
-              
-              // clear the doubleDown so the DD badge is removed and they must buy again
-              updates[`players/${from}/doubleDown`] = null 
-            }
+        const dd = guesser.doubleDown
+        console.log('Double Down active?', dd)
+        if (dd && dd.active) {
+          const stake = Number(dd.stake) || 0
+          if (stake > 0) {
+            // add stake to their hang delta (they win their stake back)
+            hangDeltas[from] = (hangDeltas[from] || 0) + stake
+            // record a visible recent gain for the combined amount (+5 + stake)
+
+            // compute net gain (hangDeltas already includes stake)
+            const netGain = (hangDeltas[from] || 0)
+            console.log('Double Down net gain:', netGain)
+            updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
+
+            // write a private power-up reveal so the buyer sees the double-down resolution
+            const ddKey = `double_down_word_${Date.now()}`
+            updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
+
+            // clear the doubleDown so the DD badge is removed and they must buy again
+            updates[`players/${from}/doubleDown`] = null
           }
+        }
         
 
   // mark eliminated and add guessedBy for word
@@ -362,6 +365,20 @@ module.exports = async (req, res) => {
           updates[`priceSurge/${nextPlayer}`] = null
         } catch (e) {}
       }
+    }
+
+    // If we have any hangDeltas, fold them into the updates using the snapshot we read earlier
+    try {
+      if (Object.keys(hangDeltas).length > 0) {
+        Object.keys(hangDeltas).forEach(pid => {
+          try {
+            const prev = (players && players[pid] && typeof players[pid].wordmoney === 'number') ? players[pid].wordmoney : 0
+            updates[`players/${pid}/wordmoney`] = Math.max(0, prev + (hangDeltas[pid] || 0))
+          } catch (e) {}
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to fold hangDeltas into updates', e)
     }
 
     if (Object.keys(updates).length > 0) await roomRef.update(updates)
