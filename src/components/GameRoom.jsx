@@ -1108,6 +1108,28 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 try { updates[`players/${pp.id}/ghostGuesses`] = null } catch (e) {}
               })
             } catch (e) {}
+            // Clear per-viewer private UI state that references this player so the
+            // ex-ghost's tile appears fresh on everyone else's screen. This removes
+            // private power-up results, wrong-letter/word lists, and private hit lists
+            // that viewers might have stored under their own player objects keyed by this player id.
+            try {
+              (state?.players || []).forEach(p => {
+                try { updates[`players/${p.id}/privatePowerReveals/${myId}`] = null } catch (e) {}
+                try { updates[`players/${p.id}/privateWrong/${myId}`] = null } catch (e) {}
+                try { updates[`players/${p.id}/privateWrongWords/${myId}`] = null } catch (e) {}
+                try { updates[`players/${p.id}/privateHits/${myId}`] = null } catch (e) {}
+              })
+            } catch (e) {}
+            // Also clear any private state stored on the re-entering player's own entry
+            try {
+              updates[`players/${myId}/privatePowerReveals`] = null
+              updates[`players/${myId}/privateHits`] = null
+              updates[`players/${myId}/privateWrong`] = null
+              updates[`players/${myId}/privateWrongWords`] = null
+            } catch (e) {}
+            // Reset the public revealed letters on the re-entering player's tile so
+            // other players no longer see previous revealed letters for this player.
+            try { updates[`players/${myId}/revealed`] = [] } catch (e) {}
             updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
         } else {
           // incorrect full-word guess : record attempt
@@ -4401,7 +4423,7 @@ try {
       <div className="modal card" style={{ maxWidth: 520 }}>
         <h3>Ghost Re-entry</h3>
         <div style={{ marginBottom: 8 }}>
-          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to get position feedback, or guess the full word to re-enter if correct. Ghosts cannot use power-ups. All ghosts share the same target word; when one ghost guesses it correctly, the target word changes for remaining ghosts. Note, correct letters show up shuffled and may not be in the order they originally are in the target word.</p>
+          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to know if they (and other occurrences of them) are in the word or not, or guess the full word to re-enter the game, if correct. You can only make a guess every 15 seconds, because ghosts need time to think. Ghosts cannot use power-ups. All ghosts share the same target word; when one ghost guesses it correctly, the target word changes for remaining ghosts. Note, correct letters show up shuffled and may not be in the order they originally are in the target word.</p>
           {/* Show the current challenge and the viewer's ghost guesses (ordered by guess time).
               Correct letters are shown in guess-order and include duplicates (one entry per occurrence).
               Wrong guesses (letters or full-word attempts) are shown separately. */}
@@ -4484,7 +4506,7 @@ try {
                 }}>{disabled ? `Wait ${remainingSec}s` : 'Submit'}</button>
                 <button onClick={() => setGhostModalOpen(false)}>Close</button>
                 <div style={{ marginLeft: 12, fontSize: 13, color: disabled ? '#b00' : '#666' }}>
-                  You can only make a guess every 15 seconds{disabled ? ` — wait ${remainingSec}s` : ''}.
+                  You can only make a guess every 15 seconds{disabled ? `: wait ${remainingSec}s` : ''}.
                 </div>
               </div>
             )
