@@ -580,7 +580,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
 
     // recent gain events (lastGain) : show once per (player,ts)
-    try {
+  
       players.forEach(p => {
         const lg = p.lastGain
         if (lg && lg.amount && lg.ts) {
@@ -608,10 +608,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           }
         }
       })
-    } catch (e) {}
+    
 
     // generic positive wordmoney deltas (uses prevHangRef to avoid initial-load noise)
-    try {
+    
       players.forEach(p => {
         const pid = p.id
         const prev = typeof prevHangRef.current[pid] === 'number' ? prevHangRef.current[pid] : null
@@ -625,7 +625,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
         prevHangRef.current[pid] = nowVal
       })
-    } catch (e) {}
   }, [state?.players, state?.timeouts])
 
   // Watch for room-level Double Down announcements (written by server on resolution)
