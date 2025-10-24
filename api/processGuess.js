@@ -277,66 +277,69 @@ module.exports = async (req, res) => {
         }
 
       if (guessWord === targetWord) {
+        // correct word: reveal all unique letters, award wordmoney, eliminate
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
-        const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-        updates[`players/${from}/wordmoney`] = prevHang + 5
-        // mark that a correct word guess happened
-        guessWasCorrect = true
+
+  // correct word: award +5 as a delta.
+  hangDeltas[from] = (hangDeltas[from] || 0) + 5
+
+        // If the guesser had an active Double Down, also award their stake back on a correct full-word guess
+        
+          const dd = guesser.doubleDown
+          console.log('Double Down active?', dd)
+          if (dd && dd.active) {
+            const stake = Number(dd.stake) || 0
+            if (stake > 0) {
+              // add stake to their hang delta (they win their stake back)
+              hangDeltas[from] = (hangDeltas[from] || 0) + stake
+              // record a visible recent gain for the combined amount (+5 + stake)
+       
+                // compute net gain (may be adjusted later when other deltas apply)
+                const netGain = (hangDeltas[from] || 0) + stake
+                console.log('Double Down net gain:', netGain)
+                updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
+ 
+              // write a private power-up reveal so the buyer sees the double-down resolution
+            
+                const ddKey = `double_down_word_${Date.now()}`
+                updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
+              
+              // clear the doubleDown so the DD badge is removed and they must buy again
+              updates[`players/${from}/doubleDown`] = null 
+            }
+          }
+        
+
+  // mark eliminated and add guessedBy for word
   updates[`players/${targetId}/eliminated`] = true
-  // record elimination timestamp for client ordering
+  // record elimination timestamp so clients can order final standings by elimination order
   updates[`players/${targetId}/eliminatedAt`] = Date.now()
         const prevWordGuessedBy = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
         if (!prevWordGuessedBy.includes(from)) prevWordGuessedBy.push(from)
         updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy
-        const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+
+        // record private hit for guesser
+  const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
         prevHits.push({ type: 'word', word: guessWord, ts: Date.now() })
         updates[`players/${from}/privateHits/${targetId}`] = prevHits
 
+        // remove from turnOrder and adjust currentTurnIndex
         const newTurnOrder = (room.turnOrder || []).filter(id => id !== targetId)
         updates[`turnOrder`] = newTurnOrder
+        // adjust currentTurnIndex to safe value
         let adjustedIndex = currentIndex
         const removedIndex = (room.turnOrder || []).indexOf(targetId)
         if (removedIndex !== -1 && removedIndex <= currentIndex) adjustedIndex = Math.max(0, adjustedIndex - 1)
-  updates[`currentTurnIndex`] = adjustedIndex
-  updates[`currentTurnStartedAt`] = Date.now()
-  // Clear transient effects for the player whose turn now begins
-  try {
-    const nextPlayer = newTurnOrder[adjustedIndex]
-    if (nextPlayer) {
-      updates[`players/${nextPlayer}/frozen`] = null
-      updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
-      updates[`priceSurge/${nextPlayer}`] = null
-    }
-  } catch (e) {}
+        updates[`currentTurnIndex`] = adjustedIndex
       } else {
+        // wrong word guess: record private wrong word
         const prevWrongWords = (guesser.privateWrongWords && guesser.privateWrongWords[targetId]) ? guesser.privateWrongWords[targetId].slice() : []
         prevWrongWords.push(value)
         updates[`players/${from}/privateWrongWords/${targetId}`] = prevWrongWords
-
-        // If the guesser had an active doubleDown, they lose their stake on a wrong guess
-        const ddFailWord = guesser.doubleDown
-        if (ddFailWord && ddFailWord.active) {
-          const stake = Number(ddFailWord.stake) || 0
-          if (stake > 0) {
-            const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-            updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
-            // write a private power-up result entry indicating the loss on word guess
-            try {
-              const ddKey4 = `double_down_loss_word_${Date.now()}`
-              const ddPayload4 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess. Lost <strong class="revealed-letter"> $${stake}</strong>` } }
-              updates[`players/${from}/privatePowerReveals/${from}/${ddKey4}`] = ddPayload4
-              try {
-                const ddKey4Target = `double_down_loss_word_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey4Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: wrong word guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
-              } catch (e) {}
-              try {
-                addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() })
-              } catch (e) {}
-            } catch (e) {}
-          }
-          updates[`players/${from}/doubleDown`] = null
-        }
+        // reward the target for a wrong full-word guess
+        // reward the target for a wrong full-word guess (delta)
+        hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
       }
     }
 
