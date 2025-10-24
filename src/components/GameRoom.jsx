@@ -72,30 +72,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostReEntryEnabled, setGhostReEntryEnabled] = useState(true)
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
-  // live per-second cooldown display for ghost guesses (seconds remaining)
-  const [ghostCooldownSec, setGhostCooldownSec] = useState(0)
-  useEffect(() => {
-    // update every second while modal is open so the UI shows a live countdown
-    if (!ghostModalOpen) {
-      try { setGhostCooldownSec(0) } catch (e) {}
-      return undefined
-    }
-    let mounted = true
-    function tick() {
-      try {
-        const me = (state?.players || []).find(p => p.id === myId) || {}
-        const last = Number(me.ghostLastGuessAt || 0)
-        const cooldownMs = 15000
-        const now = Date.now()
-        const remainingMs = last ? Math.max(0, cooldownMs - (now - last)) : 0
-        const sec = Math.ceil(remainingMs / 1000)
-        if (mounted) setGhostCooldownSec(sec)
-      } catch (e) {}
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => { mounted = false; clearInterval(id) }
-  }, [state?.players, myId, ghostModalOpen, tick])
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
@@ -446,6 +422,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // viewer id (derived from hook or firebase auth) : declare early to avoid TDZ in effects
   const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+
+  // live per-second cooldown display for ghost guesses (seconds remaining)
+  const [ghostCooldownSec, setGhostCooldownSec] = useState(0)
+  useEffect(() => {
+    // update every second while modal is open so the UI shows a live countdown
+    if (!ghostModalOpen) {
+      try { setGhostCooldownSec(0) } catch (e) {}
+      return undefined
+    }
+    let mounted = true
+    function tickLocal() {
+      try {
+        const me = (state?.players || []).find(p => p.id === myId) || {}
+        const last = Number(me.ghostLastGuessAt || 0)
+        const cooldownMs = 15000
+        const now = Date.now()
+        const remainingMs = last ? Math.max(0, cooldownMs - (now - last)) : 0
+        const sec = Math.ceil(remainingMs / 1000)
+        if (mounted) setGhostCooldownSec(sec)
+      } catch (e) {}
+    }
+    tickLocal()
+    const id = setInterval(tickLocal, 1000)
+    return () => { mounted = false; clearInterval(id) }
+  }, [state?.players, myId, ghostModalOpen])
 
   // Track whether we've observed the current player in the room previously so we only
   // redirect when we detect their removal after having been present.
