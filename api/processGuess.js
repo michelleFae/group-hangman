@@ -174,12 +174,24 @@ module.exports = async (req, res) => {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
-              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))` } }
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+                letter: letterStr,
+                amount: award,
+                stake: stake,
+                message: `Double Down: guessed '${letterStr}' with stake ${stake} and netted +$${award}`,
+                messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' with stake ${stake} and netted <strong class="revealed-letter">+$${award}</strong> (+2 per previously unrevealed letter, + (2*${stake}))`
+              } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
               // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
               try {
                 const ddKeyTarget = `double_down_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr, amount: award, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+                  letter: letterStr,
+                  amount: award,
+                  stake: stake,
+                  message: `Double Down: guessed '${letterStr}' and netted +$${award}`,
+                  messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>`
+                } }
               } catch (e) {}
               // announcement for all clients: brief double-down summary (ephemeral)
               try {
@@ -208,11 +220,23 @@ module.exports = async (req, res) => {
             try {
               const ddKey2 = `double_down_noscore_${Date.now()}`
               const letterStr2 = letter
-              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr2, amount: 0, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
+              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+                letter: letterStr2,
+                amount: 0,
+                stake: stake,
+                message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
+                messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
+              } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
               try {
                 const ddKey2Target = `double_down_noscore_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr2, amount: 0, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.` } }
+                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+                  letter: letterStr2,
+                  amount: 0,
+                  stake: stake,
+                  message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
+                  messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
+                } }
               } catch (e) {}
             } catch (e) {}
           }
@@ -244,11 +268,23 @@ module.exports = async (req, res) => {
                 try {
                   const ddKey3 = `double_down_loss_${Date.now()}`
                   const letterStr3 = letter
-                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+                    letter: letterStr3,
+                    amount: -stake,
+                    stake: stake,
+                    message: `Double Down: guessed '${letterStr3}' and lost -$${stake}`,
+                    messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>`
+                  } }
                   updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
                   try {
                     const ddKey3Target = `double_down_loss_target_${Date.now()}`
-                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: letterStr3, amount: -stake, stake: stake, message: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>` } }
+                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+                      letter: letterStr3,
+                      amount: -stake,
+                      stake: stake,
+                      message: `Double Down: guessed '${letterStr3}' and lost -$${stake}`,
+                      messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>`
+                    } }
                   } catch (e) {}
                     try {
                       addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() })
@@ -306,7 +342,11 @@ module.exports = async (req, res) => {
 
             // write a private power-up reveal so the buyer sees the double-down resolution
             const ddKey = `double_down_word_${Date.now()}`
-            updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
+            updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+              amount: stake,
+              message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})`,
+              messageHtml: `<strong class="power-name">Double Down</strong>: correctly guessed the whole word and earned your stake back <strong class="revealed-letter">(+$${stake})</strong>`
+            } }
 
             // clear the doubleDown so the DD badge is removed and they must buy again
             updates[`players/${from}/doubleDown`] = null
@@ -399,12 +439,22 @@ module.exports = async (req, res) => {
             const fix = {}
             fix[deductionKey] = Math.max(0, prevGHang - stake)
             const lossKey = `double_down_loss_fallback_${Date.now()}`
-            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
+            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+              letter: null,
+              amount: -stake,
+              message: `Double Down wrong guess! Lost $${stake}`,
+              messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
+            } }
             fix[`${ddKeyBase}/${lossKey}`] = ddPayload
               try {
                 // also add a buyer-targeted fallback entry so buyer sees this in the target tile
                 const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
-                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: { letter: null, amount: -stake, message: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>` } }
+                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+                  letter: null,
+                  amount: -stake,
+                  message: `Double Down wrong guess! Lost $${stake}`,
+                  messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
+                } }
               } catch (e) {}
                 try {
                 fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
