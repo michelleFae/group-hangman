@@ -266,7 +266,9 @@ exports.processGuess = functions.database
               hangDeltas[from] = (hangDeltas[from] || 0) + stake
               // record a visible recent gain for the combined amount (+5 + stake)
               try {
-                updates[`players/${from}/lastGain`] = { amount: (5 + stake), by: targetId, reason: 'doubleDownWord', ts: Date.now() }
+                // compute net gain (may be adjusted later when other deltas apply)
+                const netGain = (hangDeltas[from] || 0)
+                updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
               } catch (e) {}
               // write a private power-up reveal so the buyer sees the double-down resolution
               try {
