@@ -1062,8 +1062,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // update ghostHistory entry with what it was replaced by
           try {
             updates[`ghostHistory/${nowTs}`].replacedBy = newWord
-          } catch (e) {}
-          updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
+            } catch (e) {}
+            // Clear all players' ghostGuesses so everyone sees a fresh challenge when it rotates
+            try {
+              (state?.players || []).forEach(pp => {
+                try { updates[`players/${pp.id}/ghostGuesses`] = null } catch (e) {}
+              })
+            } catch (e) {}
+            updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
         } else {
           // incorrect full-word guess : record attempt
           const key = `g_${nowTs}`
@@ -4354,9 +4360,46 @@ try {
       <div className="modal card" style={{ maxWidth: 520 }}>
         <h3>Ghost Re-entry</h3>
         <div style={{ marginBottom: 8 }}>
-          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to get position feedback, or guess the full word to re-enter if correct. Ghosts cannot use power-ups. All ghosts share the same target; when one ghost guesses it correctly, the target changes for remaining ghosts.</p>
+          <p>As a ghost, you'll attempt to guess a shared random word. Guess letters to get position feedback, or guess the full word to re-enter if correct. Ghosts cannot use power-ups. All ghosts share the same target word; when one ghost guesses it correctly, the target word changes for remaining ghosts. Note, correct letters show up shuffled and may not be in the order they originally are in the target word.</p>
+          {/* Show the current challenge and the viewer's ghost guesses (ordered by guess time).
+              Correct letters are shown in guess-order and include duplicates (one entry per occurrence).
+              Wrong guesses (letters or full-word attempts) are shown separately. */}
           <div style={{ fontSize: 13, marginTop: 6 }}>
-            Current challenge: <strong>{(state && state.ghostChallenge && state.ghostChallenge.word) ? (state.ghostChallenge.word.split('').map((c,i) => '_').join('')) : '—'}</strong>
+            <div>Current challenge: <strong>{(state && state.ghostChallenge && state.ghostChallenge.word) ? (state.ghostChallenge.word.split('').map((c,i) => '_').join('')) : '—'}</strong></div>
+            {(() => {
+              try {
+                const me = (state?.players || []).find(p => p.id === myId) || {}
+                const raw = me.ghostGuesses || {}
+                const ordered = Object.keys(raw || {}).map(k => ({ key: k, ...(raw[k] || {}) })).sort((a,b) => (Number(a.ts || 0) - Number(b.ts || 0)))
+                const correctLetters = []
+                const wrongLetters = []
+                const wrongWords = []
+                ordered.forEach(g => {
+                  try {
+                    const s = (g && g.guess) ? String(g.guess).toLowerCase() : ''
+                    if (!s) return
+                    if (s.length === 1) {
+                      const positions = Array.isArray(g.positions) ? g.positions : []
+                      if (positions.length > 0) {
+                        // Repeat the letter for each occurrence found so duplicates appear
+                        for (let i = 0; i < positions.length; i++) correctLetters.push(s)
+                      } else {
+                        wrongLetters.push(s)
+                      }
+                    } else {
+                      // full-word attempts
+                      wrongWords.push(s)
+                    }
+                  } catch (e) {}
+                })
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 13 }}><strong>Correct guesses:</strong> {correctLetters.length > 0 ? correctLetters.join(' ') : '—'}</div>
+                    <div style={{ fontSize: 13, marginTop: 6 }}><strong>Wrong guesses:</strong> {(wrongLetters.concat(wrongWords).length > 0) ? wrongLetters.concat(wrongWords).join(', ') : '—'}</div>
+                  </div>
+                )
+              } catch (e) { return null }
+            })()}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -4380,7 +4423,9 @@ try {
                   setToasts(t => [...t, { id: `ghost_wrong_${Date.now()}`, text: 'Incorrect guess.' }])
                 }
               } else if (res.positions) {
-                setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: `Letter found at positions: ${res.positions.join(', ')}` }])
+                // Avoid exposing exact positions in toasts; modal shows the letters below the challenge.
+                setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: 'Letter found.' }])
+                try { if (el) el.value = '' } catch (e) {}
               }
             } catch (e) { console.warn(e) }
           }}>Submit</button>
