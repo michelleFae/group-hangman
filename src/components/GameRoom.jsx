@@ -1160,6 +1160,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // Reset the public revealed letters on the re-entering player's tile so
             // other players no longer see previous revealed letters for this player.
             try { updates[`players/${myId}/revealed`] = [] } catch (e) {}
+            // Recompute turnOrder to add the re-entering player (if not present).
+            try {
+              const curOrder = Array.isArray(state && state.turnOrder) ? (state.turnOrder || []).slice() : []
+              if (!curOrder.includes(myId)) {
+                // Insert before the player whose current turn it is so the re-entered
+                // player will act just before the current turn (i.e. they'll go "last"
+                // relative to new entrants).
+                const insertIndex = (typeof state?.currentTurnIndex === 'number') ? state.currentTurnIndex : curOrder.length
+                const idx = Math.max(0, Math.min(curOrder.length, insertIndex))
+                const next = curOrder.slice()
+                next.splice(idx, 0, myId)
+                updates[`turnOrder`] = next
+              }
+            } catch (e) {}
             updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
         } else {
           // incorrect full-word guess : record attempt
