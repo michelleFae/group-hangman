@@ -1248,9 +1248,11 @@ export default function useGameRoom(roomId, playerName) {
           
               const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
               if (gm === 'money' || gm === 'lastOneStanding' || gm === 'lastTeamStanding') {
+                console.log("In the phases for starter bonus reveal") 
                 
                   const existing = Array.isArray(pVal.revealed) ? pVal.revealed.map(x => (x||'').toString().toLowerCase()) : []
                   if (!existing.includes(req)) {
+                    console.log("Revealing starter letter:", req)
                     const next = Array.from(new Set([...(existing || []), req]))
                     ups[`players/${uid}/revealed`] = next
                   }
