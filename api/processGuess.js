@@ -523,11 +523,65 @@ module.exports = async (req, res) => {
       console.warn('doubleDown fallback cleanup failed', e && (e.stack || e.message || String(e)))
     }
 
-    // Check if only one player remains uneliminated
+    // Check for end-of-game conditions
     const freshPlayersSnap = await roomRef.child('players').once('value')
     const freshPlayers = freshPlayersSnap.val() || {}
     const alive = Object.values(freshPlayers).filter(p => !p.eliminated)
-  if (alive.length === 1) {
+    // Last Team Standing: balanced win condition using initial team sizes
+    try {
+      if ((room && room.gameMode) === 'lastTeamStanding' && alive.length > 0 && room.teams) {
+        // compute active counts by team
+        const activeByTeam = {}
+        alive.forEach(p => { try { const t = p && p.team ? p.team : null; if (t) activeByTeam[t] = (activeByTeam[t] || 0) + 1 } catch (e) {} })
+        const teamNames = Object.keys(room.teams || {})
+        // require at least two teams configured to evaluate balanced rule
+        if (teamNames.length >= 2) {
+          for (let i = 0; i < teamNames.length; i++) {
+            const t = teamNames[i]
+            const initialT = (room.teams[t] && typeof room.teams[t].initialCount === 'number') ? Number(room.teams[t].initialCount) : 0
+            // compute initial count of other teams combined
+            let initialOthers = 0
+            for (let j = 0; j < teamNames.length; j++) if (teamNames[j] !== t) initialOthers += (room.teams[teamNames[j]] && typeof room.teams[teamNames[j]].initialCount === 'number') ? Number(room.teams[teamNames[j]].initialCount) : 0
+            const otherRemaining = Object.keys(activeByTeam || {}).reduce((acc, k) => { if (k !== t) return acc + (activeByTeam[k] || 0); return acc }, 0)
+            // Balanced rule: team t wins when otherRemaining <= (initialOthers - initialT)
+            // This makes the smaller team require fewer eliminations (roughly equalizes per-player coverage).
+            const threshold = Math.max(0, initialOthers - initialT)
+            if (otherRemaining <= threshold) {
+              const winnerTeam = t
+              const gameOverUpdates = {
+                phase: 'ended',
+                winnerTeam: winnerTeam || null,
+                winnerId: null,
+                winnerName: winnerTeam ? (winnerTeam.charAt(0).toUpperCase() + winnerTeam.slice(1) + ' Team') : null,
+                endedAt: Date.now()
+              }
+              await roomRef.update(gameOverUpdates)
+              console.log('Game over : team winner (balanced):', winnerTeam)
+              return res.status(200).json({ ok: true })
+            }
+          }
+        } else {
+          // fallback to simple single-team remaining rule
+          const teamsAlive = new Set(alive.map(p => (p && p.team) ? p.team : null).filter(Boolean))
+          if (teamsAlive.size === 1) {
+            const winnerTeam = Array.from(teamsAlive)[0]
+            const gameOverUpdates = {
+              phase: 'ended',
+              winnerTeam: winnerTeam || null,
+              winnerId: null,
+              winnerName: winnerTeam ? (winnerTeam.charAt(0).toUpperCase() + winnerTeam.slice(1) + ' Team') : null,
+              endedAt: Date.now()
+            }
+            await roomRef.update(gameOverUpdates)
+            console.log('Game over : team winner:', winnerTeam)
+            return res.status(200).json({ ok: true })
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Fallback: Check if only one player remains uneliminated
+    if (alive.length === 1) {
     let winner = alive[0]
     // if the room prefers winner by wordmoney, pick the richest player among all players
     if (room && room.winnerByWordmoney) {

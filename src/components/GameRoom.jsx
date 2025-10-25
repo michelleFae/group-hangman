@@ -827,7 +827,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const myNode = (state?.players || []).find(p => p.id === myId) || {}
   const myName = myNode.name || playerName
   // consider the viewer a winner if the room's winnerId matches their id
-  const isWinner = (state?.winnerId && myId && state.winnerId === myId) 
+  // also consider team wins: when winnerTeam is set, all players on that team are winners
+  const isWinner = (state?.winnerTeam ? (myNode && myNode.team && state.winnerTeam && myNode.team === state.winnerTeam) : (state?.winnerId && myId && state.winnerId === myId))
+  // friendly label for winner (player or team)
+  const winnerLabel = state?.winnerTeam ? (state.winnerTeam.charAt(0).toUpperCase() + state.winnerTeam.slice(1) + ' Team') : (playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId)
   // compute standings:
   // - if winnerByWordmoney is true, sort by wordmoney desc
   // - otherwise (last-one-standing), order by elimination: winner first, then players
@@ -3492,8 +3495,18 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
+  // clear team winner marker
+  updates['winnerTeam'] = null
   // clear any team reveal state so teammates don't keep revealed words across rematch
   updates['teamReveals'] = null
+  // clear per-team initial counts and compensation applied if present
+  try {
+    const teamNames = state && state.teams ? Object.keys(state.teams || {}) : []
+    teamNames.forEach(t => {
+      try { updates[`teams/${t}/initialCount`] = null } catch (e) {}
+      try { updates[`teams/${t}/compensationApplied`] = null } catch (e) {}
+    })
+  } catch (e) {}
   // determine starting wordmoney to apply for resets : prefer room setting, fallback to 2
   const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
@@ -3585,8 +3598,18 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
+  // clear any persisted team-winner marker
+  updates['winnerTeam'] = null
   // clear persisted teammate reveals on automatic rematch so everyone starts fresh
   updates['teamReveals'] = null
+  // clear per-team initial counts and compensationApplied values so rematch starts fresh
+  try {
+    const teamNames = state && state.teams ? Object.keys(state.teams || {}) : []
+    teamNames.forEach(t => {
+      try { updates[`teams/${t}/initialCount`] = null } catch (e) {}
+      try { updates[`teams/${t}/compensationApplied`] = null } catch (e) {}
+    })
+  } catch (e) {}
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -4171,7 +4194,7 @@ try {
             <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
           ))}
 
-          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
+          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
           <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
           <div className="standings card" style={{ marginTop: 12 }}>
@@ -5073,6 +5096,27 @@ try {
                 <div className="progress-bar" style={{ width: `${(players.length ? (submittedCount / players.length) * 100 : 0)}%`, background: '#4caf50', height: 10, borderRadius: 6 }} />
                 <div style={{ marginTop: 6, fontSize: 13 }}>{submittedCount} / {players.length} players submitted</div>
               </div>
+              {/* Explain balanced last-team-standing behavior when teams will be unbalanced */}
+              {state?.gameMode === 'lastTeamStanding' && (() => {
+                try {
+                  const total = (players || []).length || 0
+                  if (total >= 2) {
+                    const larger = Math.ceil(total / 2)
+                    const smaller = Math.floor(total / 2)
+                    if (larger !== smaller) {
+                      const compBase = (typeof state?.startingWordmoney === 'number') ? Number(state.startingWordmoney) : Number(startingWordmoney || 0)
+                      const compExtra = state?.starterBonus && state.starterBonus.enabled ? 10 : 0
+                      const comp = compBase + compExtra
+                      return (
+                        <div style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                          <strong>Balancing:</strong> Teams will be split approximately {larger} vs {smaller}. The smaller team only needs to eliminate {smaller} player{smaller !== 1 ? 's' : ''} from the larger team to win. At game start the smaller team will be credited <strong>+${comp}</strong> to compensate.
+                        </div>
+                      )
+                    }
+                  }
+                } catch (e) {}
+                return null
+              })()}
             </div>
             <div className="submit-controls">
               {!myHasSubmitted ? (
@@ -5116,7 +5160,7 @@ try {
               <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
             ))}
 
-            <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${playerIdToName[state?.winnerId] || state?.winnerName || state?.winnerId || '—'} Wins`}</h1>
+              <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
             <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
             <div className="standings card" style={{ marginTop: 12 }}>

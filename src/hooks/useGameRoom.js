@@ -945,7 +945,18 @@ export default function useGameRoom(roomId, playerName) {
     const room = snap.val() || {}
     if (room.hostId !== uid) return
     // options: { timed: boolean, turnSeconds: number }
-    const updates = { phase: 'submit', open: false }
+  const updates = { phase: 'submit', open: false }
+  // Clear any previous winner metadata to be safe on rematch/restart
+  // This ensures stale `winnerTeam` or winner labels don't persist across games.
+  try { updates['winnerTeam'] = null; updates['winnerId'] = null; updates['winnerName'] = null } catch (e) {}
+  // Also clear per-team initial count and compensation markers so rematch starts fresh
+  try {
+    const teamNames = (room && room.teams) ? Object.keys(room.teams || {}) : []
+    teamNames.forEach(t => {
+      try { updates[`teams/${t}/initialCount`] = null } catch (e) {}
+      try { updates[`teams/${t}/compensationApplied`] = null } catch (e) {}
+    })
+  } catch (e) {}
     if (options && options.timed) {
       updates.timed = true
       updates.turnTimeoutSeconds = Math.max(10, Math.min(300, Number(options.turnSeconds) || 30))
@@ -958,7 +969,7 @@ export default function useGameRoom(roomId, playerName) {
       try {
         const letters = 'abcdefghijklmnopqrstuvwxyz'
         const letter = letters[Math.floor(Math.random() * letters.length)]
-        updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Contains the letter "${letter.toUpperCase()}"`, applied: false }
+        updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Contains the letter "${letter.toLowerCase()}". Note: All occurrences of this letter in your word will be revealed to other players.`, applied: false }
       } catch (e) {
         // ignore
       }
@@ -1036,9 +1047,27 @@ export default function useGameRoom(roomId, playerName) {
         })
         // initialize team wallets to sum of individual starting money for each team
         try {
-          updates[`teams/red/wordmoney`] = (teams.red.length || 0) * startMoney
-          updates[`teams/blue/wordmoney`] = (teams.blue.length || 0) * startMoney
+          const redCount = teams.red.length || 0
+          const blueCount = teams.blue.length || 0
+          updates[`teams/red/wordmoney`] = redCount * startMoney
+          updates[`teams/blue/wordmoney`] = blueCount * startMoney
           updates[`teamFreeze`] = { red: null, blue: null }
+          // persist initial team sizes so server-side logic can compute balanced win
+          updates[`teams/red/initialCount`] = redCount
+          updates[`teams/blue/initialCount`] = blueCount
+          // if teams are uneven, compensate the smaller team so they are balanced
+          try {
+            if (redCount !== blueCount) {
+              const smaller = redCount < blueCount ? 'red' : 'blue'
+              // compensation: at least startingWordmoney; if starterEnabled for this game, include +10
+              const compBase = startMoney
+              const compExtra = (options && options.starterEnabled) ? 10 : 0
+              const comp = compBase + compExtra
+              updates[`teams/${smaller}/wordmoney`] = (updates[`teams/${smaller}/wordmoney`] || 0) + comp
+              // record what compensation was applied so UI or rematch logic can inspect it
+              updates[`teams/${smaller}/compensationApplied`] = comp
+            }
+          } catch (e) {}
         } catch (e) {}
       }
     } catch (e) {}
@@ -1206,7 +1235,7 @@ export default function useGameRoom(roomId, playerName) {
       if (allSubmitted) {
         // Build a turn order. For team mode (lastTeamStanding) prefer an alternating
         // sequence across teams so consecutive turns belong to different teams where possible.
-        const buildAlternatingOrder = (playersObj) => {
+  const buildAlternatingOrder = (playersObj, prevLastTeam = null) => {
           try {
             const keys = Object.keys(playersObj || {})
             // group players by team preserving original join order
@@ -1225,18 +1254,58 @@ export default function useGameRoom(roomId, playerName) {
               } catch (e) {}
             })
             const teamNames = Object.keys(teams)
-            if (teamNames.length <= 1) return keys // nothing to alternate
-            // pick starting team: prefer team of first player if present, otherwise first team
+            // If there are no or only one team, fall back to keys (but attempt to interleave
+            // unteamed players with the single team if present so we avoid bunching where possible).
+            if (teamNames.length <= 1) {
+              if (teamNames.length === 1 && unteamed.length > 0) {
+                const teamQueue = teams[teamNames[0]].slice()
+                const uQueue = unteamed.slice()
+                const res = []
+                let takeFromTeam = true
+                while (teamQueue.length || uQueue.length) {
+                  if (takeFromTeam && teamQueue.length) res.push(teamQueue.shift())
+                  else if (!takeFromTeam && uQueue.length) res.push(uQueue.shift())
+                  else if (teamQueue.length) res.push(teamQueue.shift())
+                  else if (uQueue.length) res.push(uQueue.shift())
+                  takeFromTeam = !takeFromTeam
+                }
+                return res
+              }
+              return keys // nothing to alternate meaningfully
+            }
+
+            // pick starting team: prefer the team opposite the previous round's last-turn team
+            // so the next team's turn is different across rounds. If prevLastTeam is not
+            // available, fall back to the team of the first player or the first team name.
             const firstPid = keys[0]
-            const firstTeam = (playersObj[firstPid] && playersObj[firstPid].team) ? playersObj[firstPid].team : teamNames[0]
+            let firstTeam = null
+            if (prevLastTeam) {
+              // choose any team that is not prevLastTeam if possible
+              firstTeam = teamNames.find(t => t !== prevLastTeam) || teamNames[0]
+            } else {
+              firstTeam = (playersObj[firstPid] && playersObj[firstPid].team) ? playersObj[firstPid].team : teamNames[0]
+            }
             const orderedTeams = [firstTeam].concat(teamNames.filter(t => t !== firstTeam))
             const queues = {}
             orderedTeams.forEach(t => { queues[t] = teams[t] ? teams[t].slice() : [] })
             const result = []
+
+            // Round-robin across teams but always prefer the next non-empty team so
+            // we maximize alternation even when sizes are uneven.
             let idx = 0
             while (Object.keys(queues).some(k => queues[k].length > 0)) {
-              const t = orderedTeams[idx % orderedTeams.length]
-              if (queues[t] && queues[t].length > 0) result.push(queues[t].shift())
+              // find next non-empty team starting from current idx
+              let found = null
+              for (let offset = 0; offset < orderedTeams.length; offset++) {
+                const cand = orderedTeams[(idx + offset) % orderedTeams.length]
+                if (queues[cand] && queues[cand].length > 0) {
+                  found = cand
+                  idx = idx + offset
+                  break
+                }
+              }
+              if (!found) break
+              result.push(queues[found].shift())
               idx++
             }
             // append any unteamed players at end
@@ -1246,7 +1315,18 @@ export default function useGameRoom(roomId, playerName) {
           }
         }
 
-        const turnOrder = (roomRoot && roomRoot.gameMode === 'lastTeamStanding') ? buildAlternatingOrder(playersObj) : Object.keys(playersObj)
+        // Determine which team had the last turn in the previous round (if available)
+        let prevLastTeam = null
+        try {
+          if (roomRoot && Array.isArray(roomRoot.turnOrder) && typeof roomRoot.currentTurnIndex === 'number') {
+            const prevIdxRaw = (roomRoot.currentTurnIndex - 1)
+            const prevIdx = ((prevIdxRaw % roomRoot.turnOrder.length) + roomRoot.turnOrder.length) % roomRoot.turnOrder.length
+            const prevPid = roomRoot.turnOrder[prevIdx]
+            if (prevPid && playersObj && playersObj[prevPid] && playersObj[prevPid].team) prevLastTeam = playersObj[prevPid].team
+          }
+        } catch (e) {}
+
+        const turnOrder = (roomRoot && roomRoot.gameMode === 'lastTeamStanding') ? buildAlternatingOrder(playersObj, prevLastTeam) : Object.keys(playersObj)
         const turnTimeout = roomRoot.turnTimeoutSeconds || null
         const timed = !!roomRoot.timed
         const updates = {

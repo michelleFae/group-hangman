@@ -393,6 +393,63 @@ exports.processGuess = functions.database
           } catch (e) {}
         })
 
+        // After applying updates and deltas, check for Last Team Standing end condition.
+        try {
+          if ((curr && curr.gameMode) === 'lastTeamStanding') {
+            // collect active (non-eliminated) players
+            const alive = []
+            if (curr.players) {
+              Object.keys(curr.players).forEach(pid => {
+                try {
+                  const p = curr.players[pid]
+                  if (p && !p.eliminated) alive.push(p)
+                } catch (e) {}
+              })
+            }
+            if (alive.length > 0 && curr.teams) {
+              // compute active counts by team
+              const activeByTeam = {}
+              alive.forEach(p => { try { const t = p && p.team ? p.team : null; if (t) activeByTeam[t] = (activeByTeam[t] || 0) + 1 } catch (e) {} })
+              const teamNames = Object.keys(curr.teams || {})
+              // require at least two teams configured to evaluate balanced rule
+              if (teamNames.length >= 2) {
+                for (let i = 0; i < teamNames.length; i++) {
+                  const t = teamNames[i]
+                  const initialT = (curr.teams[t] && typeof curr.teams[t].initialCount === 'number') ? Number(curr.teams[t].initialCount) : 0
+                  // compute initial count of other teams combined
+                  let initialOthers = 0
+                  for (let j = 0; j < teamNames.length; j++) if (teamNames[j] !== t) initialOthers += (curr.teams[teamNames[j]] && typeof curr.teams[teamNames[j]].initialCount === 'number') ? Number(curr.teams[teamNames[j]].initialCount) : 0
+                  const otherRemaining = Object.keys(activeByTeam || {}).reduce((acc, k) => { if (k !== t) return acc + (activeByTeam[k] || 0); return acc }, 0)
+                  // Balanced rule: team t wins when otherRemaining <= (initialOthers - initialT)
+                  // This makes the smaller team require fewer eliminations (roughly equalizes per-player coverage).
+                  const threshold = Math.max(0, initialOthers - initialT)
+                  if (otherRemaining <= threshold) {
+                    const winnerTeam = t
+                    // finalize room as ended with a team winner
+                    curr.phase = 'ended'
+                    curr.winnerTeam = winnerTeam || null
+                    curr.winnerId = null
+                    curr.winnerName = winnerTeam ? (winnerTeam.charAt(0).toUpperCase() + winnerTeam.slice(1) + ' Team') : null
+                    curr.endedAt = Date.now()
+                    break
+                  }
+                }
+              } else {
+                // fallback to simple single-team remaining rule
+                const teamsAlive = new Set(alive.map(p => (p && p.team) ? p.team : null).filter(Boolean))
+                if (teamsAlive.size === 1) {
+                  const winnerTeam = Array.from(teamsAlive)[0]
+                  curr.phase = 'ended'
+                  curr.winnerTeam = winnerTeam || null
+                  curr.winnerId = null
+                  curr.winnerName = winnerTeam ? (winnerTeam.charAt(0).toUpperCase() + winnerTeam.slice(1) + ' Team') : null
+                  curr.endedAt = Date.now()
+                }
+              }
+            }
+          }
+        } catch (e) { /* ignore non-fatal */ }
+
         return curr
       })
     }
