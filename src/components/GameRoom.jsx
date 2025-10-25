@@ -89,11 +89,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   useUserActivation()
 
   // Helper: apply an award/deduction amount to either a player's wallet or their team wallet
-  // depending on room.mode === 'lastThemeStanding'. Always record a per-player lastGain for UI.
+  // depending on room.mode === 'lastTeamStanding'. Always record a per-player lastGain for UI.
   function applyAward(updates, pid, amount, { reason = null, by = null } = {}) {
     try {
       const playerNode = (state?.players || []).find(p => p.id === pid) || {}
-      if ((state && state.gameMode) === 'lastThemeStanding' && playerNode && playerNode.team) {
+      if ((state && state.gameMode) === 'lastTeamStanding' && playerNode && playerNode.team) {
         const team = playerNode.team
         const prevTeam = Number((state && state.teams && state.teams[team] && state.teams[team].wordmoney) || 0)
         const teamBase = (typeof updates[`teams/${team}/wordmoney`] !== 'undefined') ? Number(updates[`teams/${team}/wordmoney`]) : prevTeam
@@ -339,7 +339,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomGameMode(mode, opts = {}) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      const safeMode = (mode === 'money' || mode === 'lastOneStanding' || mode === 'wordSpy') ? mode : 'lastOneStanding'
+      const safeMode = (mode === 'money' || mode === 'lastOneStanding' || mode === 'wordSpy' || mode === 'lastTeamStanding') ? mode : 'lastOneStanding'
       const updates = { gameMode: safeMode }
       // keep legacy boolean in sync
       updates['winnerByWordmoney'] = safeMode === 'money'
@@ -898,11 +898,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // but keep the inner card interactive by re-enabling pointer-events on it
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
       <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSpy' ? '🕵️' : (state?.winnerByWordmoney ? '💸' : '🛡️')}</span>
+    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSpy' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-        <strong style={{ fontSize: 13 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney' : 'Winner: Last one standing'}</strong>
-        <small style={{ color: '#B4A3A3', fontSize: 12 }}>{(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : 'Elimination wins'}</small>
+        <strong style={{ fontSize: 13 }}>
+          {(state?.gameMode === 'wordSpy') ? 'Word Spy'
+            : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney'
+            : (state?.gameMode === 'lastTeamStanding') ? 'Winner: Last team standing'
+            : 'Winner: Last one standing'}
+        </strong>
+        <small style={{ color: '#B4A3A3', fontSize: 12 }}>
+          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : (state?.gameMode === 'lastTeamStanding') ? 'Guess any of the other team\'s words to win' : 'Elimination wins'}
+        </small>
         </div>
         {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
           {powerUpsEnabled && phase === 'lobby' && (
@@ -1371,6 +1378,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 }
               }} style={{ marginLeft: 8 }}>
                 <option value="lastOneStanding">Last One Standing</option>
+                  <option value="lastTeamStanding">Last Team Standing</option>
                 <option value="money">Money Wins</option>
                 <option value="wordSpy">Word Spy</option>
               </select>
@@ -1529,7 +1537,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const myHang = Number(me.wordmoney) || 0
     const gmMode = state && state.gameMode
     let teamMoney = null
-    if (gmMode === 'lastThemeStanding' && me.team) {
+    if (gmMode === 'lastTeamStanding' && me.team) {
       teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
       if (teamMoney - cost < 0) {
         setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough team wordmoney to buy that power-up.' }])
@@ -1564,7 +1572,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const stake = Number(opts && opts.stake) || 0
           // server/client guard: do not allow staking more than (current wordmoney - 1)
           // e.g. if wordmoney is 3, max stake is 2
-          const maxStake = gmMode === 'lastThemeStanding' && me.team ? Math.max(0, (Number(teamMoney) || 0) - 1) : Math.max(0, (Number(me.wordmoney) || 0) - 1)
+          const maxStake = gmMode === 'lastTeamStanding' && me.team ? Math.max(0, (Number(teamMoney) || 0) - 1) : Math.max(0, (Number(me.wordmoney) || 0) - 1)
           if (stake > maxStake) {
             setToasts(t => [...t, { id: `pup_err_stake_${Date.now()}`, text: `Stake cannot exceed $${maxStake} (your current wordmoney - 1)` }])
             setPowerUpLoading(false)
@@ -1767,7 +1775,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // compute award for buyer: 2 points per occurrence of each picked letter
 
               const meNow = (state?.players || []).find(p => p.id === myId) || {}
-              const baseAfterCostNow = ((gmMode === 'lastThemeStanding' && me.team)
+              const baseAfterCostNow = ((gmMode === 'lastTeamStanding' && me.team)
                 ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : Number(teamMoney) - cost)
                 : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost)
               )
@@ -1906,7 +1914,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // Award buyer for newly revealed occurrences (2 per occurrence)
               try {
                 const meNow = (state?.players || []).find(p => p.id === myId) || {}
-                const baseAfterCostNow = ((gmMode === 'lastThemeStanding' && me.team)
+                const baseAfterCostNow = ((gmMode === 'lastTeamStanding' && me.team)
                   ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : Number(teamMoney) - cost)
                   : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost)
                 )
@@ -2309,7 +2317,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
 
             if (awardTotal > 0) {
-              // Centralized credit that respects lastThemeStanding team wallets and records lastGain
+              // Centralized credit that respects lastTeamStanding team wallets and records lastGain
               applyAward(updates, myId, awardTotal, { reason: powerId, by: powerUpTarget })
               updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
             }
@@ -2730,8 +2738,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const me = (state?.players || []).find(p => p.id === myId) || {}
           const myHangCurrent = Number(me.wordmoney) || 0
-          // base wordmoney after paying cost: consider team wallet when in lastThemeStanding
-          const baseAfterCost = ((gmMode === 'lastThemeStanding' && me.team)
+          // base wordmoney after paying cost: consider team wallet when in lastTeamStanding
+          const baseAfterCost = ((gmMode === 'lastTeamStanding' && me.team)
             ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : (Number(teamMoney) || 0) - cost)
             : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost))
           )
@@ -2866,7 +2874,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               try {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.wordmoney) || 0
-                const baseAfterCost = ((gmMode === 'lastThemeStanding' && me.team)
+                const baseAfterCost = ((gmMode === 'lastTeamStanding' && me.team)
                   ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : (Number(teamMoney) || 0) - cost)
                   : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost))
                 )
@@ -2977,7 +2985,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   // fallback: staged per-player or team increment
                   try {
                     const gm = state && state.gameMode
-                    if (gm === 'lastThemeStanding') {
+                    if (gm === 'lastTeamStanding') {
                       const team = nextNode.team
                       if (team) {
                         const teamKey = `teams/${team}/wordmoney`
@@ -3112,10 +3120,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       // Finally perform the update
       // (debug logging removed)
-      // If we're in lastThemeStanding mode, replicate buyer-facing privatePowerReveals
+      // If we're in lastTeamStanding mode, replicate buyer-facing privatePowerReveals
       // entries to all teammates so team members share visibility of power-up results.
       try {
-        if ((state && state.gameMode) === 'lastThemeStanding') {
+        if ((state && state.gameMode) === 'lastTeamStanding') {
           try {
             const meLocal = (state?.players || []).find(p => p.id === myId) || {}
             if (meLocal && meLocal.team) {
@@ -3476,7 +3484,7 @@ try {
           updates[`players/${p.id}/eliminatedAt`] = null
           // apply configured starting wordmoney (team-mode: initialize team wallets once)
           try {
-            if (state && state.gameMode === 'lastThemeStanding' && p.team) {
+            if (state && state.gameMode === 'lastTeamStanding' && p.team) {
               // initialize the team's wallet if not already set in this update batch
               if (typeof updates[`teams/${p.team}/wordmoney`] === 'undefined') updates[`teams/${p.team}/wordmoney`] = resetStart
             } else {
@@ -3562,7 +3570,7 @@ try {
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
           try {
-            if (state && state.gameMode === 'lastThemeStanding' && p.team) {
+            if (state && state.gameMode === 'lastTeamStanding' && p.team) {
               if (typeof updates[`teams/${p.team}/wordmoney`] === 'undefined') updates[`teams/${p.team}/wordmoney`] = startMoney
             } else {
               updates[`players/${p.id}/wordmoney`] = startMoney
@@ -3746,7 +3754,7 @@ try {
               } catch (e) {
                 try {
                   const gm = state && state.gameMode
-                  if (gm === 'lastThemeStanding') {
+                  if (gm === 'lastTeamStanding') {
                     const team = nextNode.team
                     if (team) {
                       const teamKey = `teams/${team}/wordmoney`
@@ -4643,11 +4651,11 @@ try {
           // additionally, respect 'frozen' state on the target: if the target is frozen, other
           // players (not the target themselves) should not be able to guess them.
           const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
-          // Disallow guessing players on the same team when in lastThemeStanding mode
+          // Disallow guessing players on the same team when in lastTeamStanding mode
           let canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
           try {
             const gm = state && state.gameMode
-            if (gm === 'lastThemeStanding') {
+            if (gm === 'lastTeamStanding') {
               const me = (state?.players || []).find(x => x.id === myId) || {}
               const myTeam = me && me.team ? me.team : null
               if (myTeam && p.team && myTeam === p.team) {

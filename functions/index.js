@@ -368,13 +368,13 @@ exports.processGuess = functions.database
 
         // apply hangDeltas safely
         if (!curr.players) curr.players = {}
-        // In lastThemeStanding, aggregate deltas by team and apply to curr.teams
+        // In lastTeamStanding, aggregate deltas by team and apply to curr.teams
         const teamDeltas = {}
         Object.keys(hangDeltas).forEach(pid => {
           try {
             const delta = Number(hangDeltas[pid] || 0)
             const playerNode = curr.players[pid] || {}
-            if ((curr && curr.gameMode) === 'lastThemeStanding' && playerNode && playerNode.team) {
+            if ((curr && curr.gameMode) === 'lastTeamStanding' && playerNode && playerNode.team) {
               teamDeltas[playerNode.team] = (teamDeltas[playerNode.team] || 0) + delta
             } else {
               if (!curr.players[pid]) curr.players[pid] = {}

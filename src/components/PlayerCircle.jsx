@@ -468,7 +468,7 @@ export default function PlayerCircle({
           {/* wordmoney moved here to sit under the player's name; in team mode show shared team wallet */}
           <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
             <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
-              {gameMode === 'lastThemeStanding' && teamName ? `$${Number(teamMoney) || 0}` : `$${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}`}
+              {gameMode === 'lastTeamStanding' && teamName ? `$${Number(teamMoney) || 0}` : `$${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}`}
             </span>
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>YOU</div>}

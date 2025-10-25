@@ -161,7 +161,7 @@ export default function useGameRoom(roomId, playerName) {
     try {
       const playerNode = (room.players || {})[pid] || {}
       const gm = room && room.gameMode
-      if (gm === 'lastThemeStanding') {
+      if (gm === 'lastTeamStanding') {
         const team = playerNode.team
         if (team) {
           const teamKey = `teams/${team}/wordmoney`
@@ -405,7 +405,7 @@ export default function useGameRoom(roomId, playerName) {
           try {
             const voted = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
             if (voted === top) {
-              // team-aware credit: when in lastThemeStanding, credit team wallet; otherwise credit player
+              // team-aware credit: when in lastTeamStanding, credit team wallet; otherwise credit player
                 applyAwardToUpdates(updates, room, pid, 4, { reason: 'wordSpy_vote_correct', by: ws.spyId })
               deltas[pid] = (deltas[pid] || 0) + 4
             }
@@ -429,7 +429,7 @@ export default function useGameRoom(roomId, playerName) {
         const deltas = {}
           try {
             const spyNode = (room.players || {})[ws.spyId] || {}
-            // team-aware: credit team wallet in lastThemeStanding
+            // team-aware: credit team wallet in lastTeamStanding
             applyAwardToUpdates(updates, room, ws.spyId, 5, { reason: 'wordSpy_room_wrong', by: null })
             deltas[ws.spyId] = (deltas[ws.spyId] || 0) + 5
           } catch (e) {}
@@ -982,9 +982,9 @@ export default function useGameRoom(roomId, playerName) {
       } catch (e) {}
       if (startMoney === null) startMoney = getStartMoneyFromRoom(room)
       const playersObj = room.players || {}
-      // Respect lastThemeStanding: do not initialize per-player canonical balances when using team mode.
+      // Respect lastTeamStanding: do not initialize per-player canonical balances when using team mode.
       const gm = (room && room.gameMode) ? room.gameMode : (options && options.gameMode)
-      if (gm !== 'lastThemeStanding') {
+      if (gm !== 'lastTeamStanding') {
         Object.keys(playersObj).forEach(pid => {
           updates[`players/${pid}/wordmoney`] = startMoney
         })
@@ -999,7 +999,7 @@ export default function useGameRoom(roomId, playerName) {
       // If the room is configured to use the Last Theme Standing mode, assign
       // players to two teams (red/blue), initialize a shared team wallet and
       // a single-active freeze slot per team. Require minimum 4 players.
-  if ((room && room.gameMode ? room.gameMode : (options && options.gameMode)) === 'lastThemeStanding') {
+  if ((room && room.gameMode ? room.gameMode : (options && options.gameMode)) === 'lastTeamStanding') {
         const playerIds = Object.keys(playersObj || {})
         if ((playerIds || []).length < 4) {
           console.warn('startGame: Last Theme Standing requires at least 4 players')

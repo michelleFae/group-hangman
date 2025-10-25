@@ -73,9 +73,9 @@ module.exports = async (req, res) => {
     const guesser = players[from]
     if (!target || !guesser) return res.status(400).json({ error: 'Target or guesser not found' })
 
-    // In lastThemeStanding mode, disallow guessing members of your own team
+    // In lastTeamStanding mode, disallow guessing members of your own team
     try {
-      if ((room && room.gameMode) === 'lastThemeStanding') {
+      if ((room && room.gameMode) === 'lastTeamStanding') {
         const gTeam = (guesser && guesser.team) ? guesser.team : null
         const tTeam = (target && target.team) ? target.team : null
         if (gTeam && tTeam && gTeam === tTeam) {
@@ -405,7 +405,7 @@ module.exports = async (req, res) => {
           const nextPlayer = effectiveTurnOrder[nextIndex]
           // In team mode, credit the team's wallet; otherwise credit the player
           const nextPlayerObj = players && players[nextPlayer] ? players[nextPlayer] : null
-          if ((room && room.gameMode) === 'lastThemeStanding' && nextPlayerObj && nextPlayerObj.team) {
+          if ((room && room.gameMode) === 'lastTeamStanding' && nextPlayerObj && nextPlayerObj.team) {
             const t = nextPlayerObj.team
             const prevTeamHang = (room.teams && room.teams[t] && typeof room.teams[t].wordmoney === 'number') ? room.teams[t].wordmoney : 0
             updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeamHang) + 1)
@@ -427,7 +427,7 @@ module.exports = async (req, res) => {
     // If we have any hangDeltas, fold them into the updates using the snapshot we read earlier
     try {
       if (Object.keys(hangDeltas).length > 0) {
-        // If we're in lastThemeStanding, aggregate per-team deltas and apply to teams/<team>/wordmoney.
+        // If we're in lastTeamStanding, aggregate per-team deltas and apply to teams/<team>/wordmoney.
         // Also: always record a per-player `lastGain` for UI visibility even when canonical funds
         // are applied to the team's wallet. Do not overwrite an existing lastGain written earlier.
         const teamDeltas = {}
@@ -444,7 +444,7 @@ module.exports = async (req, res) => {
               } catch (e) {}
             }
 
-            if ((room && room.gameMode) === 'lastThemeStanding' && p && p.team) {
+            if ((room && room.gameMode) === 'lastTeamStanding' && p && p.team) {
               teamDeltas[p.team] = (teamDeltas[p.team] || 0) + delta
             } else {
               const prev = (players && players[pid] && typeof players[pid].wordmoney === 'number') ? players[pid].wordmoney : 0
@@ -476,7 +476,7 @@ module.exports = async (req, res) => {
         if (stake > 0) {
           // Only apply if we haven't already scheduled a deduction for this guesser
             // Determine whether deduction should target the team wallet or player wallet
-            const deductionIsTeam = (room && room.gameMode) === 'lastThemeStanding' && guesser && guesser.team
+            const deductionIsTeam = (room && room.gameMode) === 'lastTeamStanding' && guesser && guesser.team
             const deductionKey = deductionIsTeam ? `teams/${guesser.team}/wordmoney` : `players/${from}/wordmoney`
             const ddKeyBase = `players/${from}/privatePowerReveals/${from}`
             if (!Object.prototype.hasOwnProperty.call(updates, deductionKey)) {
