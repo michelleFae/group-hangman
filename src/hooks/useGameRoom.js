@@ -1414,7 +1414,8 @@ export default function useGameRoom(roomId, playerName) {
             // Historically this was only done for lastTeamStanding; extend to money and lastOneStanding.
             try {
               const sb = roomRoot.starterBonus || null
-              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              // game mode may be stored as `gameMode` or the legacy `winnerByWordmoney` flag
+              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : (roomRoot && roomRoot.winnerByWordmoney ? 'money' : null)
               if (sb && sb.enabled && sb.type === 'contains' && sb.value && (gmNow === 'money' || gmNow === 'lastOneStanding' || gmNow === 'lastTeamStanding')) {
                 const req = (sb.value || '').toString().toLowerCase()
                 Object.keys(playersObj || {}).forEach(pid => {
