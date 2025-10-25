@@ -174,6 +174,7 @@ module.exports = async (req, res) => {
                   award = award - stake
                 }
               }
+            }
             
             // For letter guesses accumulate award into hangDeltas for folding later
             hangDeltas[from] = (hangDeltas[from] || 0) + award
@@ -185,7 +186,7 @@ module.exports = async (req, res) => {
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: ddActiveWithStake ? 'doubleDown' : 'hang', ts: Date.now() }
 
             // Also write a private power-up result entry so only the guesser sees the double-down result
-            
+            if (dd && dd.active && stake > 0) {
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
@@ -211,8 +212,8 @@ module.exports = async (req, res) => {
               // announcement for all clients: brief double-down summary (ephemeral)
               
                 addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() })
-            }
-           
+            
+              }
 
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
