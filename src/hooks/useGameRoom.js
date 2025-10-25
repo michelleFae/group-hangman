@@ -1247,6 +1247,8 @@ export default function useGameRoom(roomId, playerName) {
             // If room mode is one of the public modes, reveal the starter letter publicly on this player's tile
           
               const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              console.log("Game mode for starter bonus reveal check:", gm)
+              console.log("roomRoot:", roomRoot)
               if (gm === 'money' || gm === 'lastOneStanding' || gm === 'lastTeamStanding') {
                 console.log("In the phases for starter bonus reveal") 
                 
