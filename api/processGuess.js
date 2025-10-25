@@ -123,12 +123,12 @@ module.exports = async (req, res) => {
           // If this letter was marked as a no-score reveal (e.g., from a power-up), do not award wordmoney
           let noScore = target.noScoreReveals && target.noScoreReveals[letter]
           // Also treat as no-score if the guesser already had this letter privately recorded
-          try {
+          
             const prevHitsForTarget = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId] : []
             if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toLowerCase() === letter))) {
               noScore = true
             }
-          } catch (e) {}
+          
           // Also treat as no-score if the guesser previously received this letter via a privatePowerReveals entry
           
             const pphr = (guesser.privatePowerReveals && guesser.privatePowerReveals[targetId]) ? Object.values(guesser.privatePowerReveals[targetId]) : []
@@ -148,8 +148,6 @@ module.exports = async (req, res) => {
               noScore = true
             }
           
-          console.warn(e)
-          console.log("michelle ooo^")
             if (!noScore) {
             // Base award for correct letter(s)
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
