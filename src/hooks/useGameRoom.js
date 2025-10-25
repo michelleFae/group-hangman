@@ -1221,29 +1221,28 @@ export default function useGameRoom(roomId, playerName) {
                   })
                   try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (e) {}
                 } catch (e) {
+                  console.warn('Starter bonus team wallet transaction failed, falling back to helper', e)
                   // transaction failed : fall back to existing helper
                   applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
                 }
               } else {
                 // non-team mode: increment player's wordmoney transactionally to avoid races
-                try {
+                console.log('Awarding starter bonus transactionally to player', uid)
                   const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${uid}/wordmoney`)
                   await runTransaction(playerMoneyRef, (curr) => {
                     return (Number(curr) || 0) + 10
                   })
                   try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (e) {}
-                } catch (e) {
-                  // fallback to helper if transaction fails
-                  applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
-                }
+                
               }
             } catch (e) {
+              console.warn('Starter bonus transaction failed :( ), applying via helper', e)
               // fallback to direct per-player write in case helper/transaction fails
-              try {
+              
                 const prev = (typeof pVal.wordmoney === 'number') ? pVal.wordmoney : 2
                 ups[`players/${uid}/wordmoney`] = prev + 10
                 try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (ee) {}
-              } catch (ee) {}
+              
             }
             // If room mode is one of the public modes, reveal the starter letter publicly on this player's tile
           
@@ -1412,14 +1411,14 @@ export default function useGameRoom(roomId, playerName) {
           } catch (e) { console.warn('Could not initialize ghostChallenge at round start', e) }
             // Auto-reveal the starter bonus letter for public modes at round start.
             // Historically this was only done for lastTeamStanding; extend to money and lastOneStanding.
-            try {
+            
               const sb = roomRoot.starterBonus || null
               // game mode may be stored as `gameMode` or the legacy `winnerByWordmoney` flag
               const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : (roomRoot && roomRoot.winnerByWordmoney ? 'money' : null)
               if (sb && sb.enabled && sb.type === 'contains' && sb.value && (gmNow === 'money' || gmNow === 'lastOneStanding' || gmNow === 'lastTeamStanding')) {
                 const req = (sb.value || '').toString().toLowerCase()
                 Object.keys(playersObj || {}).forEach(pid => {
-                  try {
+                 
                     const p = playersObj[pid] || {}
                     const w = (p.word || '').toString().toLowerCase()
                     const existing = Array.isArray(p.revealed) ? p.revealed.map(x => (x||'').toString().toLowerCase()) : []
@@ -1427,10 +1426,10 @@ export default function useGameRoom(roomId, playerName) {
                       const next = Array.from(new Set([...(existing || []), req]))
                       updates[`players/${pid}/revealed`] = next
                     }
-                  } catch (e) {}
+                  
                 })
               }
-            } catch (e) {}
+            
         // mark starterBonus as applied so we don't attempt to re-award later
         if (roomRoot.starterBonus && roomRoot.starterBonus.enabled) updates['starterBonus/applied'] = true
         // Award +1 to the first player in turnOrder as a starting bonus; be additive to any existing staged value

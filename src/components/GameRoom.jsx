@@ -91,7 +91,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Helper: apply an award/deduction amount to either a player's wallet or their team wallet
   // depending on room.mode === 'lastTeamStanding'. Always record a per-player lastGain for UI.
   function applyAward(updates, pid, amount, { reason = null, by = null } = {}) {
-    try {
+ 
       const playerNode = (state?.players || []).find(p => p.id === pid) || {}
       if ((state && state.gameMode) === 'lastTeamStanding' && playerNode && playerNode.team) {
         const team = playerNode.team
@@ -104,14 +104,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${pid}/wordmoney`] = Math.max(0, Number(base) + Number(amount))
       }
       updates[`players/${pid}/lastGain`] = { amount: Number(amount), by: by, reason: reason, ts: Date.now() }
-    } catch (e) {
-      try {
-        const prev = (state?.players || []).find(p => p.id === pid)?.wordmoney || 0
-        const base = (typeof updates[`players/${pid}/wordmoney`] !== 'undefined') ? Number(updates[`players/${pid}/wordmoney`]) : Number(prev)
-        updates[`players/${pid}/wordmoney`] = Math.max(0, Number(base) + Number(amount))
-        updates[`players/${pid}/lastGain`] = { amount: Number(amount), by: by, reason: reason, ts: Date.now() }
-      } catch (ee) {}
-    }
+    
   }
 
   // Global capture: log unhandled promise rejections and window errors to help debug
