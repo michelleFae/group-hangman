@@ -154,6 +154,35 @@ export default function useGameRoom(roomId, playerName) {
     return 2
   }
 
+  // Centralized helper: credit a player or their team depending on gameMode.
+  // Always records a per-player lastGain for UI. Keeps updates multi-path safe
+  // by only writing the specific team or player path (not both ancestor & descendant).
+  function applyAwardToUpdates(updates, room, pid, amount, { reason = null, by = null } = {}) {
+    try {
+      const playerNode = (room.players || {})[pid] || {}
+      const gm = room && room.gameMode
+      if (gm === 'lastThemeStanding') {
+        const team = playerNode.team
+        if (team) {
+          const teamKey = `teams/${team}/wordmoney`
+          const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : (room.teams && room.teams[team] && typeof room.teams[team].wordmoney === 'number' ? Number(room.teams[team].wordmoney) : 0)
+          updates[teamKey] = Math.max(0, Number(currTeam) + Number(amount))
+        } else {
+          const prev = typeof playerNode.wordmoney === 'number' ? Number(playerNode.wordmoney) : 0
+          updates[`players/${pid}/wordmoney`] = Math.max(0, Number(prev) + Number(amount))
+        }
+      } else {
+        const prev = typeof playerNode.wordmoney === 'number' ? Number(playerNode.wordmoney) : 0
+        updates[`players/${pid}/wordmoney`] = Math.max(0, Number(prev) + Number(amount))
+      }
+      // always record lastGain for UI
+      try { updates[`players/${pid}/lastGain`] = { amount: Number(amount), by: by || null, reason: reason || null, ts: Date.now() } } catch (e) {}
+    } catch (e) {
+      // bubble up for callers if desired
+      throw e
+    }
+  }
+
   function stopHeartbeat() {
     try {
       if (heartbeatRef.current) {
@@ -363,7 +392,7 @@ export default function useGameRoom(roomId, playerName) {
       // We have a majority : resolve
       // If the majority picked the actual spy, award voters +4 and allow spy to guess
       const ws = room.wordSpy || {}
-      if (top === (ws && ws.spyId)) {
+  if (top === (ws && ws.spyId)) {
         // majority correctly identified the spy : move to spy-guess phase.
         // Do NOT write lastRoundSummary here; wait until the spy either guesses correctly
         // or exhausts all attempts, then submitSpyGuess will write the round summary and move to reveal.
@@ -376,9 +405,8 @@ export default function useGameRoom(roomId, playerName) {
           try {
             const voted = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
             if (voted === top) {
-              const prev = typeof playersObj[pid].wordmoney === 'number' ? Number(playersObj[pid].wordmoney) : 0
-              updates[`players/${pid}/wordmoney`] = Math.max(0, Number(prev) + 4)
-              updates[`players/${pid}/lastGain`] = { amount: 4, by: ws.spyId, reason: 'wordSpy_vote_correct', ts: Date.now() }
+              // team-aware credit: when in lastThemeStanding, credit team wallet; otherwise credit player
+                applyAwardToUpdates(updates, room, pid, 4, { reason: 'wordSpy_vote_correct', by: ws.spyId })
               deltas[pid] = (deltas[pid] || 0) + 4
             }
           } catch (e) {}
@@ -399,22 +427,19 @@ export default function useGameRoom(roomId, playerName) {
           updates['wordSpy/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
         } catch (e) {}
         const deltas = {}
-        try {
-          const spyNode = (room.players || {})[ws.spyId] || {}
-          const prev = typeof spyNode.wordmoney === 'number' ? Number(spyNode.wordmoney) : 0
-          updates[`players/${ws.spyId}/wordmoney`] = Math.max(0, Number(prev) + 5)
-          updates[`players/${ws.spyId}/lastGain`] = { amount: 5, by: null, reason: 'wordSpy_room_wrong', ts: Date.now() }
-          deltas[ws.spyId] = (deltas[ws.spyId] || 0) + 5
-        } catch (e) {}
+          try {
+            const spyNode = (room.players || {})[ws.spyId] || {}
+            // team-aware: credit team wallet in lastThemeStanding
+            applyAwardToUpdates(updates, room, ws.spyId, 5, { reason: 'wordSpy_room_wrong', by: null })
+            deltas[ws.spyId] = (deltas[ws.spyId] || 0) + 5
+          } catch (e) {}
         // also award +3 to any players who voted for the actual spy (even if minority)
         try {
-          Object.keys(playersObj).forEach(pid => {
+                Object.keys(playersObj).forEach(pid => {
             try {
               const voted = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
               if (voted === (ws && ws.spyId)) {
-                const prev2 = typeof playersObj[pid].wordmoney === 'number' ? Number(playersObj[pid].wordmoney) : 0
-                updates[`players/${pid}/wordmoney`] = Math.max(0, Number(prev2) + 3)
-                updates[`players/${pid}/lastGain`] = { amount: 3, by: ws.spyId, reason: 'wordSpy_vote_correct', ts: Date.now() }
+                applyAwardToUpdates(updates, room, pid, 3, { reason: 'wordSpy_vote_correct', by: ws.spyId })
                 deltas[pid] = (deltas[pid] || 0) + 3
               }
             } catch (e) {}
@@ -484,12 +509,9 @@ export default function useGameRoom(roomId, playerName) {
         // move to reveal/round-summary phase so UI can show scores and next-round controls
         updates['phase'] = 'wordspy_reveal'
         updates[`wordSpy/spyWinAtAttempt`] = attemptNumber
-        // apply award to spy's wordmoney
+        // apply award to spy's wordmoney (team-aware)
         try {
-          const spyNode = (room.players || {})[uid] || {}
-          const prev = typeof spyNode.wordmoney === 'number' ? Number(spyNode.wordmoney) : 0
-          updates[`players/${uid}/wordmoney`] = Math.max(0, Number(prev) + award)
-          updates[`players/${uid}/lastGain`] = { amount: award, by: null, reason: 'spyGuess', ts: Date.now() }
+          applyAwardToUpdates(updates, room, uid, award, { reason: 'spyGuess', by: null })
           // record delta for roundResults if a lastTally exists
           try {
             const lt = (ws && ws.lastTally && ws.lastTally.ts) ? ws.lastTally.ts : null
@@ -498,7 +520,15 @@ export default function useGameRoom(roomId, playerName) {
             if (lt) updates[`wordSpy/roundResults/${lt}/deltas`] = deltaObj
             else updates[`wordSpy/roundResults/${Date.now()}`] = { ts: Date.now(), tally: ws.lastTally || null, deltas: deltaObj }
           } catch (e) {}
-        } catch (e) {}
+        } catch (e) {
+          // if award helper fails, fall back to a direct per-player award
+          try {
+            const spyNode = (room.players || {})[uid] || {}
+            const prev = typeof spyNode.wordmoney === 'number' ? Number(spyNode.wordmoney) : 0
+            updates[`players/${uid}/wordmoney`] = Math.max(0, Number(prev) + award)
+            try { updates[`players/${uid}/lastGain`] = { amount: award, by: null, reason: 'spyGuess', ts: Date.now() } } catch (e) {}
+          } catch (ee) {}
+        }
         // write round summary so UI can show who the spy was and the word
         try {
           updates['wordSpy/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
@@ -952,15 +982,44 @@ export default function useGameRoom(roomId, playerName) {
       } catch (e) {}
       if (startMoney === null) startMoney = getStartMoneyFromRoom(room)
       const playersObj = room.players || {}
-      Object.keys(playersObj).forEach(pid => {
-        updates[`players/${pid}/wordmoney`] = startMoney
-      })
+      // Respect lastThemeStanding: do not initialize per-player canonical balances when using team mode.
+      const gm = (room && room.gameMode) ? room.gameMode : (options && options.gameMode)
+      if (gm !== 'lastThemeStanding') {
+        Object.keys(playersObj).forEach(pid => {
+          updates[`players/${pid}/wordmoney`] = startMoney
+        })
+      }
       // Debug: log resolved starting money and what will be written for players
       try {
         console.log('startGame debug: resolved startMoney=', startMoney)
         try { console.log('startGame debug: player ids=', Object.keys(playersObj)) } catch (e) {}
         try { console.log('startGame debug: updates sample=', Object.keys(updates).slice(0,20)) } catch (e) {}
       } catch (e) {}
+
+      // If the room is configured to use the Last Theme Standing mode, assign
+      // players to two teams (red/blue), initialize a shared team wallet and
+      // a single-active freeze slot per team. Require minimum 4 players.
+  if ((room && room.gameMode ? room.gameMode : (options && options.gameMode)) === 'lastThemeStanding') {
+        const playerIds = Object.keys(playersObj || {})
+        if ((playerIds || []).length < 4) {
+          console.warn('startGame: Last Theme Standing requires at least 4 players')
+          return
+        }
+        // shuffle player ids and split into two teams alternately
+        const shuffled = playerIds.slice().sort(() => Math.random() - 0.5)
+        const teams = { red: [], blue: [] }
+        shuffled.forEach((pid, idx) => {
+          const team = (idx % 2 === 0) ? 'red' : 'blue'
+          teams[team].push(pid)
+          updates[`players/${pid}/team`] = team
+        })
+        // initialize team wallets to sum of individual starting money for each team
+        try {
+          updates[`teams/red/wordmoney`] = (teams.red.length || 0) * startMoney
+          updates[`teams/blue/wordmoney`] = (teams.blue.length || 0) * startMoney
+          updates[`teamFreeze`] = { red: null, blue: null }
+        } catch (e) {}
+      }
     } catch (e) {}
 
     await update(roomRef, updates)
@@ -1093,9 +1152,17 @@ export default function useGameRoom(roomId, playerName) {
           const pSnap = await get(playerRef)
           const pVal = pSnap.val() || {}
           if (!pVal.starterBonusAwarded) {
-            const prev = (typeof pVal.wordmoney === 'number') ? pVal.wordmoney : 2
             const ups = {}
-            ups[`players/${uid}/wordmoney`] = prev + 10
+            try {
+              applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+            } catch (e) {
+              // fallback to direct per-player write in case helper fails
+              try {
+                const prev = (typeof pVal.wordmoney === 'number') ? pVal.wordmoney : 2
+                ups[`players/${uid}/wordmoney`] = prev + 10
+                try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (ee) {}
+              } catch (ee) {}
+            }
             ups[`players/${uid}/starterBonusAwarded`] = true
             await update(roomRootRef, ups)
           }
@@ -1164,8 +1231,16 @@ export default function useGameRoom(roomId, playerName) {
             const pSnap = await get(dbRef(db, `rooms/${roomId}/players/${first}`))
             const pVal = pSnap.val() || {}
             const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : 2
-            updates[`players/${first}/wordmoney`] = Number(prev) + 1
-            updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() }
+            try {
+              try {
+                applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
+              } catch (ee) {
+                updates[`players/${first}/wordmoney`] = Number(prev) + 1
+                try { updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() } } catch (e) {}
+              }
+            } catch (ee) {
+              updates[`players/${first}/wordmoney`] = Number(prev) + 1
+            }
           }
         } catch (e) {
           console.warn('Could not award start +1 bonus', e)

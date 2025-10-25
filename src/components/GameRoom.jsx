@@ -88,6 +88,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // ensure audio/vibration unlock on first user gesture (no UI toast)
   useUserActivation()
 
+  // Helper: apply an award/deduction amount to either a player's wallet or their team wallet
+  // depending on room.mode === 'lastThemeStanding'. Always record a per-player lastGain for UI.
+  function applyAward(updates, pid, amount, { reason = null, by = null } = {}) {
+    try {
+      const playerNode = (state?.players || []).find(p => p.id === pid) || {}
+      if ((state && state.gameMode) === 'lastThemeStanding' && playerNode && playerNode.team) {
+        const team = playerNode.team
+        const prevTeam = Number((state && state.teams && state.teams[team] && state.teams[team].wordmoney) || 0)
+        const teamBase = (typeof updates[`teams/${team}/wordmoney`] !== 'undefined') ? Number(updates[`teams/${team}/wordmoney`]) : prevTeam
+        updates[`teams/${team}/wordmoney`] = Math.max(0, Number(teamBase) + Number(amount))
+      } else {
+        const prev = (playerNode && typeof playerNode.wordmoney === 'number') ? Number(playerNode.wordmoney) : 0
+        const base = (typeof updates[`players/${pid}/wordmoney`] !== 'undefined') ? Number(updates[`players/${pid}/wordmoney`]) : prev
+        updates[`players/${pid}/wordmoney`] = Math.max(0, Number(base) + Number(amount))
+      }
+      updates[`players/${pid}/lastGain`] = { amount: Number(amount), by: by, reason: reason, ts: Date.now() }
+    } catch (e) {
+      try {
+        const prev = (state?.players || []).find(p => p.id === pid)?.wordmoney || 0
+        const base = (typeof updates[`players/${pid}/wordmoney`] !== 'undefined') ? Number(updates[`players/${pid}/wordmoney`]) : Number(prev)
+        updates[`players/${pid}/wordmoney`] = Math.max(0, Number(base) + Number(amount))
+        updates[`players/${pid}/lastGain`] = { amount: Number(amount), by: by, reason: reason, ts: Date.now() }
+      } catch (ee) {}
+    }
+  }
+
   // Global capture: log unhandled promise rejections and window errors to help debug
   // intermittent extension-related failures that show as "A listener indicated an asynchronous response..."
   useEffect(() => {
@@ -1498,12 +1524,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
       if (totalSurgeAmount) cost = baseCost + totalSurgeAmount
     } catch (e) {}
-    // check buyer wordmoney
+    // check buyer/team wordmoney affordability
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.wordmoney) || 0
-    if (myHang - cost < 0) {
-      setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough wordmoney to buy that power-up.' }])
-      return
+    const gmMode = state && state.gameMode
+    let teamMoney = null
+    if (gmMode === 'lastThemeStanding' && me.team) {
+      teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+      if (teamMoney - cost < 0) {
+        setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough team wordmoney to buy that power-up.' }])
+        return
+      }
+    } else {
+      if (myHang - cost < 0) {
+        setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough wordmoney to buy that power-up.' }])
+        return
+      }
     }
 
     // Guard: only allow longest_word_bonus once per buyer
@@ -1519,15 +1555,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
       const updates = {}
-      // deduct buyer wordmoney
-      updates[`players/${myId}/wordmoney`] = myHang - cost
+      // deduct buyer wordmoney (as a delta) using applyAward so team-mode credits the team wallet
+      // applyAward will write to teams/<team>/wordmoney when appropriate and still record players/<id>/lastGain
+      applyAward(updates, myId, -cost, { reason: 'purchase', by: powerUpTarget })
       // if buying Double Down, record the stake and keep turn active so the buyer can guess
       if (powerId === 'double_down') {
         try {
           const stake = Number(opts && opts.stake) || 0
           // server/client guard: do not allow staking more than (current wordmoney - 1)
           // e.g. if wordmoney is 3, max stake is 2
-          const maxStake = Math.max(0, (Number(me.wordmoney) || 0) - 1)
+          const maxStake = gmMode === 'lastThemeStanding' && me.team ? Math.max(0, (Number(teamMoney) || 0) - 1) : Math.max(0, (Number(me.wordmoney) || 0) - 1)
           if (stake > maxStake) {
             setToasts(t => [...t, { id: `pup_err_stake_${Date.now()}`, text: `Stake cannot exceed $${maxStake} (your current wordmoney - 1)` }])
             setPowerUpLoading(false)
@@ -1730,7 +1767,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // compute award for buyer: 2 points per occurrence of each picked letter
 
               const meNow = (state?.players || []).find(p => p.id === myId) || {}
-              const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost
+              const baseAfterCostNow = ((gmMode === 'lastThemeStanding' && me.team)
+                ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : Number(teamMoney) - cost)
+                : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost)
+              )
               let awardTotal = 0
               const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
               picked.forEach(letter => {
@@ -1752,9 +1792,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   }
               })
               if (awardTotal > 0) {
-                updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+                // Use helper to credit team or player wallet and set lastGain
+                applyAward(updates, myId, awardTotal, { reason: powerId, by: powerUpTarget })
                 updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
-                updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
               }
 
             // compose messages for buyer and target describing the picked letters
@@ -1866,7 +1906,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // Award buyer for newly revealed occurrences (2 per occurrence)
               try {
                 const meNow = (state?.players || []).find(p => p.id === myId) || {}
-                const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost
+                const baseAfterCostNow = ((gmMode === 'lastThemeStanding' && me.team)
+                  ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : Number(teamMoney) - cost)
+                  : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (Number(meNow.wordmoney) || 0) - cost)
+                )
                 let awardTotal = 0
                 const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
                 toAdd.forEach(letter => {
@@ -1891,9 +1934,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   } catch (e) {}
                 })
                 if (awardTotal > 0) {
-                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+                  applyAward(updates, myId, awardTotal, { reason: powerId, by: powerUpTarget })
                   updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
-                  updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
                 }
               } catch (e) {}
             } else {
@@ -2267,11 +2309,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
 
             if (awardTotal > 0) {
-              const myHangCurrentNow = Number(meNow.wordmoney) || 0
-              const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrentNow - cost)
-              updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + awardTotal)
+              // Centralized credit that respects lastThemeStanding team wallets and records lastGain
+              applyAward(updates, myId, awardTotal, { reason: powerId, by: powerUpTarget })
               updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
-              updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
             }
           } catch (e) {}
        
@@ -2453,10 +2493,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Immediately apply buyer award here to ensure their wordmoney reflects the +2 per newly revealed occurrence
   if (buyerAward && buyerAward > 0) {
-      const meNow = (state?.players || []).find(p => p.id === myId) || {}
-      const myHangCurrentNow = Number(meNow.wordmoney) || 0
-      const baseAfterCostNow = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrentNow - cost)
-      updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCostNow) + buyerAward)
+      // Credit buyer (team or player) using helper so team-mode is respected. helper also writes lastGain.
+      applyAward(updates, myId, buyerAward, { reason: powerId, by: powerUpTarget })
       // merge into privateHits for buyer similar to other award flows
       try {
         const prevHitsNow = (meNow.privateHits && meNow.privateHits[powerUpTarget]) ? meNow.privateHits[powerUpTarget].slice() : []
@@ -2476,7 +2514,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
         updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHitsNow
       } catch (e) {}
-      updates[`players/${myId}/lastGain`] = { amount: buyerAward, by: powerUpTarget, reason: powerId, ts: Date.now() }
+      // lastGain is set by applyAward helper
       // mark that we've already applied the buyer award so generic reveal branches skip awarding again
       skipBuyerLetterAward = true
     }
@@ -2524,15 +2562,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           if (typeof targetAward === 'number' && targetAward > 0) stagedTargetAwardDelta = (stagedTargetAwardDelta || 0) + targetAward
         } catch (e) {}
-        // If any target awards were staged, apply them once to avoid multiple incremental writes
+        // If any target awards were staged, apply them once using applyAward so team-mode credits team wallet
         try {
-            if (typeof stagedTargetAwardDelta === 'number' && stagedTargetAwardDelta > 0) {
-            const targetNodeStateFinal = (state?.players || []).find(p => p.id === powerUpTarget) || {}
-            const prevTargetHangFinal = Number(targetNodeStateFinal.wordmoney) || 0
-            const baseTargetFinal = (typeof updates[`players/${powerUpTarget}/wordmoney`] !== 'undefined') ? Number(updates[`players/${powerUpTarget}/wordmoney`]) : prevTargetHangFinal
-            updates[`players/${powerUpTarget}/wordmoney`] = Math.max(0, Number(baseTargetFinal) + stagedTargetAwardDelta)
-            // Explicitly mark this lastGain as a letter-for-letter award so clients can render a clear message
-            updates[`players/${powerUpTarget}/lastGain`] = { amount: stagedTargetAwardDelta, by: myId, reason: 'letter_for_letter', ts: Date.now() }
+          if (typeof stagedTargetAwardDelta === 'number' && stagedTargetAwardDelta > 0) {
+            applyAward(updates, powerUpTarget, stagedTargetAwardDelta, { reason: 'letter_for_letter', by: myId })
           }
         } catch (e) {}
       } else {
@@ -2616,11 +2649,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               resultPayload = { winners, amount }
               winners.forEach(wid => {
                 try {
-                  const prev = (state?.players || []).find(p => p.id === wid) || {}
-                  const prevHang = Number(prev.wordmoney) || 0
-                  const baseNow = (typeof updates[`players/${wid}/wordmoney`] !== 'undefined') ? Number(updates[`players/${wid}/wordmoney`]) : prevHang
-                  updates[`players/${wid}/wordmoney`] = Math.max(0, Number(baseNow) + amount)
-                  updates[`players/${wid}/lastGain`] = { amount, by: myId, reason: powerId, ts: Date.now() }
+                  // Use helper so team-mode is respected; still set a per-player lastGain for UI
+                  applyAward(updates, wid, amount, { reason: powerId, by: myId })
                 } catch (e) {}
               })
             }
@@ -2700,10 +2730,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         try {
           const me = (state?.players || []).find(p => p.id === myId) || {}
           const myHangCurrent = Number(me.wordmoney) || 0
-          // base wordmoney after paying cost was set earlier; compute fresh base here in case
-          const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined')
-            ? updates[`players/${myId}/wordmoney`]
-            : (myHangCurrent - cost)
+          // base wordmoney after paying cost: consider team wallet when in lastThemeStanding
+          const baseAfterCost = ((gmMode === 'lastThemeStanding' && me.team)
+            ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : (Number(teamMoney) || 0) - cost)
+            : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost))
+          )
 
           let awardTotal = 0
           const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
@@ -2735,10 +2766,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           })
 
           if (awardTotal > 0) {
-            updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + awardTotal)
+            // Use helper to credit the buyer (team or player) and record lastGain
+            applyAward(updates, myId, awardTotal, { reason: powerId, by: powerUpTarget })
             updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-            // record a small visible gain on buyer so UI toasts show the award
-            updates[`players/${myId}/lastGain`] = { amount: awardTotal, by: powerUpTarget, reason: powerId, ts: Date.now() }
           }
         } catch (e) {}
       }
@@ -2789,7 +2819,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     ? updates[`players/${myId}/wordmoney`]
                     : (myHangCurrent - cost)
                   const award = 2 * count
-                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                  // Credit buyer (team or player)
+                  applyAward(updates, myId, award, { reason: powerId, by: powerUpTarget })
                   const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
                   let merged = false
                   for (let i = 0; i < prevHits.length; i++) {
@@ -2835,7 +2866,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               try {
                 const me = (state?.players || []).find(p => p.id === myId) || {}
                 const myHangCurrent = Number(me.wordmoney) || 0
-                const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
+                const baseAfterCost = ((gmMode === 'lastThemeStanding' && me.team)
+                  ? (typeof updates[`teams/${me.team}/wordmoney`] !== 'undefined' ? updates[`teams/${me.team}/wordmoney`] : (Number(teamMoney) || 0) - cost)
+                  : (typeof updates[`players/${myId}/wordmoney`] !== 'undefined' ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost))
+                )
                 // Determine if buyer already has this letter recorded for this target.
                 const prevHits = (me.privateHits && me.privateHits[powerUpTarget]) ? me.privateHits[powerUpTarget].slice() : []
                 const alreadyHasLetter = prevHits.some(h => h && h.type === 'letter' && String(h.letter).toLowerCase() === add)
@@ -2843,7 +2877,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 // for the target, do not award points (but still apply the revealed change to the target).
                 const award = (powerId === 'letter_peek' && alreadyHasLetter) ? 0 : 2 * toAdd
                 if (award > 0) {
-                  updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + award)
+                  // credit buyer (team-aware) for newly revealed occurrences
+                  applyAward(updates, myId, award, { reason: powerId, by: powerUpTarget })
                   let merged = false
                   for (let i = 0; i < prevHits.length; i++) {
                     const h = prevHits[i]
@@ -2855,7 +2890,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   }
                   if (!merged) prevHits.push({ type: 'letter', letter: add, count: toAdd, ts: Date.now() })
                   updates[`players/${myId}/privateHits/${powerUpTarget}`] = prevHits
-                  updates[`players/${myId}/lastGain`] = { amount: award, by: powerUpTarget, reason: powerId, ts: Date.now() }
                   // remember award so we can include it in the buyer/target privatePowerReveals message
                   if (powerId === 'one_random') oneRandomAward = award
                 }
@@ -2907,11 +2941,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             letters.forEach(ch => { if (ch) counts[ch] = (counts[ch] || 0) + 1 })
             Object.keys(counts).forEach(l => { total += 2 * counts[l] })
               if (total > 0) {
-              const me = (state?.players || []).find(p => p.id === myId) || {}
-              const myHangCurrent = Number(me.wordmoney) || 0
-              const baseAfterCost = (typeof updates[`players/${myId}/wordmoney`] !== 'undefined') ? updates[`players/${myId}/wordmoney`] : (myHangCurrent - cost)
-              updates[`players/${myId}/wordmoney`] = Math.max(0, Number(baseAfterCost) + total)
-              updates[`players/${myId}/lastGain`] = { amount: total, by: powerUpTarget, reason: powerId, ts: Date.now() }
+              // credit buyer (team-aware) for full reveal award
+              applyAward(updates, myId, total, { reason: powerId, by: powerUpTarget })
               // record aggregated privateHits for buyer
               const mePrev = (state?.players || []).find(p => p.id === myId) || {}
               const prevHits = (mePrev.privateHits && mePrev.privateHits[powerUpTarget]) ? mePrev.privateHits[powerUpTarget].slice() : []
@@ -2936,13 +2967,131 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const nextIndex = (currentIndexLocal + 1) % effectiveTurnOrder.length
             updates[`currentTurnIndex`] = nextIndex
             updates[`currentTurnStartedAt`] = Date.now()
-            try {
-              const nextPlayer = effectiveTurnOrder[nextIndex]
-              const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
-              const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
-              // If a previous staged update already adjusted this player's wordmoney (e.g. from a power-up), add to it
-              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
-              updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+              try {
+                const nextPlayer = effectiveTurnOrder[nextIndex]
+                const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
+                // Award +1 to the player whose turn begins. Use applyAward so team-mode credits team wallet.
+                try {
+                  applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                } catch (e) {
+                  // fallback: staged per-player or team increment
+                  try {
+                    const gm = state && state.gameMode
+                    if (gm === 'lastThemeStanding') {
+                      const team = nextNode.team
+                      if (team) {
+                        const teamKey = `teams/${team}/wordmoney`
+                        const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : (state.teams && state.teams[team] && typeof state.teams[team].wordmoney === 'number' ? Number(state.teams[team].wordmoney) : 0)
+                        updates[teamKey] = Math.max(0, Number(currTeam) + 1)
+                      } else {
+                        const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+                          // credit start-of-turn +1 using applyAward so team-mode writes to team wallet
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            // fallback to staged per-player increment when applyAward isn't available
+                            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                            try {
+                              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                            } catch (e) {
+                              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                            try {
+                              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                            } catch (e) {
+                              try {
+                                applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                              } catch (e) {
+                                try {
+                                  applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                } catch (e) {
+                                  try {
+                                    applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                  } catch (e) {
+                                    try {
+                                      applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                    } catch (e) {
+                                      updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            }
+                          }
+                      }
+                    } else {
+                      const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+                      try {
+                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                      } catch (e) {
+                        try {
+                          applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                        } catch (e) {
+                          const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                            try {
+                              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                            } catch (e) {
+                            try {
+                              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                            } catch (e) {
+                              try {
+                                applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                              } catch (e) {
+                                try {
+                                  applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                } catch (e) {
+                                  try {
+                                    applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                  } catch (e) {
+                                    updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                                  }
+                                }
+                              }
+                            }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  } catch (ee) {
+                    const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+                  try {
+                    applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                  } catch (e) {
+                    const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            try {
+                              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                            } catch (e) {
+                              try {
+                                applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                              } catch (e) {
+                                try {
+                                  applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                } catch (e) {
+                                  try {
+                                    applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                  } catch (e) {
+                                    updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          }
+                  }
+                  }
+                }
               // clear any frozen flags when their turn begins
               updates[`players/${nextPlayer}/frozen`] = null
               updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
@@ -2952,7 +3101,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               try {
                 // only add when starter bonus is enabled in room state
                 if (state && state.starterBonus && state.starterBonus.enabled) {
-                  updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                  // ensure lastGain exists for UI; when in team-mode applyAward already wrote lastGain
+                  if (typeof updates[`players/${nextPlayer}/lastGain`] === 'undefined') updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
                 }
               } catch (e) {}
             } catch (e) {}
@@ -2962,6 +3112,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
       // Finally perform the update
       // (debug logging removed)
+      // If we're in lastThemeStanding mode, replicate buyer-facing privatePowerReveals
+      // entries to all teammates so team members share visibility of power-up results.
+      try {
+        if ((state && state.gameMode) === 'lastThemeStanding') {
+          try {
+            const meLocal = (state?.players || []).find(p => p.id === myId) || {}
+            if (meLocal && meLocal.team) {
+              const teammates = (state?.players || []).filter(p => p && p.team === meLocal.team) || []
+              teammates.forEach(tp => {
+                try {
+                  if (!tp || tp.id === myId) return
+                  Object.keys(updates || {}).forEach(k => {
+                    const m = k.match(new RegExp(`^players\\/${myId}\\/privatePowerReveals\\/${powerUpTarget}\\\/([^/]+)$`))
+                    if (m) {
+                      const entryKey = m[1]
+                      // copy buyer's entry to teammate's private bucket
+                      updates[`players/${tp.id}/privatePowerReveals/${powerUpTarget}/${entryKey}`] = updates[k]
+                    }
+                  })
+                } catch (e) {}
+              })
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
       await dbUpdate(roomRef, updates)
       try {
     // debug toast removed
@@ -3299,8 +3474,17 @@ try {
           updates[`players/${p.id}/eliminated`] = false
           updates[`players/${p.id}/eliminatedAt`] = null
           updates[`players/${p.id}/eliminatedAt`] = null
-          // apply configured starting wordmoney
-          updates[`players/${p.id}/wordmoney`] = resetStart
+          // apply configured starting wordmoney (team-mode: initialize team wallets once)
+          try {
+            if (state && state.gameMode === 'lastThemeStanding' && p.team) {
+              // initialize the team's wallet if not already set in this update batch
+              if (typeof updates[`teams/${p.team}/wordmoney`] === 'undefined') updates[`teams/${p.team}/wordmoney`] = resetStart
+            } else {
+              updates[`players/${p.id}/wordmoney`] = resetStart
+            }
+          } catch (e) {
+            updates[`players/${p.id}/wordmoney`] = resetStart
+          }
           // allow starter bonus to be re-awarded after a restart
           updates[`players/${p.id}/starterBonusAwarded`] = null
           // Clear viewer-specific guess tracking so old guesses don't persist
@@ -3377,7 +3561,15 @@ try {
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
-          updates[`players/${p.id}/wordmoney`] = startMoney
+          try {
+            if (state && state.gameMode === 'lastThemeStanding' && p.team) {
+              if (typeof updates[`teams/${p.team}/wordmoney`] === 'undefined') updates[`teams/${p.team}/wordmoney`] = startMoney
+            } else {
+              updates[`players/${p.id}/wordmoney`] = startMoney
+            }
+          } catch (e) {
+            updates[`players/${p.id}/wordmoney`] = startMoney
+          }
           // allow starter bonus to be re-awarded on automatic rematch resets
           updates[`players/${p.id}/starterBonusAwarded`] = null
           // Clear power-up state as part of rematch reset so old results don't persist
@@ -3549,9 +3741,65 @@ try {
             const nextPlayer = order[nextIdx]
             if (nextPlayer) {
               const nextNode = (r && r.players && r.players[nextPlayer]) || {}
-              const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
-              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
-              updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+              try {
+                applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+              } catch (e) {
+                try {
+                  const gm = state && state.gameMode
+                  if (gm === 'lastThemeStanding') {
+                    const team = nextNode.team
+                    if (team) {
+                      const teamKey = `teams/${team}/wordmoney`
+                      const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : (state.teams && state.teams[team] && typeof state.teams[team].wordmoney === 'number' ? Number(state.teams[team].wordmoney) : 0)
+                      updates[teamKey] = Math.max(0, Number(currTeam) + 1)
+                    } else {
+                      const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
+                      const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                      try {
+                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                      } catch (e) {
+                                try {
+                                  applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                } catch (e) {
+                                  try {
+                                    applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                                  } catch (e) {
+                                    updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                                  }
+                                }
+                      }
+                    }
+                  } else {
+                    const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+                    const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                    try {
+                      applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                    } catch (e) {
+                      try {
+                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                      } catch (e) {
+                        updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                      }
+                    }
+                  }
+                } catch (ee) {
+                  const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+                  const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                      try {
+                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                      } catch (e) {
+                        try {
+                          applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                        } catch (e) {
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                          }
+                        }
+                      }
+                }
+              }
               try {
                 if (r && r.starterBonus && r.starterBonus.enabled) {
                   updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
@@ -3599,9 +3847,21 @@ try {
       try {
         if (nextPlayer) {
           const nextNode = (state && state.players || []).find(p => p.id === nextPlayer) || {}
-          const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
-          const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
-          updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+          try {
+            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+          } catch (e) {
+            const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
+                      try {
+                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                      } catch (e) {
+                        try {
+                          applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                        } catch (e) {
+                          updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                        }
+                      }
+          }
           try {
             if (state && state.starterBonus && state.starterBonus.enabled) {
               updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
@@ -4383,7 +4643,18 @@ try {
           // additionally, respect 'frozen' state on the target: if the target is frozen, other
           // players (not the target themselves) should not be able to guess them.
           const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
-          const canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
+          // Disallow guessing players on the same team when in lastThemeStanding mode
+          let canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
+          try {
+            const gm = state && state.gameMode
+            if (gm === 'lastThemeStanding') {
+              const me = (state?.players || []).find(x => x.id === myId) || {}
+              const myTeam = me && me.team ? me.team : null
+              if (myTeam && p.team && myTeam === p.team) {
+                canGuessComputed = false
+              }
+            }
+          } catch (e) {}
 
           const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
           // determine why the power-up button should be disabled (if anything)
@@ -4406,6 +4677,8 @@ try {
               <PlayerCircle
                 key={p.id}
                 player={playerWithViewer}
+                teamName={p.team}
+                teamMoney={(state && state.teams && p.team && state.teams[p.team] && state.teams[p.team].wordmoney) || 0}
                 gameMode={state?.gameMode}
                 viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
                 isSelf={p.id === myId}

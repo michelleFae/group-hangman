@@ -26,7 +26,7 @@ function simulateFullWordResolution({ from, targetId, guessWord, targetWord, gue
         updates[`players/${from}/lastGain`] = { amount: (5 + stake), by: targetId, reason: 'doubleDownWord', ts: now }
         // write a private power-up reveal so the buyer sees the double-down resolution
         const ddKey = `double_down_word_${now}`
-        updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: now, from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
+        updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: now, from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake}), with +5 for the correct word guess.` } }
         // clear the doubleDown so the DD badge is removed and they must buy again
         updates[`players/${from}/doubleDown`] = null
         }

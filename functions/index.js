@@ -279,7 +279,7 @@ exports.processGuess = functions.database
               // write a private power-up reveal so the buyer sees the double-down resolution
             
                 const ddKey = `double_down_word_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})` } }
+                updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { amount: stake, message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake}), with +5 for the correct word guess.` } }
               
               // clear the doubleDown so the DD badge is removed and they must buy again
               updates[`players/${from}/doubleDown`] = null 
@@ -332,6 +332,19 @@ exports.processGuess = functions.database
       hangDeltas[from] = (hangDeltas[from] || 0) + hangIncrement
     }
 
+    // Ensure a per-player lastGain is present for any hangDeltas so clients show the
+    // visible delta even when canonical funds will be applied to a team wallet.
+    try {
+      Object.keys(hangDeltas).forEach(pid => {
+        try {
+          const key = `players/${pid}/lastGain`
+          if (!Object.prototype.hasOwnProperty.call(updates, key)) {
+            updates[key] = { amount: Number(hangDeltas[pid] || 0), by: null, reason: 'hang', ts: Date.now() }
+          }
+        } catch (e) {}
+      })
+    } catch (e) {}
+
     // write updates and hangDeltas atomically in a transaction to avoid races with timeouts
     if (Object.keys(updates).length > 0 || Object.keys(hangDeltas).length > 0) {
       await roomRef.transaction(curr => {
@@ -355,10 +368,29 @@ exports.processGuess = functions.database
 
         // apply hangDeltas safely
         if (!curr.players) curr.players = {}
+        // In lastThemeStanding, aggregate deltas by team and apply to curr.teams
+        const teamDeltas = {}
         Object.keys(hangDeltas).forEach(pid => {
-          if (!curr.players[pid]) curr.players[pid] = {}
-          const prev = typeof curr.players[pid].wordmoney === 'number' ? curr.players[pid].wordmoney : 0
-          curr.players[pid].wordmoney = Math.max(0, prev + (hangDeltas[pid] || 0))
+          try {
+            const delta = Number(hangDeltas[pid] || 0)
+            const playerNode = curr.players[pid] || {}
+            if ((curr && curr.gameMode) === 'lastThemeStanding' && playerNode && playerNode.team) {
+              teamDeltas[playerNode.team] = (teamDeltas[playerNode.team] || 0) + delta
+            } else {
+              if (!curr.players[pid]) curr.players[pid] = {}
+              const prev = typeof curr.players[pid].wordmoney === 'number' ? curr.players[pid].wordmoney : 0
+              curr.players[pid].wordmoney = Math.max(0, prev + delta)
+            }
+          } catch (e) {}
+        })
+        // apply aggregated team deltas
+        if (!curr.teams) curr.teams = {}
+        Object.keys(teamDeltas).forEach(t => {
+          try {
+            if (!curr.teams[t]) curr.teams[t] = {}
+            const prev = typeof curr.teams[t].wordmoney === 'number' ? curr.teams[t].wordmoney : 0
+            curr.teams[t].wordmoney = Math.max(0, prev + Number(teamDeltas[t] || 0))
+          } catch (e) {}
         })
 
         return curr

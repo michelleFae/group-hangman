@@ -73,6 +73,17 @@ module.exports = async (req, res) => {
     const guesser = players[from]
     if (!target || !guesser) return res.status(400).json({ error: 'Target or guesser not found' })
 
+    // In lastThemeStanding mode, disallow guessing members of your own team
+    try {
+      if ((room && room.gameMode) === 'lastThemeStanding') {
+        const gTeam = (guesser && guesser.team) ? guesser.team : null
+        const tTeam = (target && target.team) ? target.team : null
+        if (gTeam && tTeam && gTeam === tTeam) {
+          return res.status(400).json({ error: 'Cannot guess a player on your own team' })
+        }
+      }
+    } catch (e) { /* ignore */ }
+
     const updates = {}
   const hangDeltas = {}
     // Helper to write the ephemeral lastDoubleDown and also append a permanent
@@ -162,8 +173,8 @@ module.exports = async (req, res) => {
                 }
               }
             }
-            // For letter guesses we apply award directly to the player's wordmoney
-            updates[`players/${from}/wordmoney`] = prevHang + award
+            // For letter guesses accumulate award into hangDeltas for folding later
+            hangDeltas[from] = (hangDeltas[from] || 0) + award
             // mark that this guess produced a correct reveal and award
             guessWasCorrect = true
             // record a visible recent gain so clients show the correct wordmoney delta
@@ -253,17 +264,18 @@ module.exports = async (req, res) => {
               // consume the shield but do not award wordmoney
               updates[`players/${targetId}/hangShield`] = null
             } else {
-              updates[`players/${targetId}/wordmoney`] = prevTargetHang + 2
+              // accumulate target award into hangDeltas to be folded later
+              hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
             }
 
             // If the guesser had an active doubleDown, they lose their stake on a wrong guess
             const ddFail = guesser.doubleDown
             if (ddFail && ddFail.active) {
               const stake = Number(ddFail.stake) || 0
-              if (stake > 0) {
+                if (stake > 0) {
                 const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-                // deduct stake via updates so it's applied when we write updates
-                updates[`players/${from}/wordmoney`] = Math.max(0, prevGHang - stake)
+                // deduct stake via hangDeltas so it's applied when we fold updates
+                hangDeltas[from] = (hangDeltas[from] || 0) - stake
                 // write a private power-up result entry indicating the loss
                 try {
                   const ddKey3 = `double_down_loss_${Date.now()}`
@@ -275,20 +287,14 @@ module.exports = async (req, res) => {
                     message: `Double Down: guessed '${letterStr3}' and lost -$${stake}`,
                     messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>`
                   } }
-                  updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
+                  // Write the loss into the buyer's own privatePowerReveals under their own id
+                  // so the loss message appears only in the buyer's tile (not the target's tile).
                   try {
-                    const ddKey3Target = `double_down_loss_target_${Date.now()}`
-                    updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey3Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
-                      letter: letterStr3,
-                      amount: -stake,
-                      stake: stake,
-                      message: `Double Down: guessed '${letterStr3}' and lost -$${stake}`,
-                      messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>`
-                    } }
+                    updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
                   } catch (e) {}
-                    try {
-                      addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() })
-                    } catch (e) {}
+                  try {
+                    addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() })
+                  } catch (e) {}
                 } catch (e) {}
                 // consume/clear the doubleDown entry so the DD badge is removed
                 updates[`players/${from}/doubleDown`] = null
@@ -344,8 +350,8 @@ module.exports = async (req, res) => {
             const ddKey = `double_down_word_${Date.now()}`
             updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
               amount: stake,
-              message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake})`,
-              messageHtml: `<strong class="power-name">Double Down</strong>: correctly guessed the whole word and earned your stake back <strong class="revealed-letter">(+$${stake})</strong>`
+              message: `Double Down: correctly guessed the whole word and earned your stake back (+$${stake}), with +5 for the correct word guess.`,
+              messageHtml: `<strong class="power-name">Double Down</strong>: correctly guessed the whole word and earned your stake back <strong class="revealed-letter">(+$${stake})</strong>, with +5 for the correct word guess.`
             } }
 
             // clear the doubleDown so the DD badge is removed and they must buy again
@@ -397,8 +403,19 @@ module.exports = async (req, res) => {
         // award +1 wordmoney to the player whose turn just started
         try {
           const nextPlayer = effectiveTurnOrder[nextIndex]
-          const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
-          updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+          // In team mode, credit the team's wallet; otherwise credit the player
+          const nextPlayerObj = players && players[nextPlayer] ? players[nextPlayer] : null
+          if ((room && room.gameMode) === 'lastThemeStanding' && nextPlayerObj && nextPlayerObj.team) {
+            const t = nextPlayerObj.team
+            const prevTeamHang = (room.teams && room.teams[t] && typeof room.teams[t].wordmoney === 'number') ? room.teams[t].wordmoney : 0
+            updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeamHang) + 1)
+            // still write a per-player lastGain so clients show the visible delta
+            updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+          } else {
+            const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
+            updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+            updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+          }
           // Clear transient effects that should expire when this player's turn begins
           updates[`players/${nextPlayer}/frozen`] = null
           updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
@@ -410,10 +427,36 @@ module.exports = async (req, res) => {
     // If we have any hangDeltas, fold them into the updates using the snapshot we read earlier
     try {
       if (Object.keys(hangDeltas).length > 0) {
+        // If we're in lastThemeStanding, aggregate per-team deltas and apply to teams/<team>/wordmoney.
+        // Also: always record a per-player `lastGain` for UI visibility even when canonical funds
+        // are applied to the team's wallet. Do not overwrite an existing lastGain written earlier.
+        const teamDeltas = {}
         Object.keys(hangDeltas).forEach(pid => {
           try {
-            const prev = (players && players[pid] && typeof players[pid].wordmoney === 'number') ? players[pid].wordmoney : 0
-            updates[`players/${pid}/wordmoney`] = Math.max(0, prev + (hangDeltas[pid] || 0))
+            const delta = Number(hangDeltas[pid] || 0)
+            const p = players && players[pid] ? players[pid] : null
+
+            // Ensure a per-player lastGain is present so UI shows the visible delta for the actor.
+            const lastGainKey = `players/${pid}/lastGain`
+            if (!Object.prototype.hasOwnProperty.call(updates, lastGainKey)) {
+              try {
+                updates[lastGainKey] = { amount: delta, by: null, reason: 'hang', ts: Date.now() }
+              } catch (e) {}
+            }
+
+            if ((room && room.gameMode) === 'lastThemeStanding' && p && p.team) {
+              teamDeltas[p.team] = (teamDeltas[p.team] || 0) + delta
+            } else {
+              const prev = (players && players[pid] && typeof players[pid].wordmoney === 'number') ? players[pid].wordmoney : 0
+              updates[`players/${pid}/wordmoney`] = Math.max(0, prev + delta)
+            }
+          } catch (e) {}
+        })
+        // Apply aggregated team deltas
+        Object.keys(teamDeltas).forEach(t => {
+          try {
+            const prevTeam = (room.teams && room.teams[t] && typeof room.teams[t].wordmoney === 'number') ? room.teams[t].wordmoney : 0
+            updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeam) + Number(teamDeltas[t] || 0))
           } catch (e) {}
         })
       }
@@ -432,41 +475,43 @@ module.exports = async (req, res) => {
         const stake = Number((guesser.doubleDown && guesser.doubleDown.stake) || 0)
         if (stake > 0) {
           // Only apply if we haven't already scheduled a deduction for this guesser
-          const deductionKey = `players/${from}/wordmoney`
-          const ddKeyBase = `players/${from}/privatePowerReveals/${from}`
-          if (!Object.prototype.hasOwnProperty.call(updates, deductionKey)) {
-            const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-            const fix = {}
-            fix[deductionKey] = Math.max(0, prevGHang - stake)
-            const lossKey = `double_down_loss_fallback_${Date.now()}`
-            const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
-              letter: null,
-              amount: -stake,
-              message: `Double Down wrong guess! Lost $${stake}`,
-              messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
-            } }
-            fix[`${ddKeyBase}/${lossKey}`] = ddPayload
-              try {
-                // also add a buyer-targeted fallback entry so buyer sees this in the target tile
-                const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
-                fix[`players/${from}/privatePowerReveals/${targetId}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
-                  letter: null,
-                  amount: -stake,
-                  message: `Double Down wrong guess! Lost $${stake}`,
-                  messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
-                } }
-              } catch (e) {}
+            // Determine whether deduction should target the team wallet or player wallet
+            const deductionIsTeam = (room && room.gameMode) === 'lastThemeStanding' && guesser && guesser.team
+            const deductionKey = deductionIsTeam ? `teams/${guesser.team}/wordmoney` : `players/${from}/wordmoney`
+            const ddKeyBase = `players/${from}/privatePowerReveals/${from}`
+            if (!Object.prototype.hasOwnProperty.call(updates, deductionKey)) {
+              const prevGHang = deductionIsTeam ? ((room.teams && room.teams[guesser.team] && typeof room.teams[guesser.team].wordmoney === 'number') ? room.teams[guesser.team].wordmoney : 0) : (typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0)
+              const fix = {}
+              fix[deductionKey] = Math.max(0, prevGHang - stake)
+              const lossKey = `double_down_loss_fallback_${Date.now()}`
+              const ddPayload = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+                letter: null,
+                amount: -stake,
+                message: `Double Down wrong guess! Lost $${stake}`,
+                messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
+              } }
+              fix[`${ddKeyBase}/${lossKey}`] = ddPayload
                 try {
-                fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
-                const key = `doubleDownHistory/${Date.now()}_${Math.random().toString(36).slice(2,8)}`
-                fix[key] = fix['lastDoubleDown']
-              } catch (e) {}
-            fix[`players/${from}/doubleDown`] = null
-            await roomRef.update(fix)
-          } else if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {
-            // If we already adjusted wordmoney but didn't clear doubleDown, just clear it
-            await roomRef.update({ [`players/${from}/doubleDown`]: null })
-          }
+                  // also add a buyer-local fallback entry so buyer sees this loss message in their own tile
+                  const lossKeyTarget = `double_down_loss_fallback_target_${Date.now()}`
+                  fix[`players/${from}/privatePowerReveals/${from}/${lossKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
+                    letter: null,
+                    amount: -stake,
+                    message: `Double Down wrong guess! Lost $${stake}`,
+                    messageHtml: `<strong class="power-name">Double Down</strong> wrong guess! Lost <strong class="revealed-letter"> $${stake}</strong>`
+                  } }
+                } catch (e) {}
+                  try {
+                  fix['lastDoubleDown'] = { buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: null, amount: -stake, stake: stake, success: false, ts: Date.now() }
+                  const key = `doubleDownHistory/${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+                  fix[key] = fix['lastDoubleDown']
+                } catch (e) {}
+              fix[`players/${from}/doubleDown`] = null
+              await roomRef.update(fix)
+            } else if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {
+              // If we already adjusted wordmoney but didn't clear doubleDown, just clear it
+              await roomRef.update({ [`players/${from}/doubleDown`]: null })
+            }
         } else {
           // If stake is zero, just clear the flag to remove the badge
           if (!Object.prototype.hasOwnProperty.call(updates, `players/${from}/doubleDown`)) {

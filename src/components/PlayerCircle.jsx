@@ -27,6 +27,8 @@ export default function PlayerCircle({
   , ddActive = false,
   ddTarget = null
   , gameMode = 'money'
+  , teamName = null
+  , teamMoney = 0
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -457,11 +459,16 @@ export default function PlayerCircle({
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
           </div>
-          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center' }}>{player.name}</div>
-          {/* wordmoney moved here to sit under the player's name */}
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+            <div>{player.name}</div>
+            {teamName && (
+              <div style={{ fontSize: 11, padding: '2px 6px', borderRadius: 8, background: teamName === 'red' ? '#ff5c5c' : '#5c9bff', color: '#fff', fontWeight: 800 }}>{teamName.toUpperCase()}</div>
+            )}
+          </div>
+          {/* wordmoney moved here to sit under the player's name; in team mode show shared team wallet */}
           <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
             <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
-              ${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}
+              {gameMode === 'lastThemeStanding' && teamName ? `$${Number(teamMoney) || 0}` : `$${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}`}
             </span>
           </div>
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>YOU</div>}
