@@ -1211,7 +1211,11 @@ export default function useGameRoom(roomId, playerName) {
               // If we're in team mode and the player has a team, increment the team's
               // wallet using a transaction to avoid lost updates when multiple players
               // submit concurrently. Fall back to the old helper on error.
-              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              // Resolve gameMode; some older rooms used `winnerByWordmoney` instead of
+              // `gameMode` so treat that legacy flag as equivalent to `money` when
+              // `gameMode` is missing. This prevents gm being null and ensures starter
+              // bonus reveal logic runs for `money` rooms.
+              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : (roomRoot && roomRoot.winnerByWordmoney ? 'money' : null)
               const team = pVal && pVal.team ? pVal.team : null
               if (gm === 'lastTeamStanding' && team) {
                 try {
@@ -1246,7 +1250,7 @@ export default function useGameRoom(roomId, playerName) {
             }
             // If room mode is one of the public modes, reveal the starter letter publicly on this player's tile
           
-              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : (roomRoot && roomRoot.winnerByWordmoney ? 'money' : null)
               console.log("Game mode for starter bonus reveal check:", gm)
               console.log("roomRoot:", roomRoot)
               if (gm === 'money' || gm === 'lastOneStanding' || gm === 'lastTeamStanding') {
@@ -1444,7 +1448,7 @@ export default function useGameRoom(roomId, playerName) {
             const pVal = pSnap.val() || {}
             const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : 2
             try {
-              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : (roomRoot && roomRoot.winnerByWordmoney ? 'money' : null)
               const team = pVal && pVal.team ? pVal.team : null
               if (gmNow === 'lastTeamStanding' && team) {
                 // Use transaction to increment team wallet atomically so earlier
