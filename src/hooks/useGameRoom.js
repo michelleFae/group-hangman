@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { db, auth } from '../firebase'
 import { onAuthStateChanged } from 'firebase/auth'
-import { get, update } from 'firebase/database'
+import { get, update, runTransaction } from 'firebase/database'
 import {
   ref as dbRef,
   onValue as dbOnValue,
@@ -969,7 +969,7 @@ export default function useGameRoom(roomId, playerName) {
       try {
         const letters = 'abcdefghijklmnopqrstuvwxyz'
         const letter = letters[Math.floor(Math.random() * letters.length)]
-        updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Contains the letter "${letter.toLowerCase()}". Note: All occurrences of this letter in your word will be revealed to other players.`, applied: false }
+        updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Your word contains the letter "${letter.toLowerCase()}".`, applied: false }
       } catch (e) {
         // ignore
       }
@@ -1204,9 +1204,27 @@ export default function useGameRoom(roomId, playerName) {
           if (!pVal.starterBonusAwarded) {
             const ups = {}
             try {
-              applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+              // If we're in team mode and the player has a team, increment the team's
+              // wallet using a transaction to avoid lost updates when multiple players
+              // submit concurrently. Fall back to the old helper on error.
+              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              const team = pVal && pVal.team ? pVal.team : null
+              if (gm === 'lastTeamStanding' && team) {
+                try {
+                  const teamKeyRef = dbRef(db, `rooms/${roomId}/teams/${team}/wordmoney`)
+                  await runTransaction(teamKeyRef, (curr) => {
+                    return (Number(curr) || 0) + 10
+                  })
+                  try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (e) {}
+                } catch (e) {
+                  // transaction failed : fall back to existing helper
+                  applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+                }
+              } else {
+                applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+              }
             } catch (e) {
-              // fallback to direct per-player write in case helper fails
+              // fallback to direct per-player write in case helper/transaction fails
               try {
                 const prev = (typeof pVal.wordmoney === 'number') ? pVal.wordmoney : 2
                 ups[`players/${uid}/wordmoney`] = prev + 10
@@ -1388,13 +1406,27 @@ export default function useGameRoom(roomId, playerName) {
             const pVal = pSnap.val() || {}
             const prev = (typeof pVal.wordmoney === 'number') ? Number(pVal.wordmoney) : 2
             try {
-              try {
+              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              const team = pVal && pVal.team ? pVal.team : null
+              if (gmNow === 'lastTeamStanding' && team) {
+                // Use transaction to increment team wallet atomically so earlier
+                // transactional starter bonuses are not lost by this batch update.
+                try {
+                  const teamKeyRef = dbRef(db, `rooms/${roomId}/teams/${team}/wordmoney`)
+                  await runTransaction(teamKeyRef, (curr) => {
+                    return (Number(curr) || 0) + 1
+                  })
+                  try { updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() } } catch (e) {}
+                } catch (e) {
+                  // fallback: include team increment in the updates object (old behavior)
+                  applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
+                }
+              } else {
+                // non-team mode: safe to stage the player increment in the batched update
                 applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
-              } catch (ee) {
-                updates[`players/${first}/wordmoney`] = Number(prev) + 1
-                try { updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() } } catch (e) {}
               }
             } catch (ee) {
+              // conservative fallback: bump player entry directly
               updates[`players/${first}/wordmoney`] = Number(prev) + 1
             }
           }

@@ -178,7 +178,9 @@ module.exports = async (req, res) => {
             // mark that this guess produced a correct reveal and award
             guessWasCorrect = true
             // record a visible recent gain so clients show the correct wordmoney delta
-            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
+            // Only mark the reason as a doubleDown when the buyer had an active DD with a positive stake.
+            const ddActiveWithStake = dd && dd.active && (Number(dd.stake) || 0) > 0
+            updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: ddActiveWithStake ? 'doubleDown' : 'hang', ts: Date.now() }
 
             // Also write a private power-up result entry so only the guesser sees the double-down result
             try {
@@ -228,27 +230,33 @@ module.exports = async (req, res) => {
             prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
             updates[`players/${from}/privateHits/${targetId}`] = prevHits
             // Inform the guesser that no points were awarded due to no-score
+            // Only create Double Down private reveal entries when the player actually had
+            // an active Double Down with a positive stake. Avoid emitting DD messages for
+            // ordinary no-score reveals so players aren't misled.
             try {
-              const ddKey2 = `double_down_noscore_${Date.now()}`
-              const letterStr2 = letter
-              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
-                letter: letterStr2,
-                amount: 0,
-                stake: stake,
-                message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
-                messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
-              } }
-              updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
-              try {
-                const ddKey2Target = `double_down_noscore_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+              const ddActiveWithStake2 = dd && dd.active && (Number(stake) || 0) > 0
+              if (ddActiveWithStake2) {
+                const ddKey2 = `double_down_noscore_${Date.now()}`
+                const letterStr2 = letter
+                const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
                   letter: letterStr2,
                   amount: 0,
                   stake: stake,
                   message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
                   messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
                 } }
-              } catch (e) {}
+                updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+                try {
+                  const ddKey2Target = `double_down_noscore_target_${Date.now()}`
+                  updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
+                    letter: letterStr2,
+                    amount: 0,
+                    stake: stake,
+                    message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
+                    messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
+                  } }
+                } catch (e) {}
+              }
             } catch (e) {}
           }
         } else {

@@ -153,7 +153,9 @@ exports.processGuess = functions.database
           // apply net delta
           hangDeltas[from] = (hangDeltas[from] || 0) + award
           // record a visible recent gain so clients show the correct wordmoney delta (net)
-          updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: 'doubleDown', ts: Date.now() }
+          // Only mark the reason as doubleDown when the buyer had an active DD with a positive stake.
+          const ddActiveWithStake = dd && dd.active && (Number(dd.stake) || 0) > 0
+          updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: ddActiveWithStake ? 'doubleDown' : 'hang', ts: Date.now() }
 
           // write a private power-up result entry for the guesser so only they see the double-down result
           try {
@@ -191,11 +193,15 @@ exports.processGuess = functions.database
           const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
           prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now(), note: 'no-score' })
           updates[`players/${from}/privateHits/${targetId}`] = prevHits
-          // Inform the guesser privately about the no-score result for double-down
+          // Inform the guesser privately about the no-score result for double-down only when they actually
+          // had an active doubleDown with a positive stake. Avoid leaking DD messages for non-buyers.
           try {
-            const ddKey2 = `double_down_noscore_${Date.now()}`
-            const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: 0, message: `Double Down: guessed '${letter}', no points awarded (no-score)` } }
-            updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+            const ddIsActiveWithStake = guesser && guesser.doubleDown && guesser.doubleDown.active && (Number((guesser.doubleDown && guesser.doubleDown.stake) || 0) > 0)
+            if (ddIsActiveWithStake) {
+              const ddKey2 = `double_down_noscore_${Date.now()}`
+              const ddPayload2 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: { letter, amount: 0, message: `Double Down: guessed '${letter}', no points awarded (no-score)` } }
+              updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
+            }
           } catch (e) {}
         }
       } else {

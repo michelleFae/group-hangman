@@ -5090,6 +5090,8 @@ try {
               {state?.starterBonus?.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
                   +10 bonus wordmoney if: <strong>{state?.starterBonus?.description}</strong>
+                  <div style={{ marginTop: 4, color: '#e3bebeff', fontSize: 12 }}>
+                   Note: All occurrences of this letter in your word will be revealed to other players.</div>
                 </div>
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>
