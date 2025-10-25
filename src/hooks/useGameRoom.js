@@ -711,6 +711,7 @@ export default function useGameRoom(roomId, playerName) {
           try {
             // If room-level defaults are missing, set them as part of the first host assignment
             const updates = { hostId: joiningId }
+            if (!roomVal.gameMode) updates.gameMode = 'money'
             if (!roomVal.starterBonus) updates.starterBonus = { enabled: true, description: '' }
             if (!roomVal.secretWordTheme) updates.secretWordTheme = { enabled: true, type: 'animals' }
             await update(roomRootRef, updates)
@@ -793,6 +794,8 @@ export default function useGameRoom(roomId, playerName) {
             open: true,
             players: {},
             password: password || '',
+            // default game mode for new rooms (legacy behavior maps to money)
+            gameMode: 'money',
             // enable starter bonus and secret-word theme by default for new rooms
             starterBonus: { enabled: true, description: '' },
             secretWordTheme: { enabled: true, type: 'animals' }
