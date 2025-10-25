@@ -29,6 +29,10 @@ export default function PlayerCircle({
   , gameMode = 'money'
   , teamName = null
   , teamMoney = 0
+  , viewerTeam = null
+  , roomId = null
+  , teamRevealForPlayer = false
+  , onToggleTeamReveal = null
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -53,6 +57,7 @@ export default function PlayerCircle({
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
   const [expanded, setExpanded] = useState(false)
+  const [showTeammateWord, setShowTeammateWord] = useState(false)
   const [showOwnWord, setShowOwnWord] = useState(false)
 
   useEffect(() => {
@@ -465,12 +470,14 @@ export default function PlayerCircle({
               <div style={{ fontSize: 11, padding: '2px 6px', borderRadius: 8, background: teamName === 'red' ? '#ff5c5c' : '#5c9bff', color: '#fff', fontWeight: 800 }}>{teamName.toUpperCase()}</div>
             )}
           </div>
-          {/* wordmoney moved here to sit under the player's name; in team mode show shared team wallet */}
-          <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
-            <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
-              {gameMode === 'lastTeamStanding' && teamName ? `$${Number(teamMoney) || 0}` : `$${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}`}
-            </span>
-          </div>
+          {/* wordmoney: hide per-player wallet in lastTeamStanding when player is assigned to a team; team wallet is shown in the column header */}
+          {!(gameMode === 'lastTeamStanding' && teamName) && (
+            <div className={`wordmoney ${animateHang ? 'decrement' : ''} ${pulse ? 'pulse' : ''}`} style={{ marginTop: 6 }}>
+              <span style={{ background: '#f3f3f3', color: isWinner ? '#b8860b' : '#222', padding: '4px 8px', borderRadius: 12, display: 'inline-block', minWidth: 44, textAlign: 'center', fontWeight: 700 }}>
+                {`$${(Number(player.wordmoney) || 0) + (Number(pendingDeduct) || 0)}`}
+              </span>
+            </div>
+          )}
           {isSelf && <div className="you-badge" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>YOU</div>}
           {/* Double Down active badge: shows when this player has a pending doubleDown */}
           {player && player.doubleDown && player.doubleDown.active && (
@@ -498,7 +505,7 @@ export default function PlayerCircle({
                   // when hidden show masked underscores
                   ownerWord.split('').map((ch, idx) => <span key={`mask_${idx}`} style={{ color: '#999', marginRight: 6 }}>_</span>)
                 )
-              ) : revealedPositions}
+              ) : (showTeammateWord ? fullWordRendered : revealedPositions)}
 
             </div>
 
@@ -551,9 +558,38 @@ export default function PlayerCircle({
 
           <div style={{ marginTop: 8 }}>
             {!hideInteractiveForWordSpy && (
-              <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
-                {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                  {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
+                </button>
+                {/* Show teammate's word button: only when in lastTeamStanding and viewer is on same team */}
+                {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam) && (
+                  <button
+                    onClick={async () => {
+                      // If parent provided handler, use it to persist reveal to DB; otherwise fall back to local toggle
+                      try {
+                        const newVal = !(teamRevealForPlayer || showTeammateWord)
+                        if (typeof onToggleTeamReveal === 'function') {
+                          await onToggleTeamReveal(player.id, teamName, newVal)
+                          // rely on parent state update (via DB subscription) to set new value; still update local UI optimistically
+                          try { setShowTeammateWord(newVal) } catch (e) {}
+                        } else {
+                          setShowTeammateWord(s => !s)
+                        }
+                      } catch (e) {
+                        console.warn('toggle team reveal failed', e)
+                        // fallback local toggle
+                        setShowTeammateWord(s => !s)
+                      }
+                    }}
+                    disabled={!(player && player.hasWord)}
+                    title={player && player.hasWord ? `Show ${player.name}'s word to your team` : `${player.name} has not submitted a word`}
+                    style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8, background: (teamRevealForPlayer || showTeammateWord) ? '#222' : undefined, color: (teamRevealForPlayer || showTeammateWord) ? '#fff' : undefined }}
+                  >
+                    {(teamRevealForPlayer || showTeammateWord) ? `Hide ${player && player.name ? player.name : 'player'}'s word` : `Show ${player && player.name ? player.name : 'player'}'s word`}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

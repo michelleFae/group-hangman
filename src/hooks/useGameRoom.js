@@ -1002,7 +1002,28 @@ export default function useGameRoom(roomId, playerName) {
   if ((room && room.gameMode ? room.gameMode : (options && options.gameMode)) === 'lastTeamStanding') {
         const playerIds = Object.keys(playersObj || {})
         if ((playerIds || []).length < 4) {
-          console.warn('startGame: Last Theme Standing requires at least 4 players')
+          // show a UI-visible warning instead of console log; clear it when mode changes or enough players join
+          setState(prev => ({ ...(prev || {}), ltsWarning: 'Last Team Standing requires at least 4 players' }))
+          // watch the room root and clear the warning when conditions change
+          let warnUnsub = null
+          const warnCb = (snap) => {
+            try {
+              const rv = snap.val() || {}
+              const countNow = Object.keys(rv.players || {}).length
+              const gmNow = rv.gameMode
+              if (gmNow !== 'lastTeamStanding' || countNow >= 4) {
+                setState(prev => {
+                  if (!prev) return prev
+                  const copy = { ...prev }
+                  delete copy.ltsWarning
+                  return copy
+                })
+                try { if (warnUnsub) warnUnsub() } catch (e) {}
+              }
+            } catch (e) {}
+          }
+          warnUnsub = dbOnValue(dbRef(db, `rooms/${roomId}`), warnCb)
+          return
           return
         }
         // shuffle player ids and split into two teams alternately
@@ -1170,7 +1191,49 @@ export default function useGameRoom(roomId, playerName) {
       }
 
       if (allSubmitted) {
-        const turnOrder = Object.keys(playersObj)
+        // Build a turn order. For team mode (lastTeamStanding) prefer an alternating
+        // sequence across teams so consecutive turns belong to different teams where possible.
+        const buildAlternatingOrder = (playersObj) => {
+          try {
+            const keys = Object.keys(playersObj || {})
+            // group players by team preserving original join order
+            const teams = {}
+            const unteamed = []
+            keys.forEach(k => {
+              try {
+                const p = playersObj[k] || {}
+                const t = p.team || null
+                if (t) {
+                  teams[t] = teams[t] || []
+                  teams[t].push(k)
+                } else {
+                  unteamed.push(k)
+                }
+              } catch (e) {}
+            })
+            const teamNames = Object.keys(teams)
+            if (teamNames.length <= 1) return keys // nothing to alternate
+            // pick starting team: prefer team of first player if present, otherwise first team
+            const firstPid = keys[0]
+            const firstTeam = (playersObj[firstPid] && playersObj[firstPid].team) ? playersObj[firstPid].team : teamNames[0]
+            const orderedTeams = [firstTeam].concat(teamNames.filter(t => t !== firstTeam))
+            const queues = {}
+            orderedTeams.forEach(t => { queues[t] = teams[t] ? teams[t].slice() : [] })
+            const result = []
+            let idx = 0
+            while (Object.keys(queues).some(k => queues[k].length > 0)) {
+              const t = orderedTeams[idx % orderedTeams.length]
+              if (queues[t] && queues[t].length > 0) result.push(queues[t].shift())
+              idx++
+            }
+            // append any unteamed players at end
+            return result.concat(unteamed)
+          } catch (e) {
+            return Object.keys(playersObj || {})
+          }
+        }
+
+        const turnOrder = (roomRoot && roomRoot.gameMode === 'lastTeamStanding') ? buildAlternatingOrder(playersObj) : Object.keys(playersObj)
         const turnTimeout = roomRoot.turnTimeoutSeconds || null
         const timed = !!roomRoot.timed
         const updates = {

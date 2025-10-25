@@ -2972,7 +2972,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (state.turnOrder || [])
           const currentIndexLocal = typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex : 0
           if (effectiveTurnOrder && effectiveTurnOrder.length > 0) {
-            const nextIndex = (currentIndexLocal + 1) % effectiveTurnOrder.length
+            // Choose next index so that, when in lastTeamStanding mode, we prefer a
+            // player from a different team than the current player (if possible).
+            const findNextIndex = (order, curIdx) => {
+              try {
+                const len = (order || []).length
+                if (!len) return 0
+                const currPid = order[curIdx]
+                const currNode = (state.players || []).find(p => p.id === currPid) || {}
+                const currTeam = currNode && currNode.team ? currNode.team : null
+                if (!currTeam || (state && state.gameMode) !== 'lastTeamStanding') return (curIdx + 1) % len
+                // search for first player whose team differs from currTeam
+                for (let offset = 1; offset < len; offset++) {
+                  const idx = (curIdx + offset) % len
+                  const pid = order[idx]
+                  const node = (state.players || []).find(p => p.id === pid) || {}
+                  if (!node.team || node.team !== currTeam) return idx
+                }
+                return (curIdx + 1) % len
+              } catch (e) { return (curIdx + 1) % (order.length || 1) }
+            }
+            const nextIndex = findNextIndex(effectiveTurnOrder, currentIndexLocal)
             updates[`currentTurnIndex`] = nextIndex
             updates[`currentTurnStartedAt`] = Date.now()
               try {
@@ -3472,6 +3492,8 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
+  // clear any team reveal state so teammates don't keep revealed words across rematch
+  updates['teamReveals'] = null
   // determine starting wordmoney to apply for resets : prefer room setting, fallback to 2
   const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
@@ -3563,6 +3585,8 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
+  // clear persisted teammate reveals on automatic rematch so everyone starts fresh
+  updates['teamReveals'] = null
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           updates[`players/${p.id}/hasWord`] = false
@@ -3728,7 +3752,24 @@ try {
             return
           }
 
-          const nextIdx = ((r.currentTurnIndex || 0) + 1) % order.length
+            const findNextIndexForSnapshot = (order, curIdx, snap) => {
+              try {
+                const len = (order || []).length
+                if (!len) return 0
+                const currPid = order[curIdx]
+                const currNode = (snap.players && snap.players[currPid]) ? snap.players[currPid] : {}
+                const currTeam = currNode && currNode.team ? currNode.team : null
+                if (!currTeam || (snap && snap.gameMode) !== 'lastTeamStanding') return (curIdx + 1) % len
+                for (let offset = 1; offset < len; offset++) {
+                  const idx = (curIdx + offset) % len
+                  const pid = order[idx]
+                  const node = (snap.players && snap.players[pid]) ? snap.players[pid] : {}
+                  if (!node.team || node.team !== currTeam) return idx
+                }
+                return (curIdx + 1) % len
+              } catch (e) { return (curIdx + 1) % (order.length || 1) }
+            }
+            const nextIdx = findNextIndexForSnapshot(order, r.currentTurnIndex || 0, r)
           // write an authoritative timeout entry for auditing and to notify other clients
           const tkey = `t_${Date.now()}`
           const updates = { currentTurnIndex: nextIdx, currentTurnStartedAt: Date.now() }
@@ -3835,7 +3876,24 @@ try {
       const order = state && state.turnOrder ? state.turnOrder : []
       if (!order || order.length === 0) return
       const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
-      const nextIndex = (currentIndexLocal + 1) % order.length
+      const findNextIndexLocal = (order, curIdx, playersList, gm) => {
+        try {
+          const len = (order || []).length
+          if (!len) return 0
+          const currPid = order[curIdx]
+          const currNode = (playersList || []).find(p => p.id === currPid) || {}
+          const currTeam = currNode && currNode.team ? currNode.team : null
+          if (!currTeam || gm !== 'lastTeamStanding') return (curIdx + 1) % len
+          for (let offset = 1; offset < len; offset++) {
+            const idx = (curIdx + offset) % len
+            const pid = order[idx]
+            const node = (playersList || []).find(p => p.id === pid) || {}
+            if (!node.team || node.team !== currTeam) return idx
+          }
+          return (curIdx + 1) % len
+        } catch (e) { return (curIdx + 1) % (order.length || 1) }
+      }
+      const nextIndex = findNextIndexLocal(order, currentIndexLocal, state && state.players ? state.players : [], state && state.gameMode)
       const nextPlayer = order[nextIndex]
       const roomRef = dbRef(db, `rooms/${roomId}`)
       const updates = {
@@ -4568,162 +4626,193 @@ try {
           if (sanitized.length !== (players || []).length) {
             try { console.warn('GameRoom: filtered invalid player entries from state.players', { rawPlayers: players, stateSnapshot: state }) } catch (e) {}
           }
-          return sanitized.map(p => {
-          // host-only remove API for player tiles
-          const removePlayer = async (pid) => {
-            if (!isHost) return false
-            try {
-              const playerRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
-              // attempt SDK delete via update to null
+          // Build a renderer for individual player tiles, then arrange teams into columns
+          const renderTile = (p) => {
+            // host-only remove API for player tiles
+            const removePlayer = async (pid) => {
+              if (!isHost) return false
               try {
-                await dbUpdate(playerRef, null)
-                try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e) {}
-                setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_ok_${pid}_`) ? { ...x, removing: true } : x)), 2200)
-                setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_ok_${pid}_`)))), 3000)
-                return true
-              } catch (e) {
+                const playerRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
                 try {
-                  const roomRef = dbRef(db, `rooms/${roomId}`)
-                  await dbUpdate(roomRef, { [`players/${pid}`]: null })
-                  try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e2) {}
+                  await dbUpdate(playerRef, null)
+                  try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e) {}
                   setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_ok_${pid}_`) ? { ...x, removing: true } : x)), 2200)
                   setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_ok_${pid}_`)))), 3000)
                   return true
-                } catch (e2) {
-                  console.warn('removePlayer: fallback failed', e2)
+                } catch (e) {
+                  try {
+                    const roomRef = dbRef(db, `rooms/${roomId}`)
+                    await dbUpdate(roomRef, { [`players/${pid}`]: null })
+                    try { setToasts(t => [...t, { id: `remove_ok_${pid}_${Date.now()}`, text: `Removed player ${playerIdToName[pid] || pid}` }]) } catch (e2) {}
+                    setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_ok_${pid}_`) ? { ...x, removing: true } : x)), 2200)
+                    setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_ok_${pid}_`)))), 3000)
+                    return true
+                  } catch (e2) {
+                    console.warn('removePlayer: fallback failed', e2)
+                  }
+                }
+              } catch (err) { console.error('removePlayer failed', err) }
+              try { setToasts(t => [...t, { id: `remove_err_${pid}_${Date.now()}`, text: `Could not remove ${playerIdToName[pid] || pid}`, removing: false }]) } catch (e) {}
+              setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_err_${pid}_`) ? { ...x, removing: true } : x)), 4200)
+              setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_err_${pid}_`)))), 5200)
+              return false
+            }
+
+            const viewerNode = players.find(x => x.id === myId) || {}
+            const viewerPrivate = {
+              privateWrong: viewerNode.privateWrong || {},
+              privateHits: viewerNode.privateHits || {},
+              privateWrongWords: viewerNode.privateWrongWords || {},
+              privatePowerUps: viewerNode.privatePowerUps || {},
+              privatePowerReveals: viewerNode.privatePowerReveals || {},
+              playerColors: (players || []).reduce((acc, pp) => { if (pp && pp.id) acc[pp.id] = pp.color || null; return acc }, {})
+            }
+
+            const msLeftForPlayer = (state?.currentTurnStartedAt && state?.turnTimeoutSeconds && state?.timed && currentTurnId === p.id)
+              ? Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
+              : null
+
+            const playerWithViewer = { ...p, _viewer: viewerPrivate }
+            const viewerDDActive = !!(viewerNode && viewerNode.doubleDown && viewerNode.doubleDown.active)
+            let viewerDDTarget = null
+            try {
+              if (viewerDDActive) {
+                const ppr = viewerNode.privatePowerReveals || {}
+                let latestTs = 0
+                Object.keys(ppr).forEach(tid => {
+                  const bucket = ppr[tid] || {}
+                  Object.values(bucket).forEach(entry => {
+                    if (!entry) return
+                    const isDD = entry && (entry.powerId === 'double_down' || (entry.result && entry.result.powerId === 'double_down'))
+                    if (!isDD) return
+                    const ts = Number(entry.ts || (entry.result && entry.result.ts) || 0)
+                    if (ts >= latestTs) {
+                      latestTs = ts
+                      viewerDDTarget = tid
+                    }
+                  })
+                })
+              }
+            } catch (e) { viewerDDTarget = null }
+
+            const baseCanGuess = phase === 'playing' && myId === currentTurnId && p.id !== myId
+            const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
+            let canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
+            try {
+              const gm = state && state.gameMode
+              if (gm === 'lastTeamStanding') {
+                const me = (state?.players || []).find(x => x.id === myId) || {}
+                const myTeam = me && me.team ? me.team : null
+                if (myTeam && p.team && myTeam === p.team) {
+                  canGuessComputed = false
                 }
               }
-            } catch (err) { console.error('removePlayer failed', err) }
-            try { setToasts(t => [...t, { id: `remove_err_${pid}_${Date.now()}`, text: `Could not remove ${playerIdToName[pid] || pid}`, removing: false }]) } catch (e) {}
-            setTimeout(() => setToasts(t => t.map(x => x.id && x.id.startsWith(`remove_err_${pid}_`) ? { ...x, removing: true } : x)), 4200)
-            setTimeout(() => setToasts(t => t.filter(x => !(x.id && x.id.startsWith(`remove_err_${pid}_`)))), 5200)
-            return false
-          }
-          // derive viewer-specific private data. viewer's node lives under state.players keyed by id : we need to find viewer's full object
-          const viewerNode = players.find(x => x.id === myId) || {}
-          // viewerNode may contain privateWrong, privateHits, privateWrongWords and private powerup data
-          const viewerPrivate = {
-            privateWrong: viewerNode.privateWrong || {},
-            privateHits: viewerNode.privateHits || {},
-            privateWrongWords: viewerNode.privateWrongWords || {},
-            privatePowerUps: viewerNode.privatePowerUps || {},
-            privatePowerReveals: viewerNode.privatePowerReveals || {},
-            // include a map of player id -> color so child components can color private reveals by player
-            playerColors: (players || []).reduce((acc, pp) => { if (pp && pp.id) acc[pp.id] = pp.color || null; return acc }, {})
-          }
+            } catch (e) {}
 
-          // clone player and attach viewer's private data under _viewer so child can render it
-          // compute ms left for the current player
-          const msLeftForPlayer = (state?.currentTurnStartedAt && state?.turnTimeoutSeconds && state?.timed && currentTurnId === p.id)
-            ? Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
-            : null
-
-          const playerWithViewer = { ...p, _viewer: viewerPrivate }
-
-          // If the viewer has an active Double Down, only allow guessing the target they doubled-down on.
-          // The purchase flow writes a privatePowerReveals entry under the buyer's node keyed by targetId.
-          // Find the most-recent double_down entry to determine the intended target.
-          const viewerDDActive = !!(viewerNode && viewerNode.doubleDown && viewerNode.doubleDown.active)
-          let viewerDDTarget = null
-          try {
-            if (viewerDDActive) {
-              const ppr = viewerNode.privatePowerReveals || {}
-              let latestTs = 0
-              Object.keys(ppr).forEach(tid => {
-                const bucket = ppr[tid] || {}
-                Object.values(bucket).forEach(entry => {
-                  if (!entry) return
-                  // accept either top-level ts or nested result.ts
-                  const isDD = entry && (entry.powerId === 'double_down' || (entry.result && entry.result.powerId === 'double_down'))
-                  if (!isDD) return
-                  const ts = Number(entry.ts || (entry.result && entry.result.ts) || 0)
-                  if (ts >= latestTs) {
-                    latestTs = ts
-                    viewerDDTarget = tid
-                  }
-                })
-              })
-            }
-          } catch (e) { viewerDDTarget = null }
-
-          const baseCanGuess = phase === 'playing' && myId === currentTurnId && p.id !== myId
-          // if viewer has an active DD and a known target, only that target is guessable.
-          // additionally, respect 'frozen' state on the target: if the target is frozen, other
-          // players (not the target themselves) should not be able to guess them.
-          const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
-          // Disallow guessing players on the same team when in lastTeamStanding mode
-          let canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
-          try {
-            const gm = state && state.gameMode
-            if (gm === 'lastTeamStanding') {
+            const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
+            const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
+            let pupReason = null
+            if (!powerUpsEnabled) pupReason = 'Power-ups are disabled'
+            else if (p.id === myId) pupReason = 'Cannot target yourself'
+            else if (p.eliminated) pupReason = 'Player is eliminated'
+            else if (ddShopLocked) pupReason = 'Double Down placed : make your guess first'
+            else {
               const me = (state?.players || []).find(x => x.id === myId) || {}
-              const myTeam = me && me.team ? me.team : null
-              if (myTeam && p.team && myTeam === p.team) {
-                canGuessComputed = false
-              }
+              const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
+              const myHang = Number(me.wordmoney) || 0
+              if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
             }
-          } catch (e) {}
 
-          const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
-          // determine why the power-up button should be disabled (if anything)
-          const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
-          let pupReason = null
-          // If power-ups are disabled, hide/disable the power-up affordance entirely
-          if (!powerUpsEnabled) pupReason = 'Power-ups are disabled'
-          else if (p.id === myId) pupReason = 'Cannot target yourself'
-          else if (p.eliminated) pupReason = 'Player is eliminated'
-          else if (ddShopLocked) pupReason = 'Double Down placed : make your guess first'
-          else {
-            const me = (state?.players || []).find(x => x.id === myId) || {}
-            const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
-            const myHang = Number(me.wordmoney) || 0
-            if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
+            return (
+              <div key={`pc_wrap_${p.id}`} style={{ position: 'relative' }}>
+                <PlayerCircle
+                  key={p.id}
+                  player={playerWithViewer}
+                  teamName={p.team}
+                  viewerTeam={viewerNode.team}
+                  teamMoney={(state && state.teams && p.team && state.teams[p.team] && state.teams[p.team].wordmoney) || 0}
+                  gameMode={state?.gameMode}
+                  viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
+                  isSelf={p.id === myId}
+                  hostId={hostId}
+                  isHost={isHost}
+                  onRemove={removePlayer}
+                  viewerId={myId}
+                  roomId={roomId}
+                  // whether the current viewer has an active team reveal for this player
+                  teamRevealForPlayer={Boolean(state && state.teamReveals && p.team && state.teamReveals[p.team] && state.teamReveals[p.team][p.id] && state.teamReveals[p.team][p.id][myId])}
+                  // handler to toggle a team reveal for this player (writes to DB)
+                  onToggleTeamReveal={async (targetPlayerId, teamName, show) => {
+                    try {
+                      const roomRef = dbRef(db, `rooms/${roomId}`)
+                      const updates = {}
+                      const path = `teamReveals/${teamName}/${targetPlayerId}/${myId}`
+                      if (show) updates[path] = { ts: Date.now(), by: myId }
+                      else updates[path] = null
+                      await dbUpdate(roomRef, updates)
+                    } catch (e) {
+                      console.warn('Could not toggle team reveal', e)
+                    }
+                  }}
+                  phase={phase}
+                  hasSubmitted={!!p.hasWord}
+                  canGuess={canGuessComputed}
+                  ddActive={viewerDDActive}
+                  ddTarget={viewerDDTarget}
+                  onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }}
+                  showPowerUpButton={powerUpsEnabled && p.id !== myId}
+                  onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
+                  onSkip={skipTurn}
+                  playerIdToName={playerIdToName}
+                  timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
+                  starterApplied={!!state?.starterBonus?.applied}
+                  flashPenalty={wasPenalized}
+                  pendingDeduct={pendingDeducts[p.id] || 0}
+                  isWinner={p.id === state?.winnerId}
+                  powerUpDisabledReason={pupReason}
+                  revealPreserveOrder={revealPreserveOrder}
+                  revealShowBlanks={revealShowBlanks}
+                />
+                {p.eliminated && ghostReEntryEnabled && p.id === myId && (state?.players || []).filter(x => x && !x.eliminated).length >= 2 && !(p.ghostState && p.ghostState.reentered) && (
+                  <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
+                    <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
+                  </div>
+                )}
+              </div>
+            )
           }
+
+          const redPlayers = sanitized.filter(p => (p && p.team) === 'red')
+          const bluePlayers = sanitized.filter(p => (p && p.team) === 'blue')
+          const others = sanitized.filter(p => !(p && p.team) || ((p.team) !== 'red' && (p.team) !== 'blue'))
 
           return (
-            <div key={`pc_wrap_${p.id}`} style={{ position: 'relative' }}>
-              <PlayerCircle
-                key={p.id}
-                player={playerWithViewer}
-                teamName={p.team}
-                teamMoney={(state && state.teams && p.team && state.teams[p.team] && state.teams[p.team].wordmoney) || 0}
-                gameMode={state?.gameMode}
-                viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
-                isSelf={p.id === myId}
-                hostId={hostId}
-                isHost={isHost}
-                onRemove={removePlayer}
-                viewerId={myId}
-                phase={phase}
-                hasSubmitted={!!p.hasWord}
-                canGuess={canGuessComputed}
-                ddActive={viewerDDActive}
-                ddTarget={viewerDDTarget}
-                onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }}
-                // Show the Power-up button whenever power-ups are enabled and this tile is not the viewer
-                // (buyers may open the shop even when it's not their turn). Individual Buy buttons
-                // are disabled in the modal unless it is the buyer's turn.
-                showPowerUpButton={powerUpsEnabled && p.id !== myId}
-                onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
-                onSkip={skipTurn}
-                playerIdToName={playerIdToName}
-                timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
-                starterApplied={!!state?.starterBonus?.applied}
-                flashPenalty={wasPenalized}
-                pendingDeduct={pendingDeducts[p.id] || 0}
-                isWinner={p.id === state?.winnerId}
-                powerUpDisabledReason={pupReason}
-                revealPreserveOrder={revealPreserveOrder}
-                revealShowBlanks={revealShowBlanks}
-              />
-              {p.eliminated && ghostReEntryEnabled && p.id === myId && (state?.players || []).filter(x => x && !x.eliminated).length >= 2 && !(p.ghostState && p.ghostState.reentered) && (
-                <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
-                  <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
-                </div>
-              )}
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+              <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                {/* Team wallet box for Red team (shown when lastTeamStanding mode is active) */}
+                {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.red && (
+                  <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#ff4d4f', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Red Team</span>
+                    <span style={{ fontFamily: 'monospace' }}>${(state.teams.red.wordmoney || 0)}</span>
+                  </div>
+                )}
+                {redPlayers.map(p => renderTile(p))}
+              </div>
+              <div style={{ flex: '0 0 10%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                {others.map(p => renderTile(p))}
+              </div>
+              <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                {/* Team wallet box for Blue team (shown when lastTeamStanding mode is active) */}
+                {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.blue && (
+                  <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#1890ff', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Blue Team</span>
+                    <span style={{ fontFamily: 'monospace' }}>${(state.teams.blue.wordmoney || 0)}</span>
+                  </div>
+                )}
+                {bluePlayers.map(p => renderTile(p))}
+              </div>
             </div>
           )
-          })
         })()}
       </div>
 
