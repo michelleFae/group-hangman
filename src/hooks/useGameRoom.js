@@ -997,7 +997,11 @@ export default function useGameRoom(roomId, playerName) {
       const gm = (room && room.gameMode) ? room.gameMode : (options && options.gameMode)
       if (gm !== 'lastTeamStanding') {
         Object.keys(playersObj).forEach(pid => {
-          updates[`players/${pid}/wordmoney`] = startMoney
+          // Only initialize per-player balances when a numeric value is not already present.
+          // This prevents clobbering concurrent transactional increments (starter bonuses)
+          // that may have been applied just before the batch update is committed.
+          const existing = playersObj[pid] && typeof playersObj[pid].wordmoney === 'number'
+          if (!existing) updates[`players/${pid}/wordmoney`] = startMoney
         })
       }
       // Debug: log resolved starting money and what will be written for players
@@ -1221,7 +1225,17 @@ export default function useGameRoom(roomId, playerName) {
                   applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
                 }
               } else {
-                applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+                // non-team mode: increment player's wordmoney transactionally to avoid races
+                try {
+                  const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${uid}/wordmoney`)
+                  await runTransaction(playerMoneyRef, (curr) => {
+                    return (Number(curr) || 0) + 10
+                  })
+                  try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (e) {}
+                } catch (e) {
+                  // fallback to helper if transaction fails
+                  applyAwardToUpdates(ups, roomRoot, uid, 10, { reason: 'starterBonus', by: null })
+                }
               }
             } catch (e) {
               // fallback to direct per-player write in case helper/transaction fails
@@ -1422,8 +1436,18 @@ export default function useGameRoom(roomId, playerName) {
                   applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
                 }
               } else {
-                // non-team mode: safe to stage the player increment in the batched update
-                applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
+                // non-team mode: increment player's wordmoney transactionally to avoid overwriting
+                // any concurrent starter-bonus transactions that may already have applied.
+                try {
+                  const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${first}/wordmoney`)
+                  await runTransaction(playerMoneyRef, (curr) => {
+                    return (Number(curr) || 0) + 1
+                  })
+                  try { updates[`players/${first}/lastGain`] = { amount: 1, by: 'startBonus', reason: 'startTurn', ts: Date.now() } } catch (e) {}
+                } catch (e) {
+                  // fallback to old behavior if transaction fails
+                  applyAwardToUpdates(updates, roomRoot, first, 1, { reason: 'startTurn', by: 'startBonus' })
+                }
               }
             } catch (ee) {
               // conservative fallback: bump player entry directly
