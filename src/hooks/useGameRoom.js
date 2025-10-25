@@ -1246,18 +1246,18 @@ export default function useGameRoom(roomId, playerName) {
               } catch (ee) {}
             }
             // If room mode is one of the public modes, reveal the starter letter publicly on this player's tile
-            try {
+          
               const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
               if (gm === 'money' || gm === 'lastOneStanding' || gm === 'lastTeamStanding') {
-                try {
+                
                   const existing = Array.isArray(pVal.revealed) ? pVal.revealed.map(x => (x||'').toString().toLowerCase()) : []
                   if (!existing.includes(req)) {
                     const next = Array.from(new Set([...(existing || []), req]))
                     ups[`players/${uid}/revealed`] = next
                   }
-                } catch (e) {}
+                
               }
-            } catch (e) {}
+            
             ups[`players/${uid}/starterBonusAwarded`] = true
             await update(roomRootRef, ups)
           }
@@ -1410,6 +1410,26 @@ export default function useGameRoom(roomId, playerName) {
               } catch (e) {}
             }
           } catch (e) { console.warn('Could not initialize ghostChallenge at round start', e) }
+            // Auto-reveal the starter bonus letter for public modes at round start.
+            // Historically this was only done for lastTeamStanding; extend to money and lastOneStanding.
+            try {
+              const sb = roomRoot.starterBonus || null
+              const gmNow = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              if (sb && sb.enabled && sb.type === 'contains' && sb.value && (gmNow === 'money' || gmNow === 'lastOneStanding' || gmNow === 'lastTeamStanding')) {
+                const req = (sb.value || '').toString().toLowerCase()
+                Object.keys(playersObj || {}).forEach(pid => {
+                  try {
+                    const p = playersObj[pid] || {}
+                    const w = (p.word || '').toString().toLowerCase()
+                    const existing = Array.isArray(p.revealed) ? p.revealed.map(x => (x||'').toString().toLowerCase()) : []
+                    if (w && w.indexOf(req) !== -1 && !existing.includes(req)) {
+                      const next = Array.from(new Set([...(existing || []), req]))
+                      updates[`players/${pid}/revealed`] = next
+                    }
+                  } catch (e) {}
+                })
+              }
+            } catch (e) {}
         // mark starterBonus as applied so we don't attempt to re-award later
         if (roomRoot.starterBonus && roomRoot.starterBonus.enabled) updates['starterBonus/applied'] = true
         // Award +1 to the first player in turnOrder as a starting bonus; be additive to any existing staged value
