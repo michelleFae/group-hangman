@@ -4782,35 +4782,47 @@ try {
             )
           }
 
-          const redPlayers = sanitized.filter(p => (p && p.team) === 'red')
-          const bluePlayers = sanitized.filter(p => (p && p.team) === 'blue')
-          const others = sanitized.filter(p => !(p && p.team) || ((p.team) !== 'red' && (p.team) !== 'blue'))
+          // If playing Last Team Standing, render three-column team layout (red / others / blue)
+          if ((state && state.gameMode) === 'lastTeamStanding') {
+            const redPlayers = sanitized.filter(p => (p && p.team) === 'red')
+            const bluePlayers = sanitized.filter(p => (p && p.team) === 'blue')
+            const others = sanitized.filter(p => !(p && p.team) || ((p.team) !== 'red' && (p.team) !== 'blue'))
 
+            return (
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                  {/* Team wallet box for Red team (shown when lastTeamStanding mode is active) */}
+                  {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.red && (
+                    <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#ff4d4f', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Red Team</span>
+                      <span style={{ fontFamily: 'monospace' }}>${(state.teams.red.wordmoney || 0)}</span>
+                    </div>
+                  )}
+                  {redPlayers.map(p => renderTile(p))}
+                </div>
+                <div style={{ flex: '0 0 10%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                  {others.map(p => renderTile(p))}
+                </div>
+                <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                  {/* Team wallet box for Blue team (shown when lastTeamStanding mode is active) */}
+                  {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.blue && (
+                    <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#1890ff', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Blue Team</span>
+                      <span style={{ fontFamily: 'monospace' }}>${(state.teams.blue.wordmoney || 0)}</span>
+                    </div>
+                  )}
+                  {bluePlayers.map(p => renderTile(p))}
+                </div>
+              </div>
+            )
+          }
+
+          // Non-team modes: render players in a circular/wrap layout centered on screen
           return (
-            <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-              <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                {/* Team wallet box for Red team (shown when lastTeamStanding mode is active) */}
-                {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.red && (
-                  <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#ff4d4f', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Red Team</span>
-                    <span style={{ fontFamily: 'monospace' }}>${(state.teams.red.wordmoney || 0)}</span>
-                  </div>
-                )}
-                {redPlayers.map(p => renderTile(p))}
-              </div>
-              <div style={{ flex: '0 0 10%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                {others.map(p => renderTile(p))}
-              </div>
-              <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                {/* Team wallet box for Blue team (shown when lastTeamStanding mode is active) */}
-                {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.blue && (
-                  <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#1890ff', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Blue Team</span>
-                    <span style={{ fontFamily: 'monospace' }}>${(state.teams.blue.wordmoney || 0)}</span>
-                  </div>
-                )}
-                {bluePlayers.map(p => renderTile(p))}
-              </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+              {sanitized.map(p => (
+                <div key={`pc_circle_${p.id}`} style={{ flex: '0 0 auto' }}>{renderTile(p)}</div>
+              ))}
             </div>
           )
         })()}
@@ -5054,7 +5066,7 @@ try {
               )}
               {state?.starterBonus?.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
-                  Word bonus if: <strong>{state?.starterBonus?.description}</strong>
+                  +10 bonus wordmoney if: <strong>{state?.starterBonus?.description}</strong>
                 </div>
               )}
               <div className="progress" style={{ marginTop: 8, width: 220 }}>

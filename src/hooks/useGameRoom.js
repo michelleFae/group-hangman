@@ -1184,6 +1184,19 @@ export default function useGameRoom(roomId, playerName) {
                 try { ups[`players/${uid}/lastGain`] = { amount: 10, by: null, reason: 'starterBonus', ts: Date.now() } } catch (ee) {}
               } catch (ee) {}
             }
+            // If room mode is one of the public modes, reveal the starter letter publicly on this player's tile
+            try {
+              const gm = roomRoot && roomRoot.gameMode ? roomRoot.gameMode : null
+              if (gm === 'money' || gm === 'lastOneStanding' || gm === 'lastTeamStanding') {
+                try {
+                  const existing = Array.isArray(pVal.revealed) ? pVal.revealed.map(x => (x||'').toString().toLowerCase()) : []
+                  if (!existing.includes(req)) {
+                    const next = Array.from(new Set([...(existing || []), req]))
+                    ups[`players/${uid}/revealed`] = next
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
             ups[`players/${uid}/starterBonusAwarded`] = true
             await update(roomRootRef, ups)
           }

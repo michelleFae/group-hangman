@@ -425,6 +425,8 @@ export default function PlayerCircle({
 
   // Determine elimination UI state
   const isEliminated = !!player.eliminated
+  // When in lastTeamStanding, viewers on the same team should not see Guess/Power-up buttons
+  const viewerSameTeam = (!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam)
   // Determine who guessed this player out (prefer guessedBy.__word array last actor)
   let eliminatedByName = null
   try {
@@ -529,7 +531,7 @@ export default function PlayerCircle({
                 const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
                 return (
                   <>
-                    {!hideInteractiveForWordSpy && (
+                    {!hideInteractiveForWordSpy && !viewerSameTeam && (
                       <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf)} onClick={() => { if (canGuess && !isEliminated && !ddLocked && !(isFrozen && !isSelf)) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
                     )}
                   </>
@@ -541,7 +543,7 @@ export default function PlayerCircle({
                 <button className="action-button" title="End your turn" onClick={() => { try { if (typeof onSkip === 'function') onSkip() } catch (e) {} }} style={{ marginLeft: 8 }}>Skip turn</button>
               )}
 
-              {!isSelf && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
+              {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
                 <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'⚡ Power-up'}</button>
               )}
               {/* show who eliminated this player when applicable */}
@@ -558,10 +560,7 @@ export default function PlayerCircle({
 
           <div style={{ marginTop: 8 }}>
             {!hideInteractiveForWordSpy && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
-                  {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
                 {/* Show teammate's word button: only when in lastTeamStanding and viewer is on same team */}
                 {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam) && (
                   <button
@@ -589,6 +588,10 @@ export default function PlayerCircle({
                     {(teamRevealForPlayer || showTeammateWord) ? `Hide ${player && player.name ? player.name : 'player'}'s word` : `Show ${player && player.name ? player.name : 'player'}'s word`}
                   </button>
                 )}
+                <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                  {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
+                </button>
+                
               </div>
             )}
           </div>
