@@ -466,7 +466,7 @@ export default function PlayerCircle({
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
           </div>
-          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
             <div>{player.name}</div>
             {teamName && (
               <div style={{ fontSize: 11, padding: '2px 6px', borderRadius: 8, background: teamName === 'red' ? '#ff5c5c' : '#5c9bff', color: '#fff', fontWeight: 800 }}>{teamName.toUpperCase()}</div>

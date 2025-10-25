@@ -656,7 +656,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Watch for room-level Double Down announcements (written by server on resolution)
   useEffect(() => {
     try {
-      const dd = state && state.lastDoubleDown
+      const dd = state?.lastDoubleDown
       // Debug: log raw dd object when effect runs
       if (!dd || !dd.ts) {
         // still log when undefined to help debugging
@@ -714,13 +714,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {
       // swallow errors to avoid breaking other effects
     }
-  }, [state && state.lastDoubleDown])
+  }, [state?.lastDoubleDown])
 
   // Watch for ghost re-entry announcements and notify once
   const processedGhostAnnRef = useRef({})
   useEffect(() => {
     try {
-      const anns = state && state.ghostAnnouncements ? state.ghostAnnouncements : {}
+      const anns = state?.ghostAnnouncements || {}
       Object.keys(anns || {}).forEach(k => {
         if (processedGhostAnnRef.current[k]) return
         processedGhostAnnRef.current[k] = true
@@ -735,7 +735,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         } catch (e) {}
       })
     } catch (e) {}
-  }, [state && state.ghostAnnouncements])
+  }, [state?.ghostAnnouncements])
 
   // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
   useEffect(() => {

@@ -140,6 +140,7 @@ exports.processGuess = functions.database
           const letterStr = letter
           let stake = 0
           let award = (2 * toAdd)
+          console.log('OO INDEX! process guess Double Down active for letter guess?', dd)
           if (dd && dd.active) {
             stake = Number(dd.stake) || 0
             if (stake > 0) {
@@ -149,7 +150,7 @@ exports.processGuess = functions.database
               // consume the doubleDown entry after use
               updates[`players/${from}/doubleDown`] = null
             }
-          }
+          
           // apply net delta
           hangDeltas[from] = (hangDeltas[from] || 0) + award
           // record a visible recent gain so clients show the correct wordmoney delta (net)
@@ -158,7 +159,7 @@ exports.processGuess = functions.database
           updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: ddActiveWithStake ? 'doubleDown' : 'hang', ts: Date.now() }
 
           // write a private power-up result entry for the guesser so only they see the double-down result
-          try {
+        
             const ddKey = `double_down_${Date.now()}`
             const ddPayload = {
               powerId: 'double_down',
@@ -173,7 +174,8 @@ exports.processGuess = functions.database
               }
             }
             updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
-          } catch (e) {}
+         
+        }
 
           // record or aggregate private hit for guesser
           const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []

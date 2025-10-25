@@ -130,7 +130,7 @@ module.exports = async (req, res) => {
             }
           } catch (e) {}
           // Also treat as no-score if the guesser previously received this letter via a privatePowerReveals entry
-          try {
+          
             const pphr = (guesser.privatePowerReveals && guesser.privatePowerReveals[targetId]) ? Object.values(guesser.privatePowerReveals[targetId]) : []
             if (Array.isArray(pphr) && pphr.some(r => {
               try {
@@ -147,7 +147,9 @@ module.exports = async (req, res) => {
             })) {
               noScore = true
             }
-          } catch (e) {}
+          
+          console.warn(e)
+          console.log("michelle ooo^")
             if (!noScore) {
             // Base award for correct letter(s)
             const prevHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
@@ -158,6 +160,8 @@ module.exports = async (req, res) => {
 
             // Apply double-down bonus if the guesser staked
             const dd = guesser.doubleDown
+
+            console.log('process guess Double Down active for letter guess?', dd)
             if (dd && dd.active) {
               stake = Number(dd.stake) || 0
               if (stake > 0) {
@@ -172,7 +176,7 @@ module.exports = async (req, res) => {
                   award = award - stake
                 }
               }
-            }
+            
             // For letter guesses accumulate award into hangDeltas for folding later
             hangDeltas[from] = (hangDeltas[from] || 0) + award
             // mark that this guess produced a correct reveal and award
@@ -183,7 +187,7 @@ module.exports = async (req, res) => {
             updates[`players/${from}/lastGain`] = { amount: award, by: targetId, reason: ddActiveWithStake ? 'doubleDown' : 'hang', ts: Date.now() }
 
             // Also write a private power-up result entry so only the guesser sees the double-down result
-            try {
+            
               const ddKey = `double_down_${Date.now()}`
               const letterStr = letter
               // message reflects netted amount (award already reduced by original stake if applicable)
@@ -196,7 +200,7 @@ module.exports = async (req, res) => {
               } }
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
               // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
-              try {
+             
                 const ddKeyTarget = `double_down_target_${Date.now()}`
                 updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
                   letter: letterStr,
@@ -205,12 +209,12 @@ module.exports = async (req, res) => {
                   message: `Double Down: guessed '${letterStr}' and netted +$${award}`,
                   messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>`
                 } }
-              } catch (e) {}
+             
               // announcement for all clients: brief double-down summary (ephemeral)
-              try {
+              
                 addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() })
-              } catch (e) {}
-            } catch (e) {}
+            }
+           
 
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
             let merged = false
@@ -233,7 +237,7 @@ module.exports = async (req, res) => {
             // Only create Double Down private reveal entries when the player actually had
             // an active Double Down with a positive stake. Avoid emitting DD messages for
             // ordinary no-score reveals so players aren't misled.
-            try {
+            
               const ddActiveWithStake2 = dd && dd.active && (Number(stake) || 0) > 0
               if (ddActiveWithStake2) {
                 const ddKey2 = `double_down_noscore_${Date.now()}`
@@ -246,7 +250,7 @@ module.exports = async (req, res) => {
                   messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
                 } }
                 updates[`players/${from}/privatePowerReveals/${from}/${ddKey2}`] = ddPayload2
-                try {
+            
                   const ddKey2Target = `double_down_noscore_target_${Date.now()}`
                   updates[`players/${from}/privatePowerReveals/${targetId}/${ddKey2Target}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
                     letter: letterStr2,
@@ -255,9 +259,9 @@ module.exports = async (req, res) => {
                     message: `Double Down: guessed '${letterStr2}', no points awarded since it was already revealed`,
                     messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr2}</strong>', no points awarded since it was already privately/publicly revealed.`
                   } }
-                } catch (e) {}
+                
               }
-            } catch (e) {}
+            
           }
         } else {
           // letter was already fully revealed : treat this as a wrong guess
