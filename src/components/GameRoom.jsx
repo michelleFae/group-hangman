@@ -95,8 +95,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // depending on room.mode === 'lastTeamStanding'. Always record a per-player lastGain for UI.
   function applyAward(updates, pid, amount, { reason = null, by = null } = {}) {
  
-      const playerNode = (state?.players || []).find(p => p.id === pid) || {}
-      if ((state && state.gameMode) === 'lastTeamStanding' && playerNode && playerNode.team) {
+    const playerNode = (state?.players || []).find(p => p.id === pid) || {}
+    // Prefer authoritative room state when available, but fall back to local UI state
+    const effectiveMode = (state && state.gameMode) ? state.gameMode : gameMode
+    if (effectiveMode === 'lastTeamStanding' && playerNode && playerNode.team) {
         const team = playerNode.team
         const prevTeam = Number((state && state.teams && state.teams[team] && state.teams[team].wordmoney) || 0)
         const teamBase = (typeof updates[`teams/${team}/wordmoney`] !== 'undefined') ? Number(updates[`teams/${team}/wordmoney`]) : prevTeam
@@ -1543,10 +1545,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // check buyer/team wordmoney affordability
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.wordmoney) || 0
-    const gmMode = state && state.gameMode
+    // Prefer authoritative room state when present, fall back to local UI state
+    const gmMode = (state && state.gameMode) ? state.gameMode : gameMode
     let teamMoney = null
     if (gmMode === 'lastTeamStanding' && me.team) {
-      teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+      // Try to read the authoritative team wallet from the DB to avoid using a stale local state
+      try {
+        const teamRef = dbRef(db, `rooms/${roomId}/teams/${me.team}/wordmoney`)
+        const snap = await dbGet(teamRef)
+        let live = null
+        try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
+        if (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) {
+          teamMoney = Number(live)
+        } else {
+          // fallback to room state snapshot
+          teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+        }
+      } catch (e) {
+        // DB read failed — fall back to local room state
+        teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+      }
+
       if (teamMoney - cost < 0) {
         setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough team wordmoney to buy that power-up.' }])
         return
