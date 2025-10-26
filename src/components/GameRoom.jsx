@@ -3456,10 +3456,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
                         // Max stake is your current wordmoney - 1 (you may stake up to your current balance minus the base price)
                         let maxStake = (Number(me.wordmoney) || 0) - 1
-                        if (state?.gameMode === "lastOneStanding") {
+                        // When in team mode, stake from the team's wallet instead of player's personal wallet.
+                        if (state?.gameMode === 'lastTeamStanding') {
                           const myTeam = me.team
-                          // teamHang
-                          maxStake = (state.teams[myTeam]?.wordmoney || 0) - 1
+                          // Guard access to state.teams using optional chaining to avoid errors when teams not initialized yet
+                          maxStake = (state?.teams?.[myTeam]?.wordmoney || 0) - 1
                         }
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
