@@ -301,7 +301,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
   elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
   cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
-  gemstones: { emoji: '👜', label: 'Gemstones', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
+  gemstones: { emoji: '💎', label: 'Gemstones', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
   custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
