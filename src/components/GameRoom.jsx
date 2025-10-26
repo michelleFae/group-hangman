@@ -7,7 +7,7 @@ import COLOURS from '../data/colours'
 import ANIMALS from '../data/animals'
 import BALLSPORTS from '../data/ballsports'
 import OLYMPICSPORTS from '../data/olympicsports'
-import ACCESSORIES from '../data/accessories'
+import GEMSTONES from '../data/gemstones'
 import INSTRUMENTS from '../data/instruments'
 import ELEMENTS from '../data/elements'
 import NOUNS from '../data/nouns'
@@ -301,7 +301,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
   elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
   cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
-  accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
+  gemstones: { emoji: '👜', label: 'Gemstones', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
   custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
@@ -871,8 +871,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   const confettiPieces = useMemo(() => {
-    if (!isWinner) return []
-    const colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
+    // Show confetti when either the viewer is a winner or the room ended with a team winner.
+    if (!isWinner && !state?.winnerTeam) return []
+    // Use team-colored palettes when a team won, otherwise fall back to celebratory mixed colors
+    const team = state?.winnerTeam || null
+    let colors = ['#FFABAB','#FFD54F','#B39DDB','#81D4FA','#C5E1A5','#F8BBD0','#B2EBF2']
+    if (team === 'red') colors = ['#ff8a80','#ff5252','#ff1744','#ff4081','#ff9e80']
+    else if (team === 'blue') colors = ['#82b1ff','#448aff','#2979ff','#40c4ff','#81d4fa']
     return new Array(48).fill(0).map(() => ({
       left: Math.random() * 100,
       // stagger delays up to ~1.6s so pieces reach bottom at different times
@@ -983,7 +988,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (type === 'animals') pool = ANIMALS
     else if (type === 'ballsports') pool = BALLSPORTS
     else if (type === 'olympicsports') pool = OLYMPICSPORTS
-  else if (type === 'accessories') pool = ACCESSORIES
+  else if (type === 'gemstones') pool = GEMSTONES
         else if (type === 'colours') pool = COLOURS
         else if (type === 'instruments') pool = INSTRUMENTS
         else if (type === 'elements') pool = ELEMENTS
@@ -1280,7 +1285,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         <option value="countries">Countries</option>
                         <option value="ballsports">Ball Sports</option>
                         <option value="olympicsports">Olympic Sports</option>
-                        <option value="accessories">Clothing Accessories</option>
+                        <option value="gemstones">Gemstones</option>
                       <option value="fruits">Fruits & Vegetables</option>
                         <option value="occupations">Occupations</option>
                       <option value="elements">Periodic elements</option>
@@ -4225,8 +4230,8 @@ try {
   if ( phase === 'ended') { // true) {
     return (
       <>
-        <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
-          {isWinner && confettiPieces.map((c, i) => (
+          <div className={`victory-screen ${(state?.winnerTeam || isWinner) ? 'confetti' : 'sad'}`}>
+          {confettiPieces.map((c, i) => (
             <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
           ))}
           {state?.winnerByWordmoney && cashPieces.map((c, i) => (
@@ -4236,42 +4241,88 @@ try {
           <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
           <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
-          <div className="standings card" style={{ marginTop: 12 }}>
-            <h4>Final standings</h4>
-            <ol>
-              {sanitizedStandings.map((p, idx) => {
-                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
-                const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
-                return (
-                  <li key={p.id} style={{ margin: '8px 0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ alignItems: 'center', gap: 8 }}>
-                      {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
-                      <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
-                      {showWordsOnEnd && p.word && (
-                        <span style={{
-                          marginLeft: 8,
-                          background: '#eef5ee',
-                          padding: '4px 8px',
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: '#234',
-                          display: 'inline-block',
-                          maxWidth: '40vw',
-                          overflow: 'visible',
-                          whiteSpace: 'nowrap'
-                        }}>{p.word}</span>
-                      )}
+          {/* If the room ended with a team winner, show a fullscreen tinted overlay */}
+          {state?.winnerTeam && (() => {
+            try {
+              const wt = state.winnerTeam
+              const teamColor = wt === 'red' ? '255,77,79' : (wt === 'blue' ? '24,144,255' : '136,136,136')
+              const teamMembers = (state?.players || []).filter(x => x && x.team === wt)
+              const teamWallet = Number(state?.teams?.[wt]?.wordmoney || 0)
+              return (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(180deg, rgba(${teamColor},0.92), rgba(0,0,0,0.55))`, color: '#fff', padding: 20 }}>
+                  <div style={{ maxWidth: 980, width: '100%', borderRadius: 12, padding: 28, background: 'rgba(0,0,0,0.14)', boxShadow: '0 6px 30px rgba(0,0,0,0.4)', textAlign: 'center' }}>
+                    <div style={{ fontSize: 40, fontWeight: 900 }}>{wt.charAt(0).toUpperCase() + wt.slice(1)} Team Wins</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, marginTop: 8 }}>${teamWallet}</div>
+                    <div style={{ marginTop: 18, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {teamMembers.map((m, i) => (
+                        <div key={`tm_${i}`} style={{ minWidth: 140, background: 'rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 10, textAlign: 'left' }}>
+                          <div style={{ fontWeight: 800, fontSize: 16 }}>{m && m.name ? m.name : (m && m.id ? m.id : 'Player')}</div>
+                          {showWordsOnEnd && (m && m.word) && (
+                            <div style={{ fontSize: 13, opacity: 0.95, marginTop: 6 }}>{m.word}</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <div style={{ fontWeight: 800 }}>
-                      <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                        ${p.wordmoney || 0}
-                      </span>
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
+                    {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
+                      <div style={{ marginTop: 18 }}>
+                        <strong>Ghost words:</strong>
+                        <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {Object.keys(state.ghostHistory).sort().map(k => {
+                            const g = state.ghostHistory[k] || {}
+                            return (
+                              <div key={`gh_${k}`} style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 10px', borderRadius: 8 }}>
+                                <strong style={{ marginRight: 8 }}>{g.word}</strong>
+                                {g.by ? <span style={{ opacity: 0.95 }}> (solved by {playerIdToName[g.by] || g.by})</span> : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            } catch (e) { return null }
+          })()}
+
+          {!state?.winnerTeam && (
+            <div className="standings card" style={{ marginTop: 12 }}>
+              <h4>Final standings</h4>
+              <ol>
+                {sanitizedStandings.map((p, idx) => {
+                  const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
+                  const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
+                  return (
+                    <li key={p.id} style={{ margin: '8px 0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ alignItems: 'center', gap: 8 }}>
+                        {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
+                        <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                        {showWordsOnEnd && p.word && (
+                          <span style={{
+                            marginLeft: 8,
+                            background: '#eef5ee',
+                            padding: '4px 8px',
+                            borderRadius: 8,
+                            fontSize: 12,
+                            color: '#234',
+                            display: 'inline-block',
+                            maxWidth: '40vw',
+                            overflow: 'visible',
+                            whiteSpace: 'nowrap'
+                          }}>{p.word}</span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 800 }}>
+                        <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
+                          ${p.wordmoney || 0}
+                        </span>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+          )}
 
           <div style={{ marginTop: 14 }}>
             <div style={{ marginBottom: 8 }}>
@@ -5237,7 +5288,7 @@ try {
         {phase === 'ended' && (
           <>
           <div className={`victory-screen ${isWinner ? 'confetti' : 'sad'}`}>
-            {isWinner && confettiPieces.map((c, i) => (
+            {confettiPieces.map((c, i) => (
               <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
             ))}
             {state?.winnerByWordmoney && cashPieces.map((c, i) => (

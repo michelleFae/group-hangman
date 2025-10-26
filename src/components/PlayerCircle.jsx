@@ -811,7 +811,7 @@ try {
   /* frozen badge styling */
   .frozen-badge { position: absolute; right: -8px; top: -8px; background: rgba(255,255,255,0.95); color: #0b66ff; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.08); pointer-events: none; }
   /* ex-ghost badge shown when a player re-enters after winning a ghost challenge */
-  .ex-ghost-badge { position: absolute; right: -8px; top: 28px; background: rgba(255,255,255,0.96); color: #222; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .ex-ghost-badge { position: absolute; top: 28px; background: rgba(255, 255, 255, 0.75); color: #222; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   .ex-ghost-badge[title] { cursor: help }
     `
     document.head.appendChild(s)
