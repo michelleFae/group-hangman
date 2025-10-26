@@ -1514,7 +1514,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // compute effective cost (account for global price surge(s) set by other player(s)).
     // Support both legacy single-object shape and new per-player map shape.
     let cost = baseCost
-    try {
+   
       let totalSurgeAmount = 0
       const ps = state && state.priceSurge
       if (ps && typeof ps === 'object') {
@@ -1541,13 +1541,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
       }
       if (totalSurgeAmount) cost = baseCost + totalSurgeAmount
-    } catch (e) {}
+   
     // check buyer/team wordmoney affordability
     const me = (state?.players || []).find(p => p.id === myId) || {}
     const myHang = Number(me.wordmoney) || 0
     // Prefer authoritative room state when present, fall back to local UI state
     const gmMode = (state && state.gameMode) ? state.gameMode : gameMode
-    let teamMoney = null
+    let teamMoney = 0
     if (gmMode === 'lastTeamStanding' && me.team) {
       // Try to read the authoritative team wallet from the DB to avoid using a stale local state
       try {
@@ -3378,7 +3378,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (!open || !targetId) return null
     const targetName = playerIdToName[targetId] || targetId
     const me = (state?.players || []).find(p => p.id === myId) || {}
-    const myHang = Number(me.wordmoney) || 0
+    let myHang =  Number(me.wordmoney) || 0 
+    if (state?.gameMode === "lastOneStanding") {
+      const myTeam = me?.team
+      // teamHang
+      myHang = (state?.teams[myTeam] || {})?.wordmoney || 0
+    }
+
+    
   const isLobby = phase === 'lobby'
   const isMyTurn = (myId === currentTurnId)
     return (
@@ -3448,7 +3455,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
                         // Max stake is your current wordmoney - 1 (you may stake up to your current balance minus the base price)
-                        const maxStake = (Number(me.wordmoney) || 0) - 1
+                        let maxStake = (Number(me.wordmoney) || 0) - 1
+                        if (state?.gameMode === "lastOneStanding") {
+                          const myTeam = me.team
+                          // teamHang
+                          maxStake = (state.teams[myTeam]?.wordmoney || 0) - 1
+                        }
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -4755,7 +4767,7 @@ try {
             const baseCanGuess = phase === 'playing' && myId === currentTurnId && p.id !== myId
             const targetFrozen = !!(p && (p.frozen || (typeof p.frozenUntilTurnIndex !== 'undefined' && p.frozenUntilTurnIndex !== null)))
             let canGuessComputed = baseCanGuess && (!viewerDDActive || !viewerDDTarget || viewerDDTarget === p.id) && !(targetFrozen && p.id !== myId)
-            try {
+            
               const gm = state && state.gameMode
               if (gm === 'lastTeamStanding') {
                 const me = (state?.players || []).find(x => x.id === myId) || {}
@@ -4764,7 +4776,7 @@ try {
                   canGuessComputed = false
                 }
               }
-            } catch (e) {}
+           
 
             const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
             const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
@@ -4776,8 +4788,15 @@ try {
             else {
               const me = (state?.players || []).find(x => x.id === myId) || {}
               const cheapest = Math.min(...(POWER_UPS || []).map(x => x.price))
-              const myHang = Number(me.wordmoney) || 0
+
+              let myHang = Number(me.wordmoney) || 0
+              if (gm === 'lastTeamStanding') {
+                // team hangs are shared; check team balance
+                myHang = state?.teams[me.team]?.wordmoney || 0
+              }
+              
               if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
+              
             }
 
             return (
