@@ -465,6 +465,10 @@ export default function PlayerCircle({
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
+            {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
+            {(player && player.ghostState && player.ghostState.reentered) && (
+              <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
+            )}
           </div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
             <div>{player.name}</div>
@@ -806,6 +810,9 @@ try {
   .frozen-locked { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
   /* frozen badge styling */
   .frozen-badge { position: absolute; right: -8px; top: -8px; background: rgba(255,255,255,0.95); color: #0b66ff; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.08); pointer-events: none; }
+  /* ex-ghost badge shown when a player re-enters after winning a ghost challenge */
+  .ex-ghost-badge { position: absolute; right: -8px; top: 28px; background: rgba(255,255,255,0.96); color: #222; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .ex-ghost-badge[title] { cursor: help }
     `
     document.head.appendChild(s)
   }

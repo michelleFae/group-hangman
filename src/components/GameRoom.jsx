@@ -5,6 +5,9 @@ import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
 import COLOURS from '../data/colours'
 import ANIMALS from '../data/animals'
+import BALLSPORTS from '../data/ballsports'
+import OLYMPICSPORTS from '../data/olympicsports'
+import ACCESSORIES from '../data/accessories'
 import INSTRUMENTS from '../data/instruments'
 import ELEMENTS from '../data/elements'
 import NOUNS from '../data/nouns'
@@ -287,13 +290,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   function ThemeBadge({ type }) {
     const infoMap = {
   animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
+  ballsports: { emoji: '🏀', label: 'Ball Sports', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
+  olympicsports: { emoji: '🏅', label: 'Olympic Sports', bg: 'linear-gradient(90deg,#ffb86b,#ff6b6b)' },
   colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
   fruits: { emoji: '🥕', label: 'Fruits & Vegetables', bg: 'linear-gradient(90deg,#f97316,#84cc16)' },
     occupations: { emoji: '🧑‍🔧', label: 'Occupations', bg: 'linear-gradient(90deg,#f59e0b,#a78bfa)' },
   countries: { emoji: '🌍', label: 'Countries', bg: 'linear-gradient(90deg,#06b6d4,#0ea5a1)' },
-  instruments: { emoji: '🎵', label: 'Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
-  elements: { emoji: '⚛️', label: 'Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
+  instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
+  elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
   cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+  accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
   custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
@@ -973,6 +979,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const type = secretThemeType
         let pool = null
         if (type === 'animals') pool = ANIMALS
+    else if (type === 'ballsports') pool = BALLSPORTS
+    else if (type === 'olympicsports') pool = OLYMPICSPORTS
+  else if (type === 'accessories') pool = ACCESSORIES
         else if (type === 'colours') pool = COLOURS
         else if (type === 'instruments') pool = INSTRUMENTS
         else if (type === 'elements') pool = ELEMENTS
@@ -1267,6 +1276,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       <option value="colours">Colours</option>
                       <option value="instruments">Instruments</option>
                         <option value="countries">Countries</option>
+                        <option value="ballsports">Ball Sports</option>
+                        <option value="olympicsports">Olympic Sports</option>
+                        <option value="accessories">Clothing Accessories</option>
                       <option value="fruits">Fruits & Vegetables</option>
                         <option value="occupations">Occupations</option>
                       <option value="elements">Periodic elements</option>
@@ -4351,11 +4363,21 @@ try {
                     startGame(opts)
                   }
                 }}
-                disabled={players.length < 2}
-                title={players.length < 2 ? 'Need at least 2 players to start' : ''}
-                className={players.length >= 2 ? 'start-ready' : ''}
+                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSpy' && players.length < 3)}
+                title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 4)
+                  ? 'Need at least 4 players to start Last Team Standing'
+                  : ((state && state.gameMode) === 'wordSpy' && players.length < 3)
+                    ? 'Need at least 3 players to start Word Spy'
+                    : (players.length < 2 ? 'Need at least 2 players to start' : '')}
+                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSpy' && players.length < 3)) ? 'start-ready' : ''}
               >Start game</button>
               {players.length < 2 && <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for more players to join (need 2+ players)</div>}
+              {/* When startGame detects Last Team Standing requires more players it sets state.ltsWarning; show it inline for host */}
+              {isHost && state && state.ltsWarning && (
+                <div style={{ marginTop: 8, color: '#fff', background: '#c0392b', padding: '10px 12px', borderRadius: 8, fontWeight: 700 }}>
+                  {typeof state.ltsWarning === 'string' ? state.ltsWarning : 'At least 4 players are required to start Last Team Standing.'}
+                </div>
+              )}
             </>
           ) : null}
         </div>
