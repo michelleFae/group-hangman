@@ -24,27 +24,6 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // Word Spy hooks
     startWordSpy, markWordSpyReady, beginWordSpyPlaying, endWordSpyPlaying, voteForPlayer, tallyWordSpyVotes, submitSpyGuess, playNextWordSpyRound
   } = useGameRoom(roomId, playerName)
-  const [word, setWord] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [wordError, setWordError] = useState('')
-  const [isCheckingDictionary, setIsCheckingDictionary] = useState(false)
-  const [timedMode, setTimedMode] = useState(false)
-  const [turnSeconds, setTurnSeconds] = useState(30)
-  const [starterEnabled, setStarterEnabled] = useState(true)
-  const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
-  const [revealShowBlanks, setRevealShowBlanks] = useState(false)
-  const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
-  // multi-mode support: 'money' | 'lastOneStanding' | 'wordSpy'
-  const [gameMode, setGameMode] = useState('lastOneStanding')
-  const [wordSpyTimerSeconds, setWordSpyTimerSeconds] = useState(120)
-  const [wordSpyRounds, setWordSpyRounds] = useState(3)
-  const [powerUpsEnabled, setPowerUpsEnabled] = useState(true)
-  const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
-  const [minWordSize, setMinWordSize] = useState(2)
-  const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
-  // starting wordmoney is hard-coded to 2; no local state needed
-  const [startingWordmoney, setStartingWordmoney] = useState(2)
-  const [showSettings, setShowSettings] = useState(false)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
   // Host-provided custom theme inputs (title + comma-separated list)
@@ -100,7 +79,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const effectiveMode = (state && state.gameMode) ? state.gameMode : gameMode
     if (effectiveMode === 'lastTeamStanding' && playerNode && playerNode.team) {
         const team = playerNode.team
-        const prevTeam = Number((state && state.teams && state.teams[team] && state.teams[team].wordmoney) || 0)
+  const prevTeam = Number(state?.teams?.[team]?.wordmoney || 0)
         const teamBase = (typeof updates[`teams/${team}/wordmoney`] !== 'undefined') ? Number(updates[`teams/${team}/wordmoney`]) : prevTeam
         updates[`teams/${team}/wordmoney`] = Math.max(0, Number(teamBase) + Number(amount))
       } else {
@@ -291,18 +270,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Small badge component to display the active secret-word theme with emoji + gradient
   function ThemeBadge({ type }) {
     const infoMap = {
-  animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
-  ballsports: { emoji: '🏀', label: 'Ball Sports', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
-  olympicsports: { emoji: '🏅', label: 'Olympic Sports', bg: 'linear-gradient(90deg,#ffb86b,#ff6b6b)' },
-  colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
-  fruits: { emoji: '🥕', label: 'Fruits & Vegetables', bg: 'linear-gradient(90deg,#f97316,#84cc16)' },
-    occupations: { emoji: '🧑‍🔧', label: 'Occupations', bg: 'linear-gradient(90deg,#f59e0b,#a78bfa)' },
-  countries: { emoji: '🌍', label: 'Countries', bg: 'linear-gradient(90deg,#06b6d4,#0ea5a1)' },
-  instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
-  elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
-  cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
-  accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
-  custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
+      elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
+      cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+      accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
+      custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
     const info = infoMap[type] || infoMap.default
@@ -1559,11 +1530,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           teamMoney = Number(live)
         } else {
           // fallback to room state snapshot
-          teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+          teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
         }
       } catch (e) {
-        // DB read failed — fall back to local room state
-        teamMoney = Number((state && state.teams && state.teams[me.team] && state.teams[me.team].wordmoney) || 0)
+  // DB read failed — fall back to local room state
+  teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
       }
 
       if (teamMoney - cost < 0) {
@@ -3036,7 +3007,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       const team = nextNode.team
                       if (team) {
                         const teamKey = `teams/${team}/wordmoney`
-                        const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : (state.teams && state.teams[team] && typeof state.teams[team].wordmoney === 'number' ? Number(state.teams[team].wordmoney) : 0)
+                        const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : Number(state?.teams?.[team]?.wordmoney || 0)
                         updates[teamKey] = Math.max(0, Number(currTeam) + 1)
                       } else {
                         const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
@@ -3538,7 +3509,7 @@ try {
   updates['teamReveals'] = null
   // clear per-team initial counts and compensation applied if present
   try {
-    const teamNames = state && state.teams ? Object.keys(state.teams || {}) : []
+  const teamNames = state?.teams ? Object.keys(state.teams || {}) : []
     teamNames.forEach(t => {
       try { updates[`teams/${t}/initialCount`] = null } catch (e) {}
       try { updates[`teams/${t}/compensationApplied`] = null } catch (e) {}
@@ -3641,7 +3612,7 @@ try {
   updates['teamReveals'] = null
   // clear per-team initial counts and compensationApplied values so rematch starts fresh
   try {
-    const teamNames = state && state.teams ? Object.keys(state.teams || {}) : []
+  const teamNames = state?.teams ? Object.keys(state.teams || {}) : []
     teamNames.forEach(t => {
       try { updates[`teams/${t}/initialCount`] = null } catch (e) {}
       try { updates[`teams/${t}/compensationApplied`] = null } catch (e) {}
@@ -3859,7 +3830,7 @@ try {
                     const team = nextNode.team
                     if (team) {
                       const teamKey = `teams/${team}/wordmoney`
-                      const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : (state.teams && state.teams[team] && typeof state.teams[team].wordmoney === 'number' ? Number(state.teams[team].wordmoney) : 0)
+                      const currTeam = (typeof updates[teamKey] !== 'undefined') ? Number(updates[teamKey]) : Number(state?.teams?.[team]?.wordmoney || 0)
                       updates[teamKey] = Math.max(0, Number(currTeam) + 1)
                     } else {
                       const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : 0
@@ -4793,7 +4764,8 @@ try {
               let myHang = Number(me.wordmoney) || 0
               if (gm === 'lastTeamStanding') {
                 // team hangs are shared; check team balance
-                myHang = state?.teams[me.team]?.wordmoney || 0
+                // guard state.teams itself before indexing (it may be null briefly)
+                myHang = Number(state?.teams?.[me.team]?.wordmoney || 0)
               }
               
               if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
@@ -4807,7 +4779,7 @@ try {
                   player={playerWithViewer}
                   teamName={p.team}
                   viewerTeam={viewerNode.team}
-                  teamMoney={(state && state.teams && p.team && state.teams[p.team] && state.teams[p.team].wordmoney) || 0}
+                  teamMoney={Number(state?.teams?.[p.team]?.wordmoney || 0)}
                   gameMode={state?.gameMode}
                   viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
                   isSelf={p.id === myId}
@@ -4817,7 +4789,7 @@ try {
                   viewerId={myId}
                   roomId={roomId}
                   // whether the current viewer has an active team reveal for this player
-                  teamRevealForPlayer={Boolean(state && state.teamReveals && p.team && state.teamReveals[p.team] && state.teamReveals[p.team][p.id] && state.teamReveals[p.team][p.id][myId])}
+                  teamRevealForPlayer={!!(state?.teamReveals?.[p.team]?.[p.id]?.[myId])}
                   // handler to toggle a team reveal for this player (writes to DB)
                   onToggleTeamReveal={async (targetPlayerId, teamName, show) => {
                     try {
@@ -4874,6 +4846,8 @@ try {
             )
           }
 
+          // direct renderTile usage (we hardened team lookups elsewhere; remove temporary debug wrapper)
+
           // If playing Last Team Standing, render three-column team layout (red / others / blue)
           if ((state && state.gameMode) === 'lastTeamStanding') {
             const redPlayers = sanitized.filter(p => (p && p.team) === 'red')
@@ -4884,10 +4858,10 @@ try {
               <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
                 <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
                   {/* Team wallet box for Red team (shown when lastTeamStanding mode is active) */}
-                  {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.red && (
+                  {state?.gameMode === 'lastTeamStanding' && state?.teams?.red && (
                     <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#ff4d4f', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>Red Team</span>
-                      <span style={{ fontFamily: 'monospace' }}>${(state.teams.red.wordmoney || 0)}</span>
+                      <span style={{ fontFamily: 'monospace' }}>${(state?.teams?.red?.wordmoney || 0)}</span>
                     </div>
                   )}
                   {redPlayers.map(p => renderTile(p))}
@@ -4897,10 +4871,10 @@ try {
                 </div>
                 <div style={{ flex: '0 0 45%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
                   {/* Team wallet box for Blue team (shown when lastTeamStanding mode is active) */}
-                  {(state && state.gameMode) === 'lastTeamStanding' && state.teams && state.teams.blue && (
+                  {state?.gameMode === 'lastTeamStanding' && state?.teams?.blue && (
                     <div style={{ width: '90%', padding: '10px 14px', borderRadius: 10, background: '#1890ff', color: '#fff', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>Blue Team</span>
-                      <span style={{ fontFamily: 'monospace' }}>${(state.teams.blue.wordmoney || 0)}</span>
+                      <span style={{ fontFamily: 'monospace' }}>${(state?.teams?.blue?.wordmoney || 0)}</span>
                     </div>
                   )}
                   {bluePlayers.map(p => renderTile(p))}
