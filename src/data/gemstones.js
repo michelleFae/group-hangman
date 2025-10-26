@@ -17,6 +17,7 @@ const RAW = [
   'Magnesite', 'Malachite', 'Marcasite', 'Meerschaum', 'Microcline', 'Moldavite', 'Moonstone', 'Morganite',
   'Nephrite',
   'Obsidian', 'Onyx', 'Opal',
+  'Opalite', 'Jadeite', 'Rhodolite', 'Mookaite', 'Seraphinite',
   'Pearl', 'Peridot', 'Petalite', 'Phenakite', 'Prehnite', 'Psilomelane', 'Pyrargyrite', 'Pyrite',
   'Quartz',
   'Rhodochrosite', 'Rhodonite', 'Ruby', 'Rutile',
