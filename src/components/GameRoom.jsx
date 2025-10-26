@@ -4326,7 +4326,7 @@ try {
 
           <div style={{ marginTop: 14 }}>
             <div style={{ marginBottom: 8 }}>
-              <PlayAgainControls isHost={isHost} myId={myId} players={players} />
+              {!state?.winnerTeam && <PlayAgainControls isHost={isHost} myId={myId} players={players} />}
             </div>
             <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
             {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
@@ -4382,6 +4382,12 @@ try {
     <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''}`}>
       {/* Render the mode badge as a fixed overlay (keeps consistent single source) */}
       {modeBadge}
+      {/* When a team has won, render host Play Again controls as a fixed overlay above the team-tinted victory screen */}
+      {phase === 'ended' && state?.winnerTeam && (
+        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 2101 }}>
+          <PlayAgainControls isHost={isHost} myId={myId} players={players} />
+        </div>
+      )}
       {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
       <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 1 }} className="turn-indicator fixed-turn-indicator">
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
