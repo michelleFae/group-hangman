@@ -4731,12 +4731,20 @@ try {
             }
 
             const viewerNode = players.find(x => x.id === myId) || {}
+            // By default use the viewer's private buckets. In lastTeamStanding mode,
+            // merge the target player's privatePowerReveals into the viewer's view so
+            // all players can see private-power reveal results for that target.
+            const viewerPrivatePowerReveals = viewerNode.privatePowerReveals || {}
+            const mergedPrivatePowerReveals = (state?.gameMode === 'lastTeamStanding')
+              ? { ...(viewerNode.privatePowerReveals || {}), ...(p && p.privatePowerReveals ? p.privatePowerReveals : {}) }
+              : viewerPrivatePowerReveals
+
             const viewerPrivate = {
               privateWrong: viewerNode.privateWrong || {},
               privateHits: viewerNode.privateHits || {},
               privateWrongWords: viewerNode.privateWrongWords || {},
               privatePowerUps: viewerNode.privatePowerUps || {},
-              privatePowerReveals: viewerNode.privatePowerReveals || {},
+              privatePowerReveals: mergedPrivatePowerReveals,
               playerColors: (players || []).reduce((acc, pp) => { if (pp && pp.id) acc[pp.id] = pp.color || null; return acc }, {})
             }
 
