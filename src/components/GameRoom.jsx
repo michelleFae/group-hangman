@@ -912,7 +912,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             : 'Winner: Last one standing'}
         </strong>
         <small style={{ color: '#B4A3A3', fontSize: 12 }}>
-          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Money wins' : (state?.gameMode === 'lastTeamStanding') ? 'Guess any of the other team\'s words to win' : 'Elimination wins'}
+          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$' : (state?.gameMode === 'lastTeamStanding') ? 'Guess the other team\'s words to win' : 'Last person alive wins'}
         </small>
         </div>
         {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
@@ -3379,7 +3379,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const targetName = playerIdToName[targetId] || targetId
     const me = (state?.players || []).find(p => p.id === myId) || {}
     let myHang =  Number(me.wordmoney) || 0 
-    if (state?.gameMode === "lastOneStanding") {
+    console.log('GameRoom: rendering PowerUpModal for target', targetId, targetName, 'myHang=', myHang, 'state=', state)
+    if (state?.gameMode === "lastTeamStanding") {
+      console.log('GameRoom: lastTeamStanding mode detected, checking team hang ', state?.teams, 'myTeam=', me?.team)
       const myTeam = me?.team
       // teamHang
       myHang = (state?.teams[myTeam] || {})?.wordmoney || 0
