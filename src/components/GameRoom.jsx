@@ -24,6 +24,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // Word Spy hooks
     startWordSpy, markWordSpyReady, beginWordSpyPlaying, endWordSpyPlaying, voteForPlayer, tallyWordSpyVotes, submitSpyGuess, playNextWordSpyRound
   } = useGameRoom(roomId, playerName)
+  const [word, setWord] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [wordError, setWordError] = useState('')
+  const [isCheckingDictionary, setIsCheckingDictionary] = useState(false)
+  const [timedMode, setTimedMode] = useState(false)
+  const [turnSeconds, setTurnSeconds] = useState(30)
+  const [starterEnabled, setStarterEnabled] = useState(true)
+  const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
+  const [revealShowBlanks, setRevealShowBlanks] = useState(false)
+  const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
+  // multi-mode support: 'money' | 'lastOneStanding' | 'wordSpy'
+  const [gameMode, setGameMode] = useState('lastOneStanding')
+  const [wordSpyTimerSeconds, setWordSpyTimerSeconds] = useState(120)
+  const [wordSpyRounds, setWordSpyRounds] = useState(3)
+  const [powerUpsEnabled, setPowerUpsEnabled] = useState(true)
+  const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
+  const [minWordSize, setMinWordSize] = useState(2)
+  const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
+  // starting wordmoney is hard-coded to 2; no local state needed
+  const [startingWordmoney, setStartingWordmoney] = useState(2)
+  const [showSettings, setShowSettings] = useState(false)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
   // Host-provided custom theme inputs (title + comma-separated list)
@@ -270,10 +291,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Small badge component to display the active secret-word theme with emoji + gradient
   function ThemeBadge({ type }) {
     const infoMap = {
-      elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
-      cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
-      accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
-      custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
+      animals: { emoji: '🐾', label: 'Animals', bg: 'linear-gradient(90deg,#34d399,#059669)' },
+  ballsports: { emoji: '🏀', label: 'Ball Sports', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
+  olympicsports: { emoji: '🏅', label: 'Olympic Sports', bg: 'linear-gradient(90deg,#ffb86b,#ff6b6b)' },
+  colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
+  fruits: { emoji: '🥕', label: 'Fruits & Vegetables', bg: 'linear-gradient(90deg,#f97316,#84cc16)' },
+    occupations: { emoji: '🧑‍🔧', label: 'Occupations', bg: 'linear-gradient(90deg,#f59e0b,#a78bfa)' },
+  countries: { emoji: '🌍', label: 'Countries', bg: 'linear-gradient(90deg,#06b6d4,#0ea5a1)' },
+  instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
+  elements: { emoji: '⚛️', label: 'Periodic Table Elements', bg: 'linear-gradient(90deg,#9ca3af,#6b7280)' },
+  cpp: { emoji: '💻', label: 'C++ terms', bg: 'linear-gradient(90deg,#0ea5e9,#0369a1)' },
+  accessories: { emoji: '👜', label: 'Clothing Accessories', bg: 'linear-gradient(90deg,#f472b6,#f43f5e)' },
+  custom: { emoji: '📝', label: 'Custom', bg: 'linear-gradient(90deg,#f59e0b,#ef4444)' },
       default: { emoji: '🔖', label: type || 'Theme', bg: 'linear-gradient(90deg,#2b8cff,#0b63d6)' }
     }
     const info = infoMap[type] || infoMap.default
