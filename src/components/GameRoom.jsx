@@ -4775,7 +4775,22 @@ try {
                   canGuess={canGuessComputed}
                   ddActive={viewerDDActive}
                   ddTarget={viewerDDTarget}
-                  onGuess={(targetId, guess) => { try { setDdShopLocked(false) } catch (e) {} ; sendGuess(targetId, guess) }}
+                  onGuess={async (targetId, guess) => {
+                    try { setDdShopLocked(false) } catch (e) {}
+                    try {
+                      const res = await sendGuess(targetId, guess)
+                      if (res && res.blocked) {
+                        const toastId = `dup_guess_${Date.now()}`
+                        setToasts(t => [...t, { id: toastId, text: res.message || 'Duplicate guess', error: true }])
+                        // auto-hide after short interval
+                        setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2200)
+                        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 2600)
+                        return
+                      }
+                    } catch (e) {
+                      // if sendGuess threw, swallow here and allow existing error handling elsewhere
+                    }
+                  }}
                   showPowerUpButton={powerUpsEnabled && p.id !== myId}
                   onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
                   onSkip={skipTurn}

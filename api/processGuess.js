@@ -263,54 +263,31 @@ module.exports = async (req, res) => {
             
           }
         } else {
-          // letter was already fully revealed : treat this as a wrong guess
+          // letter was already fully revealed : record the attempted wrong guess but
+          // do NOT award the target or treat this as a hang-win. This avoids giving
+          // the (next) player an unintended +2 when guesses target already-revealed
+          // letters (including auto-revealed starter letters).
           const prevWrong = (guesser.privateWrong && guesser.privateWrong[targetId]) ? guesser.privateWrong[targetId].slice() : []
           if (!prevWrong.includes(letter)) {
             prevWrong.push(letter)
             updates[`players/${from}/privateWrong/${targetId}`] = prevWrong
-            // reward the target for a wrong guess against them : unless they have an active hang shield
-            const prevTargetHang = typeof target.wordmoney === 'number' ? target.wordmoney : 0
-            const shield = target.hangShield
-            if (shield && shield.active) {
-              // consume the shield but do not award wordmoney
-              updates[`players/${targetId}/hangShield`] = null
-            } else {
-              // accumulate target award into hangDeltas to be folded later
-              hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
-            }
-
-            // If the guesser had an active doubleDown, they lose their stake on a wrong guess
-            const ddFail = guesser.doubleDown
-            if (ddFail && ddFail.active) {
-              const stake = Number(ddFail.stake) || 0
-                if (stake > 0) {
-                const prevGHang = typeof guesser.wordmoney === 'number' ? guesser.wordmoney : 0
-                // deduct stake via hangDeltas so it's applied when we fold updates
-                hangDeltas[from] = (hangDeltas[from] || 0) - stake
-                // write a private power-up result entry indicating the loss
-                try {
-                  const ddKey3 = `double_down_loss_${Date.now()}`
-                  const letterStr3 = letter
-                  const ddPayload3 = { powerId: 'double_down', ts: Date.now(), from: from, to: from, result: {
-                    letter: letterStr3,
-                    amount: -stake,
-                    stake: stake,
-                    message: `Double Down: guessed '${letterStr3}' and lost -$${stake}`,
-                    messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr3}</strong>' and lost <strong class="revealed-letter">-$${stake}</strong>`
-                  } }
-                  // Write the loss into the buyer's own privatePowerReveals under their own id
-                  // so the loss message appears only in the buyer's tile (not the target's tile).
-                  try {
-                    updates[`players/${from}/privatePowerReveals/${from}/${ddKey3}`] = ddPayload3
-                  } catch (e) {}
-                  try {
-                    addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr3, amount: -stake, stake: stake, success: false, ts: Date.now() })
-                  } catch (e) {}
-                } catch (e) {}
-                // consume/clear the doubleDown entry so the DD badge is removed
-                updates[`players/${from}/doubleDown`] = null
+            // Do NOT award the target (no hangDeltas[targetId] increment).
+            // Do NOT consume any doubleDown stake for this no-op wrong guess.
+            // Instead, write a small private note so the guesser sees why nothing changed.
+            try {
+              const noteKey = `no_score_already_revealed_${Date.now()}`
+              updates[`players/${from}/privatePowerReveals/${from}/${noteKey}`] = {
+                powerId: 'no_score',
+                ts: Date.now(),
+                from: from,
+                to: from,
+                result: {
+                  letter: letter,
+                  message: `No points: '${letter}' was already revealed`,
+                  messageHtml: `<strong class="power-name">Guess</strong>: no points awarded; '<strong class="revealed-letter">${letter}</strong>' was already revealed.`
+                }
               }
-            }
+            } catch (e) {}
           }
         }
 

@@ -1566,6 +1566,74 @@ export default function useGameRoom(roomId, playerName) {
     const payloadVal = (payload && payload.value) ? String(payload.value).trim() : ''
     if (!payloadVal) return
 
+    // Client-side duplicate-guess prevention (best-effort).
+    // If we detect the viewer already guessed this letter/word for this target
+    // (publicly or privately), short-circuit and return a blocking object so
+    // callers can show a red error toast instead of sending the guess to server.
+    try {
+      const me = (state?.players || []).find(p => p.id === playerIdRef.current) || {}
+      const targetNode = (state?.players || []).find(p => p.id === targetId) || {}
+      const val = payloadVal.toString().toLowerCase()
+      const isLetter = val.length === 1
+
+      if (isLetter) {
+        const letter = val
+        // public: already revealed on target
+        if (Array.isArray(targetNode.revealed) && targetNode.revealed.map(x => (x || '').toString().toLowerCase()).includes(letter)) {
+          return { blocked: true, message: `That letter '${letter.toUpperCase()}' is already revealed for ${targetNode.name || 'this player'}.` }
+        }
+        // private wrong guesses
+        if (me.privateWrong && Array.isArray(me.privateWrong[targetId]) && me.privateWrong[targetId].map(x => (x||'').toString().toLowerCase()).includes(letter)) {
+          return { blocked: true, message: `You already guessed '${letter.toUpperCase()}' for ${targetNode.name || 'this player'}.` }
+        }
+        // private hits
+        try {
+          const ph = (me.privateHits && me.privateHits[targetId]) ? me.privateHits[targetId] : []
+          if (Array.isArray(ph) && ph.some(h => h && h.type === 'letter' && ((h.letter || '').toString().toLowerCase() === letter))) {
+            return { blocked: true, message: `You've already found '${letter.toUpperCase()}' from ${targetNode.name || 'this player'}.` }
+          }
+        } catch (e) {}
+        // private power-up reveals
+        try {
+          const ppr = (me.privatePowerReveals && me.privatePowerReveals[targetId]) ? Object.values(me.privatePowerReveals[targetId]) : []
+          if (Array.isArray(ppr) && ppr.some(r => {
+            try {
+              if (!r || !r.result) return false
+              const res = r.result
+              const check = s => (s || '').toString().toLowerCase() === letter
+              if (check(res.letterFromTarget)) return true
+              if (check(res.letterFromBuyer)) return true
+              if (check(res.letter)) return true
+              if (res.last && check(res.last)) return true
+              if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x||'').toString().toLowerCase()).includes(letter)) return true
+              return false
+            } catch (e) { return false }
+          })) {
+            return { blocked: true, message: `That letter '${letter.toUpperCase()}' was already revealed for ${targetNode.name || 'this player'}.` }
+          }
+        } catch (e) {}
+      } else {
+        // full-word duplicate checks
+        const word = val
+        if (me.privateWrongWords && Array.isArray(me.privateWrongWords[targetId]) && me.privateWrongWords[targetId].map(x => (x||'').toString().toLowerCase()).includes(word)) {
+          return { blocked: true, message: `You already tried that word for ${targetNode.name || 'this player'}.` }
+        }
+        try {
+          const ph = (me.privateHits && me.privateHits[targetId]) ? me.privateHits[targetId] : []
+          if (Array.isArray(ph) && ph.some(h => h && h.type === 'word' && ((h.word || '').toString().toLowerCase() === word))) {
+            return { blocked: true, message: `You already correctly guessed that word for ${targetNode.name || 'this player'}.` }
+          }
+        } catch (e) {}
+        try {
+          if (targetNode.guessedBy && targetNode.guessedBy['__word'] && Array.isArray(targetNode.guessedBy['__word']) && targetNode.guessedBy['__word'].map(x => (x||'').toString()).includes(playerIdRef.current)) {
+            return { blocked: true, message: `You already guessed the full word for ${targetNode.name || 'this player'}.` }
+          }
+        } catch (e) {}
+      }
+    } catch (e) {
+      // best-effort only; ignore errors and continue to submit the guess
+    }
+
     // Block normal guesses while Word Spy is actively in the playing phase
     try {
       const roomSnapCheck = await get(dbRef(db, `rooms/${roomId}`))
