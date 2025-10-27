@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { db, auth } from '../firebase'
-import { ref as dbRef, get as dbGet } from 'firebase/database'
+import { ref as dbRef, get as dbGet, update } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
 
 export default function Lobby({ onJoin, initialRoom = '' }) {
