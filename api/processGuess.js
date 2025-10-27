@@ -26,6 +26,24 @@ const db = admin.database()
 
 const lc = s => (s || '').toString().toLowerCase()
 
+// simple Levenshtein distance implementation for closeness checks
+function levenshtein(a, b) {
+  if (!a) return b ? b.length : 0
+  if (!b) return a.length
+  const m = a.length
+  const n = b.length
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    }
+  }
+  return dp[m][n]
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
 
@@ -72,6 +90,13 @@ module.exports = async (req, res) => {
     const target = players[targetId]
     const guesser = players[from]
     if (!target || !guesser) return res.status(400).json({ error: 'Target or guesser not found' })
+
+    // Allow a one-time "close guess" retry: check whether the guesser had a pending
+    // close-guess token for this target and consume it immediately so it can't be reused.
+    const hadCloseRemaining = (guesser && guesser.closeGuessRemaining && guesser.closeGuessRemaining[targetId]) ? Number(guesser.closeGuessRemaining[targetId]) : 0
+    if (hadCloseRemaining) {
+      try { updates[`players/${from}/closeGuessRemaining/${targetId}`] = null } catch (e) {}
+    }
 
     // In lastTeamStanding mode, disallow guessing members of your own team
     try {
@@ -375,8 +400,37 @@ module.exports = async (req, res) => {
         prevWrongWords.push(value)
         updates[`players/${from}/privateWrongWords/${targetId}`] = prevWrongWords
         // reward the target for a wrong full-word guess
-        // reward the target for a wrong full-word guess (delta)
         hangDeltas[targetId] = (hangDeltas[targetId] || 0) + 2
+
+        // If the guess was "very close" to the target word, offer the guesser
+        // one final retry (one-time). We detect closeness using Levenshtein distance
+        // and only offer the retry if they don't already have a pending retry for
+        // this target (hadCloseRemaining was consumed above if present).
+        try {
+          const distance = levenshtein(guessWord, targetWord)
+          const len = Math.max(1, targetWord.length)
+          // threshold: exact 1 edit, or 2 edits for long words (>=8 chars)
+          const isClose = distance <= 1 || (distance === 2 && len >= 8)
+          if (isClose && !hadCloseRemaining) {
+            const offerKey = `close_guess_offer_${Date.now()}`
+            updates[`players/${from}/privatePowerReveals/${from}/${offerKey}`] = {
+              powerId: 'close_guess_offer',
+              ts: Date.now(),
+              from: from,
+              to: from,
+              result: {
+                message: `Close! Did you make a spelling mistake? You get one more try to guess this word.`,
+                messageHtml: `<strong>Close!</strong> Did you make a spelling mistake? You get <strong>one more try</strong> to guess this word.`
+              }
+            }
+            // record a one-time retry token for this guesser->target so the next
+            // attempt consumes it (we set it to 1 and it will be cleared at the
+            // start of the next processGuess invocation)
+            updates[`players/${from}/closeGuessRemaining/${targetId}`] = 1
+            // keep the current player's turn so they can take the additional guess
+            updates[`currentTurnIndex`] = currentIndex
+          }
+        } catch (e) {}
       }
     }
 

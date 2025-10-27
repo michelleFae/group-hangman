@@ -120,6 +120,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [powerUpRevealPublic, setPowerUpRevealPublic] = useState(false)
   // Ghost Re-Entry setting (on by default)
   const [ghostReEntryEnabled, setGhostReEntryEnabled] = useState(true)
+  // Ghost guess cooldown (seconds) - default 20s; configurable by host when ghostReEntryEnabled
+  const [ghostGuessCooldownSeconds, setGhostGuessCooldownSeconds] = useState(20)
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
   // dedupe double-down room announcements so we only show them once per ts
@@ -246,7 +248,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // default power-ups to enabled unless the room explicitly sets it to false
   setPowerUpsEnabled(state?.powerUpsEnabled ?? true);
   // sync Ghost Re-Entry setting from room state (default true)
-  setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
+    setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
+    // sync ghost guess cooldown seconds (host-configurable). Default remains 20s when not set.
+    try {
+      if (typeof state?.ghostGuessCooldownSeconds === 'number') setGhostGuessCooldownSeconds(Math.max(1, Math.min(300, Number(state.ghostGuessCooldownSeconds))))
+    } catch (e) {}
     // showWordsOnEnd controls whether players' secret words are displayed on final standings
     if (typeof state?.showWordsOnEnd === 'boolean') setShowWordsOnEnd(!!state.showWordsOnEnd)
 
@@ -522,8 +528,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     function tickLocal() {
       try {
         const me = (state?.players || []).find(p => p.id === myId) || {}
-        const last = Number(me.ghostLastGuessAt || 0)
-        const cooldownMs = 15000
+  const last = Number(me.ghostLastGuessAt || 0)
+  // Determine cooldown using authoritative room state when available, otherwise use local host-configured value.
+  const cfgSeconds = (state && typeof state.ghostGuessCooldownSeconds === 'number') ? Number(state.ghostGuessCooldownSeconds) : Number(ghostGuessCooldownSeconds || 20)
+  const cooldownMs = Math.max(1000, Math.min(300000, cfgSeconds * 1000))
         const now = Date.now()
         const remainingMs = last ? Math.max(0, cooldownMs - (now - last)) : 0
         const sec = Math.ceil(remainingMs / 1000)
@@ -1177,7 +1185,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const meNode = (state?.players || []).find(p => p.id === myId) || {}
         const lastTs = Number(meNode.ghostLastGuessAt || 0)
         const now = Date.now()
-        const cooldownMs = 15000
+        const cfgSeconds = (state && typeof state.ghostGuessCooldownSeconds === 'number') ? Number(state.ghostGuessCooldownSeconds) : Number(ghostGuessCooldownSeconds || 20)
+        const cooldownMs = Math.max(1000, Math.min(300000, cfgSeconds * 1000))
         if (lastTs && (now - lastTs) < cooldownMs) {
           return { ok: false, retryAfter: Math.max(0, cooldownMs - (now - lastTs)) }
         }
@@ -1474,6 +1483,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <label htmlFor="ghostReEntryEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Allow eliminated players to attempt re-entry as ghosts by guessing a random word">
               <input id="ghostReEntryEnabled" name="ghostReEntryEnabled" type="checkbox" checked={ghostReEntryEnabled} onChange={e => { const nv = e.target.checked; setGhostReEntryEnabled(nv); updateRoomSettings({ ghostReEntryEnabled: !!nv }) }} /> Ghost Re-Entry enabled
             </label>
+            {ghostReEntryEnabled && isHost && (
+              <label htmlFor="ghostGuessCooldownSeconds" title="Seconds ghosts must wait between guesses">
+                Ghost guess cooldown (seconds):
+                <input id="ghostGuessCooldownSeconds" type="number" min={1} max={300} value={ghostGuessCooldownSeconds} onChange={e => { const v = Math.max(1, Math.min(300, Number(e.target.value || 20))); setGhostGuessCooldownSeconds(v); updateRoomSettings({ ghostGuessCooldownSeconds: v }) }} style={{ width: 120, marginLeft: 8 }} />
+              </label>
+            )}
             <label htmlFor="showWordsOnEnd" title="When enabled, each player's submitted secret word is shown on the final standings screen">
               <input id="showWordsOnEnd" name="showWordsOnEnd" type="checkbox" checked={showWordsOnEnd} onChange={e => { const nv = e.target.checked; setShowWordsOnEnd(nv); updateRoomSettings({ showWordsOnEnd: !!nv }) }} /> Show words on end screen
             </label>
@@ -1860,13 +1875,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
           
             if (candidate) {
-              // Don't include the actual revealed candidate in the BUYER's visible message when
-              // in lastTeamStanding; the target (and their teammates) should be the only ones
-              // to see the revealed related word. Record a generic buyer-side entry and a
-              // detailed, team-only entry for the target.
-              buyerMsg = `Related Word: result delivered`
+              buyerMsg = `Related Word: '${candidate}'.`
               targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
-              const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: result delivered`
+              const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: '<strong class="revealed-letter">${candidate}</strong>'`
               const targetMessageHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> used Related Word on you and revealed '<strong class="revealed-letter">${candidate}</strong>' as a related word.`
               const buyerDataLocal = { ...buyerBase, result: { message: buyerMsg, messageHtml: buyerMessageHtml } }
               const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
