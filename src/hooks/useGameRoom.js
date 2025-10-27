@@ -765,14 +765,56 @@ export default function useGameRoom(roomId, playerName) {
       return chosen
     }
 
+    // If the room exists and all players have been inactive for longer than the TTL,
+    // reset the room to lobby (clear players, teams, and winner metadata) so a new
+    // join can create a fresh session. Returns true when a reset was applied.
+    async function resetRoomIfAllPlayersStale(roomRootRef, roomSnapshotVal) {
+      try {
+        const now = Date.now()
+        const roomVal = roomSnapshotVal || (await get(roomRootRef)).val() || {}
+        const players = roomVal.players || {}
+        const ids = Object.keys(players)
+        if (ids.length === 0) return false
+        // If any player has been active within the TTL, do not reset
+        const anyActive = ids.some(pid => {
+          const p = players[pid] || {}
+          const last = p.lastSeen ? Number(p.lastSeen) : 0
+          return last && (now - last) <= EVICT_TTL_MS
+        })
+        if (anyActive) return false
+
+        // All players are stale: clear players and reset room metadata to lobby
+        const updates = {
+          players: null,
+          phase: 'lobby',
+          open: true,
+          teams: null,
+          winnerTeam: null,
+          winnerId: null,
+          winnerName: null
+        }
+        try {
+          await update(roomRootRef, updates)
+          console.log(`resetRoomIfAllPlayersStale: reset room ${roomId} to lobby (all players stale)`)
+          return true
+        } catch (e) {
+          console.warn('resetRoomIfAllPlayersStale: update failed', e)
+          return false
+        }
+      } catch (e) {
+        console.warn('resetRoomIfAllPlayersStale failed', e)
+        return false
+      }
+    }
+
     if (uid) {
       playerIdRef.current = uid
       const roomRootRef = dbRef(db, `rooms/${roomId}`)
       // opportunistically evict stale players before processing this join
       evictStale(roomRootRef).catch(() => {})
 
-      get(roomRootRef).then(snapshot => {
-        const roomVal = snapshot.val() || {}
+      get(roomRootRef).then(async snapshot => {
+        let roomVal = snapshot.val() || {}
         console.log('Room data fetched:', roomVal)
         // If an authenticated player node already exists for this UID, reuse it instead of overwriting
         const playersObj = roomVal.players || {}
@@ -813,8 +855,21 @@ export default function useGameRoom(roomId, playerName) {
 
         // room exists but no existing player node for this UID. Enforce open/password before creating a new node.
         if (roomVal && roomVal.open === false) {
-          console.warn('Room is closed to new joins')
-          return
+          // Attempt to reset the room to lobby if all players are stale. If reset
+          // succeeds, refresh roomVal and continue; otherwise reject the join.
+          try {
+            const didReset = await resetRoomIfAllPlayersStale(roomRootRef, roomVal)
+            if (didReset) {
+              const refreshed = (await get(roomRootRef)).val() || {}
+              roomVal = refreshed
+            } else {
+              console.warn('Room is closed to new joins')
+              return
+            }
+          } catch (e) {
+            console.warn('Error while attempting stale-room reset', e)
+            return
+          }
         }
         if (roomVal.password && roomVal.password !== password) {
           console.warn('Incorrect password')
@@ -877,7 +932,23 @@ export default function useGameRoom(roomId, playerName) {
     // opportunistically evict stale players before creating new anon
     await evictStale(roomRootRef2)
     const roomSnap = await get(roomRootRef2)
-    const rv = roomSnap.val() || {}
+    let rv = roomSnap.val() || {}
+    // If the room is closed to new joins, attempt to reset when all players are stale.
+    if (rv && rv.open === false) {
+      try {
+        const didReset = await resetRoomIfAllPlayersStale(roomRootRef2, rv)
+        if (didReset) {
+          const refreshed = (await get(roomRootRef2)).val() || {}
+          rv = refreshed
+        } else {
+          console.warn('Room is closed to new joins')
+          return
+        }
+      } catch (e) {
+        console.warn('Error while attempting stale-room reset', e)
+        return
+      }
+    }
     const count = Object.keys(rv.players || {}).length
     if (count >= 20) {
       alert('Room is full (20 players max)')
