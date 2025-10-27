@@ -826,6 +826,10 @@ export default function useGameRoom(roomId, playerName) {
       try {
         const snap = await get(roomRootRef)
         const roomVal = snap.val() || {}
+        // Do not mark players stale while the room is in the lobby phase; lobby
+        // participants should not be greyed or auto-removed while waiting.
+        const phaseNow = roomVal.phase || 'lobby'
+        if (phaseNow === 'lobby') return false
         const players = roomVal.players || {}
         const now = Date.now()
         const updates = {}
@@ -1104,6 +1108,8 @@ export default function useGameRoom(roomId, playerName) {
       try {
         const snap = await get(roomRootRef)
         const roomVal = snap.val() || {}
+        // Don't mark or remove players while room is in lobby phase.
+        if ((roomVal.phase || 'lobby') === 'lobby') return
         const players = roomVal.players || {}
         const now = Date.now()
         const updates = {}
