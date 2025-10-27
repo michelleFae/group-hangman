@@ -661,6 +661,9 @@ export default function useGameRoom(roomId, playerName) {
 
     // TTL for eviction when someone joins: 1 hour
     const EVICT_TTL_MS = 60 * 60 * 1000
+  // Stale and kick thresholds for activity handling
+  const STALE_MS = 30 * 1000 // mark stale after 30s of no heartbeat
+  const KICK_MS = 3 * 60 * 1000 // kick after 3 minutes of no heartbeat
 
     // Remove stale (non-authenticated) players whose lastSeen is older than TTL.
     // This mirrors server-side eviction but runs opportunistically when a player joins.
@@ -707,7 +710,13 @@ export default function useGameRoom(roomId, playerName) {
         const roomRootRef = dbRef(db, `rooms/${roomId}`)
         const snap = await get(roomRootRef)
         const roomVal = snap.val() || {}
-        if (!roomVal.hostId) {
+        // Only assign a host when there is no host AND either there are no players,
+        // or the only player is the joiningId (i.e. the first person to join after reset).
+        const playersObj = roomVal.players || {}
+        const playerKeys = Object.keys(playersObj)
+        const onlyJoiningIsPresent = playerKeys.length === 1 && playerKeys[0] === joiningId
+        const noPlayers = playerKeys.length === 0
+        if (!roomVal.hostId && (noPlayers || onlyJoiningIsPresent)) {
           try {
             // If room-level defaults are missing, set them as part of the first host assignment
             const updates = { hostId: joiningId }
@@ -761,7 +770,7 @@ export default function useGameRoom(roomId, playerName) {
       // include lastSeen so server-side cleaners can evict stale anonymous players
   // Use the helper so we accept numeric strings as well as numbers and provide a sane fallback
   const startMoney = getStartMoneyFromRoom(roomVal)
-      await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now() })
+      await dbSet(pRef, { id: pKey, name: playerName, wordmoney: startMoney, revealed: [], hasWord: false, color: chosen, lastSeen: Date.now(), stale: null })
       return chosen
     }
 
@@ -810,11 +819,116 @@ export default function useGameRoom(roomId, playerName) {
       }
     }
 
+    // Mark players as stale when their lastSeen is older than STALE_MS. If they
+    // remain unseen for longer than KICK_MS, remove them from the room.
+    // This runs opportunistically from any client and performs best-effort writes.
+    async function markStaleAndKick(roomRootRef) {
+      try {
+        const snap = await get(roomRootRef)
+        const roomVal = snap.val() || {}
+        const players = roomVal.players || {}
+        const now = Date.now()
+        const updates = {}
+        let removedAny = false
+
+        const turnOrder = roomVal.turnOrder || []
+        const curIdx = (typeof roomVal.currentTurnIndex === 'number') ? roomVal.currentTurnIndex : null
+        const curPid = (curIdx !== null && Array.isArray(turnOrder) && turnOrder.length > curIdx) ? turnOrder[curIdx] : null
+
+        Object.keys(players).forEach(pid => {
+          try {
+            const p = players[pid] || {}
+            // do not auto-kick likely-authenticated players (best-effort check)
+            if (p.uid || p.authProvider || p.isAuthenticated) return
+            const last = p.lastSeen ? Number(p.lastSeen) : 0
+            const isStale = !!p.stale
+            if (!last || (now - last) > KICK_MS) {
+              // remove player entirely
+              updates[`players/${pid}`] = null
+              // add a timeouts entry so clients show a removal toast
+              const key = `removed_inactivity_${pid}_${now}`
+              updates[`timeouts/${key}`] = { player: pid, ts: now, action: 'removed_inactivity', name: p.name || pid }
+              removedAny = true
+              try { console.log(`Removing inactive player ${pid} from room ${roomId} (lastSeen=${last})`) } catch (e) {}
+            } else if (!isStale && last && (now - last) > STALE_MS) {
+              updates[`players/${pid}/stale`] = true
+              try { console.log(`Marking player ${pid} stale in room ${roomId} (lastSeen=${last})`) } catch (e) {}
+            }
+          } catch (e) {}
+        })
+
+        // If the current turn belongs to a newly-stale player, advance to next active
+        if (curPid && updates[`players/${curPid}/stale`] === true) {
+          try {
+            // find next index skipping players that would be stale or removed
+            const effectiveOrder = turnOrder.slice()
+            const len = effectiveOrder.length || 0
+            if (len > 0) {
+              let found = null
+              for (let offset = 1; offset <= len; offset++) {
+                const idx = (curIdx + offset) % len
+                const pid = effectiveOrder[idx]
+                const p = players[pid] || {}
+                const last = p.lastSeen ? Number(p.lastSeen) : 0
+                if (last && (now - last) <= STALE_MS) { found = idx; break }
+              }
+              if (found !== null) {
+                updates['currentTurnIndex'] = found
+                updates['currentTurnStartedAt'] = Date.now()
+                const key = `skip_inactivity_${curPid}_${Date.now()}`
+                updates[`timeouts/${key}`] = { player: curPid, ts: Date.now(), action: 'skip_due_inactivity', name: (players[curPid] && players[curPid].name) ? players[curPid].name : curPid }
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (Object.keys(updates).length > 0) {
+          try { await update(roomRootRef, updates) } catch (e) { console.warn('markStaleAndKick: update failed', e) }
+        }
+
+        if (removedAny) {
+          // Re-evaluate simple win conditions: if lastOneStanding and <=1 players remain -> end
+          try {
+            const postSnap = await get(roomRootRef)
+            const postRoom = postSnap.val() || {}
+            const playersNow = postRoom.players || {}
+            const pKeys = Object.keys(playersNow || {})
+            const gm = postRoom.gameMode || postRoom.winnerByWordmoney ? postRoom.gameMode : 'lastOneStanding'
+            const phase = postRoom.phase || null
+            const updates2 = {}
+            if (phase === 'playing' || phase === 'submit' || phase === 'waiting') {
+              if (gm === 'lastOneStanding') {
+                if (pKeys.length <= 1) {
+                  updates2['phase'] = 'ended'
+                  if (pKeys.length === 1) updates2['winnerId'] = pKeys[0]
+                }
+              } else if (gm === 'lastTeamStanding') {
+                const teams = {}
+                pKeys.forEach(k => { try { const t = (playersNow[k] && playersNow[k].team) ? playersNow[k].team : null; if (t) teams[t] = teams[t] || 0; if (t) teams[t]++ } catch (e) {} })
+                const teamNames = Object.keys(teams)
+                if (teamNames.length === 1) {
+                  updates2['phase'] = 'ended'
+                  updates2['winnerTeam'] = teamNames[0]
+                }
+              }
+            }
+            if (Object.keys(updates2).length > 0) {
+              try { await update(roomRootRef, updates2) } catch (e) { console.warn('markStaleAndKick: post-removal win update failed', e) }
+            }
+          } catch (e) { console.warn('markStaleAndKick: post removal processing failed', e) }
+        }
+      } catch (e) {
+        console.warn('markStaleAndKick failed', e)
+      }
+    }
+
     if (uid) {
       playerIdRef.current = uid
       const roomRootRef = dbRef(db, `rooms/${roomId}`)
       // opportunistically evict stale players before processing this join
       evictStale(roomRootRef).catch(() => {})
+      // also mark stale / kick inactive players opportunistically
+      markStaleAndKick(roomRootRef).catch(() => {})
 
       get(roomRootRef).then(async snapshot => {
         let roomVal = snapshot.val() || {}
@@ -824,7 +938,7 @@ export default function useGameRoom(roomId, playerName) {
         if (playersObj && playersObj[uid]) {
           playerIdRef.current = uid
           const pRef = dbRef(db, `${playersRefPath}/${uid}`)
-          try { update(pRef, { lastSeen: Date.now(), ...(playerName && playerName.toString().trim() ? { name: playerName } : {}) }) } catch (e) {}
+          try { update(pRef, { lastSeen: Date.now(), stale: null, ...(playerName && playerName.toString().trim() ? { name: playerName } : {}) }) } catch (e) {}
           try { startHeartbeat() } catch (e) {}
           setState(prev => ({ ...prev, password: roomVal?.password || password }))
           console.log('Reused existing authenticated player node for uid', uid)
@@ -918,7 +1032,7 @@ export default function useGameRoom(roomId, playerName) {
         playerIdRef.current = storedAnonId
         try {
           const existing = snap.val() || {}
-          const upd = { lastSeen: Date.now() }
+          const upd = { lastSeen: Date.now(), stale: null }
           // if this is an authenticated user (uid path) don't overwrite name unless explicitly provided
           if (playerName && playerName.toString().trim()) upd.name = playerName
           await update(pRef, upd)
@@ -934,6 +1048,8 @@ export default function useGameRoom(roomId, playerName) {
     const roomRootRef2 = dbRef(db, `rooms/${roomId}`)
     // opportunistically evict stale players before creating new anon
     await evictStale(roomRootRef2)
+  // also mark stale / kick inactive players opportunistically
+  try { await markStaleAndKick(roomRootRef2) } catch (e) {}
     const roomSnap = await get(roomRootRef2)
     let rv = roomSnap.val() || {}
     // If the room is closed to new joins, attempt to reset when all players are stale.
@@ -975,6 +1091,114 @@ export default function useGameRoom(roomId, playerName) {
       try { await ensureHost(newPlayerRef.key) } catch (e) {}
     })
   }
+
+  // Periodic background checker: mark players stale and remove if inactive for too long.
+  useEffect(() => {
+    if (!db) return undefined
+    const roomRootRef = dbRef(db, `rooms/${roomId}`)
+    const STALE_MS = 30 * 1000
+    const KICK_MS = 3 * 60 * 1000
+    let mounted = true
+    async function tick() {
+      if (!mounted) return
+      try {
+        const snap = await get(roomRootRef)
+        const roomVal = snap.val() || {}
+        const players = roomVal.players || {}
+        const now = Date.now()
+        const updates = {}
+        let removedAny = false
+        Object.keys(players).forEach(pid => {
+          try {
+            const p = players[pid] || {}
+            // skip likely-authenticated players
+            if (p.uid || p.authProvider || p.isAuthenticated) return
+            const last = p.lastSeen ? Number(p.lastSeen) : 0
+            if (!last || (now - last) > KICK_MS) {
+              updates[`players/${pid}`] = null
+              const key = `removed_inactivity_${pid}_${now}`
+              updates[`timeouts/${key}`] = { player: pid, ts: now, action: 'removed_inactivity', name: p.name || pid }
+              removedAny = true
+            } else if (!p.stale && last && (now - last) > STALE_MS) {
+              updates[`players/${pid}/stale`] = true
+            }
+          } catch (e) {}
+        })
+        if (Object.keys(updates).length > 0) {
+          try { await update(roomRootRef, updates) } catch (e) { console.warn('background markStaleAndKick update failed', e) }
+        }
+        // If current turn belongs to a newly-stale player, advance to next active
+        try {
+          const roomNowSnap = await get(roomRootRef)
+          const roomNow = roomNowSnap.val() || {}
+          const turnOrder = roomNow.turnOrder || []
+          const curIdx = (typeof roomNow.currentTurnIndex === 'number') ? roomNow.currentTurnIndex : null
+          const curPid = (curIdx !== null && Array.isArray(turnOrder) && turnOrder.length > curIdx) ? turnOrder[curIdx] : null
+          if (curPid) {
+            const p = roomNow.players && roomNow.players[curPid] ? roomNow.players[curPid] : null
+            const last = p && p.lastSeen ? Number(p.lastSeen) : 0
+            const isStale = p && p.stale
+            if (isStale || !last || (Date.now() - last) > STALE_MS) {
+              // find next active index
+              const len = turnOrder.length || 0
+              if (len > 0) {
+                let found = null
+                for (let offset = 1; offset <= len; offset++) {
+                  const idx = (curIdx + offset) % len
+                  const pid = turnOrder[idx]
+                  const pp = roomNow.players && roomNow.players[pid] ? roomNow.players[pid] : {}
+                  const ll = pp.lastSeen ? Number(pp.lastSeen) : 0
+                  if (ll && (Date.now() - ll) <= STALE_MS) { found = idx; break }
+                }
+                if (found !== null) {
+                  const upd2 = { currentTurnIndex: found, currentTurnStartedAt: Date.now() }
+                  const key = `skip_inactivity_${curPid}_${Date.now()}`
+                  upd2[`timeouts/${key}`] = { player: curPid, ts: Date.now(), action: 'skip_due_inactivity', name: (p && p.name) ? p.name : curPid }
+                  try { await update(roomRootRef, upd2) } catch (e) { console.warn('background advance-turn update failed', e) }
+                }
+              }
+            }
+          }
+        } catch (e) {}
+        if (removedAny) {
+          try {
+            const postSnap = await get(roomRootRef)
+            const postRoom = postSnap.val() || {}
+            const playersNow = postRoom.players || {}
+            const pKeys = Object.keys(playersNow || {})
+            const gm = postRoom.gameMode || 'lastOneStanding'
+            const phase = postRoom.phase || null
+            const updates2 = {}
+            if (phase === 'playing' || phase === 'submit' || phase === 'waiting') {
+              if (gm === 'lastOneStanding') {
+                if (pKeys.length <= 1) {
+                  updates2['phase'] = 'ended'
+                  if (pKeys.length === 1) updates2['winnerId'] = pKeys[0]
+                }
+              } else if (gm === 'lastTeamStanding') {
+                const teams = {}
+                pKeys.forEach(k => { try { const t = (playersNow[k] && playersNow[k].team) ? playersNow[k].team : null; if (t) teams[t] = teams[t] || 0; if (t) teams[t]++ } catch (e) {} })
+                const teamNames = Object.keys(teams)
+                if (teamNames.length === 1) {
+                  updates2['phase'] = 'ended'
+                  updates2['winnerTeam'] = teamNames[0]
+                }
+              }
+            }
+            if (Object.keys(updates2).length > 0) {
+              try { await update(roomRootRef, updates2) } catch (e) { console.warn('background post-removal win update failed', e) }
+            }
+          } catch (e) { console.warn('background post removal processing failed', e) }
+        }
+      } catch (e) {
+        console.warn('background stale/kick tick failed', e)
+      }
+    }
+    const id = setInterval(tick, 30 * 1000)
+    // run once immediately
+    tick().catch(() => {})
+    return () => { mounted = false; clearInterval(id) }
+  }, [db, roomId])
 
   // Attempt automatic rejoin on refresh: if we have a stored anonymous id for this room
   // and the room is already in 'playing' phase, call joinRoom to reattach the player.

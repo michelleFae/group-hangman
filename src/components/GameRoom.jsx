@@ -574,8 +574,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (processedTimeoutKeysRef.current[k]) return
         processedTimeoutKeysRef.current[k] = true
 
-        const toastId = `${k}`
-        setToasts(t => [...t, { id: toastId, text: `-2 wordmoney for ${playerName} (timed out)` }])
+  const toastId = `${k}`
+  // Custom actions may be attached to timeout entries (e.g. skip or removal due to inactivity)
+  let toastText = `-2 wordmoney for ${playerName} (timed out)`
+  if (e && e.action === 'skip_due_inactivity') toastText = `${playerName} was skipped due to inactivity`
+  if (e && e.action === 'removed_inactivity') toastText = `${playerName} was removed due to inactivity`
+  setToasts(t => [...t, { id: toastId, text: toastText }])
         setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 4000)
 
         // pending deduction UI + expected wordmoney

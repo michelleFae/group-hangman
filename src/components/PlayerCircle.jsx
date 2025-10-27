@@ -452,23 +452,24 @@ export default function PlayerCircle({
   })
 
   return (
-    <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
+  <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${player && player.stale ? 'player-stale' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
       {/* Host remove control (red X) shown only to host during lobby or ended phases */}
       {isHost && (phase === 'lobby' || phase === 'ended') && onRemove && !isSelf && (
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
+          {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
+            {(player && player.ghostState && player.ghostState.reentered) && (
+              <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
+            )}
           <div style={{ position: 'relative' }}>
             <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
             {/* Frozen badge: visible when player is frozen (others see it) */}
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
-            {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
-            {(player && player.ghostState && player.ghostState.reentered) && (
-              <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
-            )}
+            
           </div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
             <div>{player.name}</div>
