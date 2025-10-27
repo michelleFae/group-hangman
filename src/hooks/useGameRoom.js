@@ -38,7 +38,7 @@ export default function useGameRoom(roomId, playerName) {
     // Subscribe to room data regardless of authentication state so anonymous users
     // can rejoin after refresh.
     const roomRef = dbRef(db, `rooms/${roomId}`)
-    const unsub = dbOnValue(roomRef, snapshot => {
+    const unsub = dbOnValue(roomRef, async snapshot => {
       const raw = snapshot.val() || {}
       console.log('Room data updated:', raw)
       const playersObj = raw.players || {}
@@ -53,6 +53,27 @@ export default function useGameRoom(roomId, playerName) {
       }
       setState({ ...raw, players, password: raw.password || '' })
       console.log('State updated with room data:', { ...raw, players, password: raw.password || '' })
+
+      // If we're in the lobby phase, ensure nobody is incorrectly marked stale.
+      // This can happen if stale flags were set while the room was in another phase;
+      // clear any lingering `stale` flags so lobby participants don't appear grey.
+      try {
+        const phaseNow = raw.phase || 'lobby'
+        if (phaseNow === 'lobby') {
+          const updates = {}
+          Object.keys(playersObj || {}).forEach(k => {
+            try {
+              const p = playersObj[k] || {}
+              if (p && p.stale) updates[`players/${k}/stale`] = null
+            } catch (e) {}
+          })
+          if (Object.keys(updates).length > 0) {
+            try { await update(roomRef, updates) } catch (e) { console.warn('Failed to clear stale flags in lobby', e) }
+          }
+        }
+      } catch (e) {
+        console.warn('lobby stale-clear check failed', e)
+      }
 
       // Auto-start Word Spy: if we're in the waiting phase and all players are marked ready,
       // let the host automatically begin the playing phase. Use a ref to avoid duplicate calls.
@@ -199,9 +220,9 @@ export default function useGameRoom(roomId, playerName) {
     if (!pid) return
     const pRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
     // write immediate lastSeen then schedule periodic updates
-    try { update(pRef, { lastSeen: Date.now() }) } catch (e) {}
+    try { update(pRef, { lastSeen: Date.now(), stale: null }) } catch (e) {}
     heartbeatRef.current = setInterval(() => {
-      try { update(pRef, { lastSeen: Date.now() }) } catch (e) {}
+      try { update(pRef, { lastSeen: Date.now(), stale: null }) } catch (e) {}
     }, 30000)
   }
 
