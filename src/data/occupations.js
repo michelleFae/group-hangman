@@ -49,7 +49,7 @@ const BASE = [
   // STEM professions
   ,'engineer','neurologist','bioinformatician','roboticist','astrophysicist','quant','cryptographer','bioengineer','geneticist'
   // photo/video professions and vets/animal care
-  ,'videographer','cinematographer','photojournalist','vet','zookeeper','apiculturist','avianist','optometrist','optician'
+  ,'videographer','cinematographer','photojournalist','vet','zookeeper','apiculturist','avianist','optometrist','optician', 'bowler', 'batsman', 'wicketkeeper','umpire'
   // DJ / production, analysis, apiary, and security professions
   ,'dj','deejay','discjockey','producer','promoter','showrunner','actuary','analyst','strategist','advisor','adviser','apiarist','apiculturist','security','securityguard','securityofficer','bouncer'
   // medical optics / related (include requested misspellings as variants)
