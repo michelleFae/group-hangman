@@ -56,9 +56,9 @@ export default function PlayerCircle({
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
-  const [expanded, setExpanded] = useState(false)
-  const [showTeammateWord, setShowTeammateWord] = useState(false)
-  const [showOwnWord, setShowOwnWord] = useState(false)
+  const [expanded, setExpanded] = useState(true)
+  const [showTeammateWord, setShowTeammateWord] = useState(true)
+  const [showOwnWord, setShowOwnWord] = useState(true)
 
   useEffect(() => {
     // When entering Word Spy mode, ensure interactive controls are closed/hidden
@@ -439,6 +439,11 @@ export default function PlayerCircle({
     if (!r) return false
     const res = r.result
     if (!res) return false
+    // If the reveal is marked teamOnly, only show it to the target and their teammates
+    if (res.teamOnly && gameMode === 'lastTeamStanding') {
+      // viewerTeam and teamName are available in props; only allow when viewer is the target or on same team or is host
+      if (!(viewerId === player.id || (viewerTeam && teamName && viewerTeam === teamName) || isHost)) return false
+    }
     // For double_down entries, only show when there is a meaningful payload
     if (r.powerId === 'double_down') {
       // meaningful if it contains a message, letter info, an amount, or an explicit override

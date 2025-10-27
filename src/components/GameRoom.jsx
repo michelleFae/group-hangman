@@ -1599,9 +1599,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (typeof ps.amount !== 'undefined' && (typeof ps.by !== 'undefined' || typeof ps.expiresAtTurnIndex !== 'undefined')) {
           const surge = ps
           if (surge && surge.amount && surge.by !== myId) {
-            const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
-            const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
-            if (active) totalSurgeAmount += Number(surge.amount || 0)
+            // In lastTeamStanding, a surge played by a player should not affect their teammates.
+            if (gmMode === 'lastTeamStanding' && me.team) {
+              try {
+                const authorNode = (state?.players || []).find(p => p.id === surge.by) || {}
+                if (authorNode && authorNode.team && authorNode.team === me.team) {
+                  // surge by teammate: ignore
+                } else {
+                  const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+                  const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                  if (active) totalSurgeAmount += Number(surge.amount || 0)
+                }
+              } catch (e) {
+                const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+                const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                if (active) totalSurgeAmount += Number(surge.amount || 0)
+              }
+            } else {
+              const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
+              const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+              if (active) totalSurgeAmount += Number(surge.amount || 0)
+            }
           }
         } else {
           // new map shape: { [playerId]: { amount, by, expiresAtTurnIndex }, ... }
@@ -1610,6 +1628,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const entry = ps[k]
               if (!entry || !entry.amount) return
               if (entry.by === myId) return // buyer's own surge does not affect them
+              // If in lastTeamStanding, ignore surges authored by teammates
+              if (gmMode === 'lastTeamStanding' && me.team) {
+                try {
+                  const authorNode = (state?.players || []).find(p => p.id === entry.by) || {}
+                  if (authorNode && authorNode.team && authorNode.team === me.team) return
+                } catch (e) {}
+              }
               const expires = typeof entry.expiresAtTurnIndex === 'number' ? entry.expiresAtTurnIndex : null
               const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
               if (active) totalSurgeAmount += Number(entry.amount || 0)
@@ -1718,7 +1743,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const buyerMessageHtml = `<strong class="power-name">Letter Scope</strong>: Including duplicates, there are <strong class="revealed-letter">${letters}</strong> letter${letters === 1 ? '' : 's'} in the word`
   const targetMessageHtml = `<strong class="power-name">Letter Scope</strong>: <em>${buyerName}</em> used Letter Scope on you`
   const buyerData = { ...buyerBase, result: { letters, message: buyerMsg, messageHtml: buyerMessageHtml } }
-  const targetData = { ...targetBase, result: { letters, message: targetMsg, messageHtml: targetMessageHtml } }
+  const targetData = { ...targetBase, result: { letters, message: targetMsg, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
 
@@ -1751,7 +1776,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const buyerMessageHtml = `<strong class="power-name">One Random Letter</strong>: <strong class="revealed-letter">${ch}</strong> in <em>${targetName}</em>'s word`
   const targetMessageHtml = `<strong class="power-name">One Random Letter</strong>: <em>${buyerName}</em> used One Random Letter on you; they revealed <strong class="revealed-letter">${ch}</strong>`
   const buyerData = { ...buyerBase, result: { letter: ch, message: buyerMsg, messageHtml: buyerMessageHtml } }
-  const targetData = { ...targetBase, result: { letter: ch, message: targetMsg, messageHtml: targetMessageHtml } }
+  const targetData = { ...targetBase, result: { letter: ch, message: targetMsg, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
       } else if (powerId === 'letter_peek') {
@@ -1782,7 +1807,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const buyerMessageHtml = `<strong class="power-name">Letter Peek</strong>: <strong class="revealed-letter">'${letter}'</strong> at position <strong class="revealed-letter">${pos}</strong>`
       const targetMessageHtml = `<strong class="power-name">Letter Peek</strong>: <em>${buyerName}</em> used Letter Peek on you; they revealed <strong class="revealed-letter">'${letter}'</strong> at position <strong class="revealed-letter">${pos}</strong>`
       const buyerData = { ...buyerBase, result: { letter: letter, message: buyerMsg, messageHtml: buyerMessageHtml } }
-    const targetData = { ...targetBase, result: { letter: letter, message: targetMsg, messageHtml: targetMessageHtml } }
+    const targetData = { ...targetBase, result: { letter: letter, message: targetMsg, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
 
         updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
         updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetData
@@ -1808,13 +1833,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">${picked}</strong> from <em>${targetName}</em>'s word.`
             const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word.`
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letter: picked, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letter: picked, message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
           } else {
             // no letter could be found
             const buyerMessageHtml = `<strong class="power-name">The Unseen</strong>: No letters left to reveal from <em>${targetName}</em>'s word.`
             const targetMessageHtml = `<strong class="power-name">The Unseen</strong>: <em>${buyerName}</em> revealed <strong class="revealed-letter">${picked}</strong> from your word.`
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `The Unseen: no unrevealed letters available`, messageHtml: buyerMessageHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `${buyerName} used The Unseen on you; no letters available`, messageHtml: targetMessageHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: { message: `${buyerName} used The Unseen on you; no letters available`, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
           }
        
       } else if (powerId === 'related_word') {
@@ -1835,12 +1860,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           candidate = words.find(w => w.toLowerCase() !== (targetWord || '').toLowerCase())
           
             if (candidate) {
-              buyerMsg = `Related Word: '${candidate}'.`
+              // Don't include the actual revealed candidate in the BUYER's visible message when
+              // in lastTeamStanding; the target (and their teammates) should be the only ones
+              // to see the revealed related word. Record a generic buyer-side entry and a
+              // detailed, team-only entry for the target.
+              buyerMsg = `Related Word: result delivered`
               targetMsg = `Related Word: ${buyerName} used Related Word on you and revealed '${candidate}' as a related word.`
-              const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: '<strong class="revealed-letter">${candidate}</strong>'`
+              const buyerMessageHtml = `<strong class="power-name">Related Word</strong>: result delivered`
               const targetMessageHtml = `<strong class="power-name">Related Word</strong>: <em>${buyerName}</em> used Related Word on you and revealed '<strong class="revealed-letter">${candidate}</strong>' as a related word.`
               const buyerDataLocal = { ...buyerBase, result: { message: buyerMsg, messageHtml: buyerMessageHtml } }
-              const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml } }
+              const targetDataLocal = { ...targetBase, result: { message: targetMsg, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
               updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerDataLocal
               updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = targetDataLocal
               // explicit entries written above; fall through so default writer won't overwrite them (it checks for existing keys)
@@ -1936,7 +1965,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
 
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBase, result: { message: buyerMsgLocal, messageHtml: buyerHtml, letters: picked } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: targetMsgLocal, messageHtml: targetHtml, letters: picked } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBase, result: { message: targetMsgLocal, messageHtml: targetHtml, letters: picked, teamOnly: (gmMode === 'lastTeamStanding') } }
 
       }
         
@@ -1967,7 +1996,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: Rolled ${roll}, revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: rolled ${roll}, but no letters could be revealed`
           const targetMessageHtml = revealedHtml ? `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; they revealed ${revealedHtml}` : `<strong class="power-name">Dice of Doom</strong>: <em>${buyerName}</em> used Dice of Doom on you; no letters were revealed`
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
        
       } else if (powerId === 'all_letter_reveal') {
         resultPayload = { letters: (targetWord || '').split('').sort(() => Math.random()-0.5) }
@@ -1984,7 +2013,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerMessageHtml = `<strong class="power-name">All The Letters</strong>: revealed all letters from <em>${targetName}</em>'s word`
           const targetMessageHtml = `<strong class="power-name">All The Letters</strong>: <em>${buyerName}</em> revealed all letters of your word publicly`
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
         } catch (e) {}
         } else if (powerId === 'split_15') {
           // If the target word has 15+ letters, reveal the first half publicly and
@@ -2006,7 +2035,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const buyerMessageHtml = `<strong class="power-name">Split 15</strong>: revealed first <strong class="revealed-letter">${half}</strong> letters of <em>${targetName}</em>'s word`
               const targetMessageHtml = `<strong class="power-name">Split 15</strong>: <em>${buyerName}</em> used Split 15 on you; the first <strong class="revealed-letter">${half}</strong> letters were revealed publicly`
               updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { letters, message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letters, message: targetMsgLocal, messageHtml: targetMessageHtml } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { letters, message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
 
               // add letters to revealed set (preserve any existing revealed letters)
               const existing = targetNode.revealed || []
@@ -2059,7 +2088,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               const buyerMessageHtmlShort = `<strong class="power-name">Split 15</strong>: target word is shorter than <strong class="revealed-letter">15</strong> letters; no effect`
               const targetMessageHtmlShort = `<strong class="power-name">Split 15</strong>: <em>${buyerName}</em> used Split 15 on you; but your word is too short for anything to be revealed :)`
               updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: buyerMsgShort, messageHtml: buyerMessageHtmlShort } }
-              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: targetMsgShort, messageHtml: targetMessageHtmlShort } }
+              updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: targetMsgShort, messageHtml: targetMessageHtmlShort, teamOnly: (gmMode === 'lastTeamStanding') } }
             }
           } catch (e) {}
       } else if (powerId === 'full_reveal') {
@@ -2077,7 +2106,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerMessageHtml = `<strong class="power-name">Full Reveal</strong>: revealed <em>${targetName}</em>'s word: <strong class="revealed-letter">${targetWord}</strong>`
           const targetMessageHtml = `<strong class="power-name">Full Reveal</strong>: <em>${buyerName}</em> used Full Reveal on you; your word was revealed publicly`
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
         } catch (e) {}
       } else if (powerId === 'sound_check' || powerId === 'what_do_you_mean') {
         // sound_check: return exactly one rhyming word (Datamuse rel_rhy) that isn't the exact target
@@ -2287,7 +2316,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             : `<strong class="power-name">Definition</strong>: <em>${buyerName}</em> knows your word's definition is: ${((resultPayload && resultPayload.message) || "... well, they don't know it. Wanna give them a hint?")}`
 
           updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { ...(resultPayload || {}), message: buyerMsgLocal, messageHtml: buyerMessageHtml } }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml } }
+          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { ...(resultPayload || {}), message: targetMsgLocal, messageHtml: targetMessageHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
         } catch (e) {}
       } else if (powerId === 'mind_leech') {
         // Mind leech: use letters others have guessed for the buyer's own word
@@ -2824,7 +2853,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             const buyerHtml = `<strong class="power-name">Rare Trace</strong>: There are <strong class="revealed-letter">${count}</strong> occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V in <em>${targetName}</em>'s word`
             const targetHtml = `<strong class="power-name">Rare Trace</strong>: <em>${playerIdToName[myId] || myId}</em> used Rare Trace on you`
             updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = { ...buyerBaseLocal, result: { message: `<strong class="power-name">Rare Trace</strong>: there are ${count} occurrence${count === 1 ? '' : 's'} of Q,X,Z,J,K,or V`, count, messageHtml: buyerHtml } }
-            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `<strong class="power-name">Rare Trace</strong>: was used on you by <em>${playerIdToName[myId] || myId}</em>`, messageHtml: targetHtml } }
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${key}`] = { ...targetBaseLocal, result: { message: `<strong class="power-name">Rare Trace</strong>: was used on you by <em>${playerIdToName[myId] || myId}</em>`, messageHtml: targetHtml, teamOnly: (gmMode === 'lastTeamStanding') } }
           } catch (e) {}
         }
       } catch (e) {}
@@ -4131,7 +4160,7 @@ try {
   function suggestAndSetError(baseMsg, list, candidate) {
     try {
       const sug = suggestClosest(list, candidate)
-      if (sug) setWordError(`${baseMsg} Did you mean "${sug}"?`)
+      if (sug) setWordError(React.createElement('span', null, baseMsg + ' Did you mean ', React.createElement('strong', null, sug), '?'))
       else setWordError(baseMsg)
     } catch (e) {
       setWordError(baseMsg)
@@ -4864,9 +4893,33 @@ try {
             // merge the target player's privatePowerReveals into the viewer's view so
             // all players can see private-power reveal results for that target.
             const viewerPrivatePowerReveals = viewerNode.privatePowerReveals || {}
-            const mergedPrivatePowerReveals = (state?.gameMode === 'lastTeamStanding')
-              ? { ...(viewerNode.privatePowerReveals || {}), ...(p && p.privatePowerReveals ? p.privatePowerReveals : {}) }
-              : viewerPrivatePowerReveals
+            // In lastTeamStanding mode we previously merged the target player's
+            // privatePowerReveals into the viewer's view for all viewers. That
+            // exposed certain side-effect messages (e.g. "knows your word's
+            // definition is:") to the buyer's team. To avoid leaking that
+            // information, only merge the target's private reveals into the
+            // viewer's view when the viewer and the target are on the same
+            // team (i.e., teammates should see team-local private reveals).
+            const mergedPrivatePowerReveals = (state?.gameMode === 'lastTeamStanding') ? (() => {
+              try {
+                const base = { ...(viewerNode.privatePowerReveals || {}) }
+                const myTeam = viewerNode && viewerNode.team ? viewerNode.team : null
+                const targetTeam = p && p.team ? p.team : null
+                if (myTeam && targetTeam && myTeam === targetTeam && p && p.privatePowerReveals) {
+                  // merge target's buckets into base (do not overwrite existing buckets)
+                  Object.keys(p.privatePowerReveals || {}).forEach(bucketId => {
+                    if (!base[bucketId]) base[bucketId] = p.privatePowerReveals[bucketId]
+                    else {
+                      // merge entries within the bucket
+                      try {
+                        base[bucketId] = { ...base[bucketId], ...(p.privatePowerReveals[bucketId] || {}) }
+                      } catch (e) {}
+                    }
+                  })
+                }
+                return base
+              } catch (e) { return viewerPrivatePowerReveals }
+            })() : viewerPrivatePowerReveals
 
             const viewerPrivate = {
               privateWrong: viewerNode.privateWrong || {},
