@@ -1066,6 +1066,20 @@ export default function useGameRoom(roomId, playerName) {
         console.log('Rejoined anonymous player id from localStorage', storedAnonId)
         return
       }
+      // If localStorage has an anon id but the server node was removed (kicked/evicted),
+      // attempt to recreate the node using the same id so the client retains its identity.
+      try {
+        console.log('Stored anon id found but server node missing; attempting recreate for', storedAnonId)
+        playerIdRef.current = storedAnonId
+        await pickColorAndSetPlayer(storedAnonId)
+        try { startHeartbeat() } catch (e) {}
+        try { await ensureHost(storedAnonId) } catch (e) {}
+        try { window.localStorage && window.localStorage.setItem(`gh_anon_${roomId}`, storedAnonId) } catch (e) {}
+        console.log('Recreated anonymous player node with stored id', storedAnonId)
+        return
+      } catch (e) {
+        console.warn('Could not recreate stored anon id node, will create a new anon id instead', e)
+      }
       // if stored id doesn't exist server-side, fall through and create a fresh one
     }
 

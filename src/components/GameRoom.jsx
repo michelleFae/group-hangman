@@ -31,8 +31,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [timedMode, setTimedMode] = useState(false)
   const [turnSeconds, setTurnSeconds] = useState(30)
   const [starterEnabled, setStarterEnabled] = useState(true)
-  const [revealPreserveOrder, setRevealPreserveOrder] = useState(false)
-  const [revealShowBlanks, setRevealShowBlanks] = useState(false)
+  // Defaults: preserve reveal order and show blanks should be ON by default
+  const [revealPreserveOrder, setRevealPreserveOrder] = useState(true)
+  const [revealShowBlanks, setRevealShowBlanks] = useState(true)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
   // multi-mode support: 'money' | 'lastOneStanding' | 'wordSpy'
   const [gameMode, setGameMode] = useState('lastOneStanding')
@@ -59,6 +60,52 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [toasts, setToasts] = useState([])
   const [powerUpOpen, setPowerUpOpen] = useState(false)
   const [powerUpTarget, setPowerUpTarget] = useState(null)
+
+  // Safe wrapper around Firebase multi-path update that avoids creating a
+  // parent `players/<id>` node when only writing descendant paths for a player
+  // that no longer exists server-side. This prevents briefly re-creating a
+  // removed player's object when another client issues a multi-path update.
+  async function safeDbUpdate(roomRef, updates) {
+    if (!roomRef || !updates || typeof updates !== 'object') return await dbUpdate(roomRef, updates)
+    try {
+      // read current players map once
+      const snap = await dbGet(roomRef)
+      const roomVal = snap && typeof snap.val === 'function' ? snap.val() : (snap || {})
+      const playersObj = (roomVal && roomVal.players) ? roomVal.players : {}
+      const present = new Set(Object.keys(playersObj || {}))
+      const safe = {}
+      Object.keys(updates).forEach(k => {
+        try {
+          // allow top-level players null (intentional reset)
+          if (k === 'players') { safe[k] = updates[k]; return }
+          const m = k.match(/^players\/([^\/]+)(\/.*)?$/)
+          if (!m) {
+            // not targeting players/<id>... keep as-is
+            safe[k] = updates[k]
+            return
+          }
+          const id = m[1]
+          const hasDesc = !!m[2]
+          if (!hasDesc) {
+            // direct players/<id> path is intentional (create or delete). Keep it.
+            safe[k] = updates[k]
+            return
+          }
+          // descendant path under players/<id>/... : only apply if player exists server-side
+          if (present.has(id)) safe[k] = updates[k]
+          else {
+            // skip writing descendant key for missing player to avoid accidental recreation
+            console.warn('safeDbUpdate: skipping write to', k, 'because player not present')
+          }
+        } catch (e) {}
+      })
+      if (Object.keys(safe).length === 0) return null
+      return await dbUpdate(roomRef, safe)
+    } catch (e) {
+      // fallback: attempt direct update
+      try { return await dbUpdate(roomRef, updates) } catch (err) { console.warn('safeDbUpdate failed', err); throw err }
+    }
+  }
   // separate inputs: one for generic choice (e.g. letter position) and one for double-down stake
   const [powerUpChoiceValue, setPowerUpChoiceValue] = useState('')
   const [powerUpStakeValue, setPowerUpStakeValue] = useState('')
@@ -227,6 +274,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // sync reveal settings
     if (typeof state?.revealPreserveOrder === 'boolean') setRevealPreserveOrder(!!state.revealPreserveOrder)
     if (typeof state?.revealShowBlanks === 'boolean') setRevealShowBlanks(!!state.revealShowBlanks)
+    // If server indicates Show blanks is enabled, ensure Preserve reveal order is enforced
+    try {
+      if (state && state.revealShowBlanks) {
+        // enforce locally
+        setRevealPreserveOrder(true)
+        // if server has an inconsistent value, correct it by persisting preserve=true
+        if (typeof state.revealPreserveOrder !== 'boolean' || state.revealPreserveOrder !== true) {
+          try { updateRoomSettings({ revealPreserveOrder: true }) } catch (e) {}
+        }
+      }
+    } catch (e) {}
     // sync secret word theme settings if present (run whenever the authoritative room setting changes)
     if (typeof state?.secretWordTheme === 'object') {
       const st = state.secretWordTheme || {}
@@ -331,7 +389,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomTiming(timed, seconds) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      await dbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(600, Number(seconds) || 30)) : null })
+  await safeDbUpdate(roomRef, { timed: !!timed, turnTimeoutSeconds: timed ? Math.max(10, Math.min(600, Number(seconds) || 30)) : null })
     } catch (e) {
       console.warn('Could not update room timing preview', e)
     }
@@ -348,7 +406,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (opts.timerSeconds) updates['wordSpyTimerSeconds'] = Math.max(10, Math.min(600, Number(opts.timerSeconds)))
         if (opts.rounds) updates['wordSpyRounds'] = Math.max(1, Math.min(20, Number(opts.rounds)))
       }
-      await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
     } catch (e) {
       console.warn('Could not update room game mode', e)
     }
@@ -368,7 +426,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // Preferred strategy: use SDK update helpers first (most reliable in normal clients)
     try {
       if (typeof dbUpdate === 'function') {
-        await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
         console.log('attemptReset: named dbUpdate succeeded')
         return true
       }
@@ -432,7 +490,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const updates = { winnerByWordmoney: !!enabled }
       // if enabled, set mode to 'money'
       updates['gameMode'] = enabled ? 'money' : (state?.gameMode || 'lastOneStanding')
-      await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
     } catch (e) {
       console.warn('Could not update winner mode', e)
     }
@@ -977,7 +1035,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           safe.startingWordmoney = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
         }
       } catch (e) {}
-      await dbUpdate(roomRef, safe)
+  await safeDbUpdate(roomRef, safe)
     } catch (e) {
       console.warn('Could not update room settings', e)
     }
@@ -1042,8 +1100,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
       // record player's pending ghost re-entry attempt state: allow only one re-entry per player
       updates[`players/${myId}/ghostState`] = { reentered: false, attemptedAt: now, challengeKey }
-      // write multi-path updates
-      await dbUpdate(roomRef, updates)
+  // write multi-path updates
+  await safeDbUpdate(roomRef, updates)
       // open local modal to attempt guesses (client-side)
       setGhostModalOpen(true)
       setGhostChallengeKeyLocal(challengeKey)
@@ -1144,7 +1202,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         updates[`players/${myId}/ghostGuesses/${key}`] = { ts: Date.now(), guess: ch, positions }
   // record timestamp for last guess to enforce cooldown
   updates[`players/${myId}/ghostLastGuessAt`] = Date.now()
-        await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
         console.log("michelle 8")
         return { ok: true, positions }
       } else {
@@ -1230,10 +1288,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // record timestamp for last guess to enforce cooldown
           updates[`players/${myId}/ghostLastGuessAt`] = nowTs
         }
-        console.log("michelle a 1")
-        await dbUpdate(roomRef, updates)
-        console.log("michelle a 2")
-        return { ok: true, correct }
+    console.log("michelle a 1")
+    console.log("michelle a 2")
+    await safeDbUpdate(roomRef, updates)
+    return { ok: true, correct }
       }
   }
 
@@ -1420,7 +1478,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               <input id="showWordsOnEnd" name="showWordsOnEnd" type="checkbox" checked={showWordsOnEnd} onChange={e => { const nv = e.target.checked; setShowWordsOnEnd(nv); updateRoomSettings({ showWordsOnEnd: !!nv }) }} /> Show words on end screen
             </label>
                 <label htmlFor="revealPreserveOrder" title="When on, revealed letters are shown in their positions within the word (helps when combined with blanks).">
-                  <input id="revealPreserveOrder" name="revealPreserveOrder" type="checkbox" checked={revealPreserveOrder} onChange={e => { const nv = e.target.checked; setRevealPreserveOrder(nv); updateRoomSettings({ revealPreserveOrder: !!nv }) }} /> Preserve reveal order
+                  <input id="revealPreserveOrder" name="revealPreserveOrder" type="checkbox" checked={revealPreserveOrder} disabled={revealShowBlanks} onChange={e => {
+                    const nv = e.target.checked
+                    // If Show blanks is enabled, Preserve reveal order must remain true
+                    if (revealShowBlanks && !nv) {
+                      // ignore attempts to turn off; ensure UI reflects enforced value
+                      setRevealPreserveOrder(true)
+                      return
+                    }
+                    setRevealPreserveOrder(nv)
+                    updateRoomSettings({ revealPreserveOrder: !!nv })
+                  }} title={revealShowBlanks ? 'Preserve reveal order is required when Show blanks is enabled' : 'When on, revealed letters are shown in their positions within the word (helps when combined with blanks).'} /> Preserve reveal order
                 </label>
                 <label htmlFor="revealShowBlanks" title="Show blanks (underscores) for unrevealed letters. Enabling this will also enable Preserve reveal order.">
                   <input id="revealShowBlanks" name="revealShowBlanks" type="checkbox" checked={revealShowBlanks} onChange={e => { const nv = e.target.checked; setRevealShowBlanks(nv); if (nv) { setRevealPreserveOrder(true); updateRoomSettings({ revealShowBlanks: !!nv, revealPreserveOrder: true }) } else { updateRoomSettings({ revealShowBlanks: !!nv }) } }} /> Show blanks
@@ -3201,7 +3269,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           } catch (e) {}
         }
       } catch (e) {}
-      await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
       try {
     // debug toast removed
         // Persist any lastGain updates to localStorage so the UI tooltip can show immediately for affected players
@@ -3928,7 +3996,7 @@ try {
             }
           } catch (e) {}
           if (debug) console.log('TimerWatcher: writing timeout', { roomId, tkey, timedOutPlayer, expiredTurnStartedAt: r.currentTurnStartedAt || null })
-          await dbUpdate(roomRef, updates)
+          await safeDbUpdate(roomRef, updates)
         }).catch(e => console.warn('Could not advance turn on timeout', e))
       }
   }, [tick, timed, turnTimeoutSeconds, currentTurnStartedAt, currentTurnIndex, roomId])
@@ -4006,7 +4074,7 @@ try {
           } catch (e) {}
         }
       } catch (e) {}
-      await dbUpdate(roomRef, updates)
+  await safeDbUpdate(roomRef, updates)
       const toastId = `skip_ok_${Date.now()}`
       setToasts(t => [...t, { id: toastId, text: 'Turn skipped' }])
       // auto-dismiss after a short time
@@ -4898,7 +4966,7 @@ try {
                       const path = `teamReveals/${teamName}/${targetPlayerId}/${myId}`
                       if (show) updates[path] = { ts: Date.now(), by: myId }
                       else updates[path] = null
-                      await dbUpdate(roomRef, updates)
+                      await safeDbUpdate(roomRef, updates)
                     } catch (e) {
                       console.warn('Could not toggle team reveal', e)
                     }
