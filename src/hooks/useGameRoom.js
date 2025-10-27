@@ -791,7 +791,10 @@ export default function useGameRoom(roomId, playerName) {
           teams: null,
           winnerTeam: null,
           winnerId: null,
-          winnerName: null
+          winnerName: null,
+          // Ensure next joiner will become host and the room defaults to Last One Standing
+          hostId: null,
+          gameMode: 'lastOneStanding'
         }
         try {
           await update(roomRootRef, updates)

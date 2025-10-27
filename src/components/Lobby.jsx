@@ -73,9 +73,11 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
               } catch (e) { return false }
             })
             if (allStale) {
-              // reopen and clear players so the joining user can take the room
+              // reopen and clear players so the joining user can take the room.
+              // Also clear hostId and set the default gameMode so the first joiner
+              // becomes host and the room defaults to Last One Standing.
               const roomRef = dbRef(db, `rooms/${room}`)
-              const updates = { open: true, phase: 'lobby', turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
+              const updates = { open: true, phase: 'lobby', turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null, hostId: null, gameMode: 'lastOneStanding' }
               // clear player nodes to avoid conflicts (server-side eviction may do this later)
               keys.forEach(k => { updates[`players/${k}`] = null })
               update(roomRef, updates).catch(err => console.warn('Could not reset stale room before join', err))
