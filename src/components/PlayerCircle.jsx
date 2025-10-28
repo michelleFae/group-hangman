@@ -58,8 +58,8 @@ export default function PlayerCircle({
   const [guessValue, setGuessValue] = useState('')
   // default expanded only for the player's own tile; other tiles start collapsed
   const [expanded, setExpanded] = useState(!!isSelf)
-  // teammates should not see other players' full words by default; toggle available
-  const [showTeammateWord, setShowTeammateWord] = useState(false)
+  // teammates should see other players' full words by default; toggle available
+  const [showTeammateWord, setShowTeammateWord] = useState(true)
   const [showOwnWord, setShowOwnWord] = useState(true)
 
   useEffect(() => {
