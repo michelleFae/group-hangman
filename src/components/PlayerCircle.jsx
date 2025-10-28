@@ -58,8 +58,8 @@ export default function PlayerCircle({
   const [guessValue, setGuessValue] = useState('')
   // default expanded only for the player's own tile; other tiles start collapsed
   const [expanded, setExpanded] = useState(!!isSelf)
-  // teammates should see other players' full words by default; toggle available
-  const [showTeammateWord, setShowTeammateWord] = useState(true)
+  // teammates' full-word view must be explicitly enabled; default off to avoid leakage
+  const [showTeammateWord, setShowTeammateWord] = useState(false)
   const [showOwnWord, setShowOwnWord] = useState(true)
 
   useEffect(() => {
@@ -160,10 +160,9 @@ export default function PlayerCircle({
     if (!r) return false
     const res = r.result || {}
     try {
-      if (viewerId && r.to === viewerId) return true
-      if (viewerId && r.from === viewerId) return true
-      if (isHost) return true
-      if (res && res.teamOnly && gameMode === 'lastTeamStanding' && viewerTeam && player.team && viewerTeam === player.team) return true
+        if (viewerId && r.to === viewerId) return true
+        if (viewerId && r.from === viewerId) return true
+        if (res && res.teamOnly && gameMode === 'lastTeamStanding' && viewerTeam && player.team && viewerTeam === player.team) return true
     } catch (e) {}
     return false
   }
@@ -434,10 +433,16 @@ export default function PlayerCircle({
     // preserve order: show letters in their positions. If revealShowBlanks is true, show '_' for unrevealed letters.
     revealedPositions = (ownerWord || '').split('').map((ch, idx) => {
       const lower = (ch || '').toLowerCase()
-      if (revealedSet.has(lower)) return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
       const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
+      // If this letter is publicly revealed, apply an allowed override color when present
+      if (revealedSet.has(lower)) {
+        const allowedOverride = allowedOverrideSource[lower] || privateLetterSource[`__override__${lower}`]
+        if (allowedOverride && playerColors && playerColors[allowedOverride]) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[allowedOverride] }}>{ch}</span>
+        return <span key={`r_${idx}`} style={{ marginRight: 4 }}>{ch}</span>
+      }
       const sourceId = privateLetterSource[lower]
-      if (sourceId && playerColors && playerColors[sourceId]) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
+      // Only render private-letter coloring when the viewer is allowed to see that letter
+      if ((isSelf) || (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId])) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
       if (revealShowBlanks) return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
       return null
     }).filter(Boolean)
@@ -489,8 +494,8 @@ export default function PlayerCircle({
     if (!res) return false
     // If the reveal is marked teamOnly, only show it to the target and their teammates
     if (res.teamOnly && gameMode === 'lastTeamStanding') {
-      // viewerTeam and teamName are available in props; only allow when viewer is the target or on same team or is host
-      if (!(viewerId === player.id || (viewerTeam && teamName && viewerTeam === teamName) || isHost)) return false
+      // viewerTeam and teamName are available in props; only allow when viewer is the target or on same team
+      if (!(viewerId === player.id || (viewerTeam && teamName && viewerTeam === teamName))) return false
     }
     // For double_down entries, only show when there is a meaningful payload
     if (r.powerId === 'double_down') {
