@@ -150,6 +150,47 @@ export default function PlayerCircle({
     }
   })
 
+  // Compute which private reveal letters the current viewer is allowed to see.
+  // By default only include letters that were explicitly targeted at the viewer,
+  // originated from the viewer, or were marked teamOnly and the viewer is on the same team.
+  const allowedPrivateLetters = new Set()
+  const allowedOverrideSource = {}
+  const combinedRevealsForVisibility = [].concat(targetedReveals || [], byPlayerReveals || [])
+  const revealVisibleToViewer = (r) => {
+    if (!r) return false
+    const res = r.result || {}
+    try {
+      if (viewerId && r.to === viewerId) return true
+      if (viewerId && r.from === viewerId) return true
+      if (isHost) return true
+      if (res && res.teamOnly && gameMode === 'lastTeamStanding' && viewerTeam && player.team && viewerTeam === player.team) return true
+    } catch (e) {}
+    return false
+  }
+  combinedRevealsForVisibility.forEach(r => {
+    if (!r || !r.result) return
+    if (!revealVisibleToViewer(r)) return
+    const res = r.result
+    const push = (s) => { if (!s) return; const lower = (s||'').toString().toLowerCase(); if (lower) allowedPrivateLetters.add(lower) }
+    push(res.letterFromTarget)
+    push(res.letterFromBuyer)
+    push(res.letter)
+    push(res.last)
+    if (res.letters && Array.isArray(res.letters)) res.letters.forEach(ch => { if (ch) allowedPrivateLetters.add((ch||'').toLowerCase()) })
+    if (res.overridePublicColor) {
+      const letter = (res.letterFromTarget || res.letter || res.last)
+      if (letter) {
+        const lower = (letter || '').toLowerCase()
+        allowedOverrideSource[lower] = r.from
+      }
+    }
+  })
+  // Also include privateHits (viewer-level) letters
+  try {
+    const ph2 = (viewerPrivate.privateHits && viewerPrivate.privateHits[player.id]) || []
+    Array.isArray(ph2) && ph2.forEach(h => { if (h && h.letter) allowedPrivateLetters.add((h.letter||'').toString().toLowerCase()) })
+  } catch (e) {}
+
   const ownerWord = player.word || ''
   const revealedSet = new Set(revealed || [])
 
@@ -160,15 +201,16 @@ export default function PlayerCircle({
   const fullWordRendered = ownerWord.split('').map((ch, idx) => {
     const lower = ch.toLowerCase()
     // if this letter is publicly revealed but a private reveal asked to override public color,
-    // render it in the revealer's color instead of the public red.
-    const overrideSource = privateLetterSource[`__override__${lower}`]
+    // render it in the revealer's color instead of the public red only when allowed
+    const overrideSource = allowedOverrideSource[lower] || privateLetterSource[`__override__${lower}`]
     const playerColors = player._viewer && player._viewer.playerColors ? player._viewer.playerColors : {}
     if (revealedSet.has(lower)) {
       if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={idx} style={{ color: playerColors[overrideSource], fontWeight: 700 }}>{ch}</span>
       return <span key={idx} style={{ color: 'red', fontWeight: 700 }}>{ch}</span>
     }
     const sourceId = privateLetterSource[lower]
-    if (sourceId && playerColors && playerColors[sourceId]) return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: 700 }}>{ch}</span>
+    // only show privately-revealed letters when viewer is allowed to see them
+    if (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId]) return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: 700 }}>{ch}</span>
     return <span key={idx} style={{ color: '#9aa47f' }}>{ch}</span>
   })
 
@@ -379,11 +421,13 @@ export default function PlayerCircle({
       const overrideSource = privateLetterSource[`__override__${lower}`]
       // Publicly revealed letters should render red unless an override source exists
       if (revealedSet.has(lower)) {
-        if (overrideSource && playerColors && playerColors[overrideSource]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[overrideSource] }}>{letter}</span>
+        const allowedOverride = allowedOverrideSource[lower] || overrideSource
+        if (allowedOverride && playerColors && playerColors[allowedOverride]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[allowedOverride] }}>{letter}</span>
         return <span key={`g_${idx}`} style={{ marginRight: 6, color: 'red', fontWeight: 700 }}>{letter}</span>
       }
       const sourceId = instanceSource || privateLetterSource[lower]
-      if (sourceId && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
+      // Only render private-letter coloring when the viewer is allowed to see that letter
+      if (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
       return <span key={`g_${idx}`} style={{ marginRight: 6 }}>{letter}</span>
     })
   } else {
