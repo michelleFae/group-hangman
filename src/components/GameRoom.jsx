@@ -1608,6 +1608,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const me = (state?.players || []).find(p => p.id === myId) || {}
   const myHang = Number(me.wordmoney) || 0
   const gmMode = (state && state.gameMode) ? state.gameMode : gameMode
+  // declare teamMoney early so later code (stake checks) can reference it without TDZ
+  let teamMoney = 0
     // compute effective cost (account for global price surge(s) set by other player(s)).
     // Support both legacy single-object shape and new per-player map shape.
     let cost = baseCost
@@ -1668,7 +1670,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // me, myHang, and gmMode were set above to avoid TDZ errors
     
       console.log(`GH: Attempting to purchase power-up ${powerId} for $${cost} (base $${baseCost} + surge $${totalSurgeAmount}) by player ${myId} in mode ${gmMode} with myHang $${myHang} and teamMoney $${teamMoney}`)
-      let teamMoney = 0
+     
     if (gmMode === 'lastTeamStanding' && me.team) {
       // Try to read the authoritative team wallet from the DB to avoid using a stale local state
       try {
@@ -2687,11 +2689,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // renders inside the buyer's div when the target is viewing)
           const buyerDivKey = `${key}_buyer_${Date.now()}`
           const buyerDivHtml = (typeof targetAward === 'number' && targetAward > 0)
-            ? `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed; they earned +${targetAward} points`
+            ? `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed; they earned <strong class="revealed-letter">+${targetAward}</strong> points`
             : `<strong class="power-name">Letter for Letter</strong>: <em>${playerIdToName[powerUpTarget] || powerUpTarget}</em> had letter <strong class="revealed-letter">'${targetLetter}'</strong> revealed; no points were awarded`
           const buyerDivMsg = (typeof targetAward === 'number' && targetAward > 0)
-            ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; they earned +${targetAward} points`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
-            : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed; no points were awarded`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
+            ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed. They earned +${targetAward} points`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
+            : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed. No points were awarded`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
           updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${buyerDivKey}`] = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(buyerDivMsg || {}), ...(targetResultPayload || {}) } }
 
           // Also store the side-effect payload under the BUYER's own node so the buyer can see the summary
