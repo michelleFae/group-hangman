@@ -1667,7 +1667,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // check buyer/team wordmoney affordability (viewer/player and gmMode resolved earlier)
   // me, myHang, and gmMode were set above to avoid TDZ errors
     
-      console.log(`GH: Attempting to purchase power-up ${powerId} for $${cost} (base $${baseCost} + surge $${totalSurgeAmount}) by player ${myId} in mode ${gmMode}`)
+      console.log(`GH: Attempting to purchase power-up ${powerId} for $${cost} (base $${baseCost} + surge $${totalSurgeAmount}) by player ${myId} in mode ${gmMode} with myHang $${myHang} and teamMoney $${teamMoney}`)
       let teamMoney = 0
     if (gmMode === 'lastTeamStanding' && me.team) {
       // Try to read the authoritative team wallet from the DB to avoid using a stale local state
