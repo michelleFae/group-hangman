@@ -181,12 +181,8 @@ export default function PlayerCircle({
 
   // Build revealedPositions according to revealPreserveOrder / revealShowBlanks settings.
   let revealedPositions = null
-  // Exception: in lastTeamStanding mode, teammates may view the full word for their teammates.
+  // Determine whether the viewer is a teammate (used to show the "Show teammate's word" control)
   const isViewerTeammate = (gameMode === 'lastTeamStanding' && viewerTeam && player.team && viewerTeam === player.team)
-  if (!isSelf && isViewerTeammate) {
-    // show full word to teammates (ordered)
-    revealedPositions = fullWordRendered
-  }
   if (allLettersRevealed) {
     // Use full ordered rendering so the revealed div shows letters in word order
     revealedPositions = fullWordRendered
