@@ -1603,6 +1603,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const pu = POWER_UPS.find(p => p.id === powerId)
     if (!pu) return
     const baseCost = pu.price
+  // Resolve viewer/player and gameMode early so subsequent surge/cost logic
+  // can reference them without temporal-dead-zone issues.
+  const me = (state?.players || []).find(p => p.id === myId) || {}
+  const myHang = Number(me.wordmoney) || 0
+  const gmMode = (state && state.gameMode) ? state.gameMode : gameMode
     // compute effective cost (account for global price surge(s) set by other player(s)).
     // Support both legacy single-object shape and new per-player map shape.
     let cost = baseCost
@@ -1659,11 +1664,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
       if (totalSurgeAmount) cost = baseCost + totalSurgeAmount
    
-    // check buyer/team wordmoney affordability
-    const me = (state?.players || []).find(p => p.id === myId) || {}
-    const myHang = Number(me.wordmoney) || 0
-    // Prefer authoritative room state when present, fall back to local UI state
-    const gmMode = (state && state.gameMode) ? state.gameMode : gameMode
+  // check buyer/team wordmoney affordability (viewer/player and gmMode resolved earlier)
+  // me, myHang, and gmMode were set above to avoid TDZ errors
     let teamMoney = 0
     if (gmMode === 'lastTeamStanding' && me.team) {
       // Try to read the authoritative team wallet from the DB to avoid using a stale local state
