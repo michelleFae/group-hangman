@@ -56,8 +56,10 @@ export default function PlayerCircle({
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
-  const [expanded, setExpanded] = useState(true)
-  const [showTeammateWord, setShowTeammateWord] = useState(true)
+  // default expanded only for the player's own tile; other tiles start collapsed
+  const [expanded, setExpanded] = useState(!!isSelf)
+  // teammates should not see other players' full words by default; toggle available
+  const [showTeammateWord, setShowTeammateWord] = useState(false)
   const [showOwnWord, setShowOwnWord] = useState(true)
 
   useEffect(() => {
@@ -179,6 +181,12 @@ export default function PlayerCircle({
 
   // Build revealedPositions according to revealPreserveOrder / revealShowBlanks settings.
   let revealedPositions = null
+  // Exception: in lastTeamStanding mode, teammates may view the full word for their teammates.
+  const isViewerTeammate = (gameMode === 'lastTeamStanding' && viewerTeam && player.team && viewerTeam === player.team)
+  if (!isSelf && isViewerTeammate) {
+    // show full word to teammates (ordered)
+    revealedPositions = fullWordRendered
+  }
   if (allLettersRevealed) {
     // Use full ordered rendering so the revealed div shows letters in word order
     revealedPositions = fullWordRendered
