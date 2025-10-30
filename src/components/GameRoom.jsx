@@ -300,6 +300,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ddCoins, setDdCoins] = useState([])
   // transient overlay events when ghosts re-enter so we can show animated UI for everyone
   const [ghostReenterEvents, setGhostReenterEvents] = useState([])
+  // show a prominent "Your turn" banner briefly when the viewer's turn starts
+  const [showYourTurnBanner, setShowYourTurnBanner] = useState(false)
+  const yourTurnTimeoutRef = useRef(null)
   // portal root for dd overlay attached to document.body to avoid stacking-context issues
   const [ddOverlayRoot, setDdOverlayRoot] = useState(null)
   // portal root for modals (settings / power-up) attached to document.body to avoid layout jumps
@@ -589,11 +592,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   useEffect(() => {
     try {
       const myIdLocal = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
-      const isMyTurnNow = state && state.turnOrder && state.currentTurnIndex != null && state.turnOrder[state.currentTurnIndex] === myIdLocal
-      if (isMyTurnNow) document.body.classList.add('my-turn-body')
-      else document.body.classList.remove('my-turn-body')
+      const isMyTurnNowLocal = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myIdLocal
+      if (isMyTurnNowLocal) {
+        document.body.classList.add('my-turn-body')
+        try {
+          setShowYourTurnBanner(true)
+          if (yourTurnTimeoutRef.current) clearTimeout(yourTurnTimeoutRef.current)
+          yourTurnTimeoutRef.current = setTimeout(() => setShowYourTurnBanner(false), 5000)
+        } catch (e) {}
+      } else {
+        document.body.classList.remove('my-turn-body')
+        try {
+          if (yourTurnTimeoutRef.current) { clearTimeout(yourTurnTimeoutRef.current); yourTurnTimeoutRef.current = null }
+        } catch (e) {}
+        setShowYourTurnBanner(false)
+      }
     } catch (e) {}
-    return () => {}
+    return () => { try { if (yourTurnTimeoutRef.current) { clearTimeout(yourTurnTimeoutRef.current); yourTurnTimeoutRef.current = null } } catch (e) {} }
   }, [state?.turnOrder, state?.currentTurnIndex])
 
   // write timing preview to room so all players (including non-hosts) can see before start
@@ -5606,8 +5621,8 @@ try {
           </div>
         )
       }
-      // Prominent Your Turn banner when it's your turn during play
-      if (phase === 'playing' && isMyTurnNow) {
+      // Prominent Your Turn banner when it's your turn during play (auto-hides after 5s)
+      if (phase === 'playing' && isMyTurnNow && showYourTurnBanner) {
         const me = players.find(p => p.id === myId) || {}
         return (
           <div className="big-yourturn-overlay" aria-live="polite">
