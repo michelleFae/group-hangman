@@ -1,4 +1,4 @@
-Group Hangman - real-time multiplayer hangman (Wordspiracy)
+Group Hangman - real-time multiplayer hangman (Underword)
 
 Overview
 --

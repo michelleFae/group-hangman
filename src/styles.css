@@ -245,10 +245,10 @@ button[disabled] {
   display: inline; /* ensure spans are inline, not block */
 }
 
-/* wordspiracy header */
-.wordspiracy-header { text-align: center; margin-bottom: 20px }
-.wordspiracy-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
-.wordspiracy-title .bubble {
+/* underword header */
+.underword-header { text-align: center; margin-bottom: 20px }
+.underword-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
+.underword-title .bubble {
   display:inline-block;
   margin-left: 8px;
   transform-origin: 50% 50%;
@@ -261,7 +261,7 @@ button[disabled] {
   /* subtle text shadow to help emoji stand out on gradients */
   text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
-.wordspiracy-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
+.underword-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
 
 @keyframes bubble-bounce {
   0% { transform: translateY(0) rotate(0deg) }

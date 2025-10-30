@@ -262,71 +262,6 @@ export default function PlayerCircle({
     revealedPositions = fullWordRendered
   } else
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   if (!isSelf && !revealPreserveOrder) {
     // Show letters in guessed order (derived from private reveals and privateHits),
     // expanding by occurrence count in the owner's word.
@@ -674,7 +609,7 @@ export default function PlayerCircle({
               )}
 
               {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
-                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'⚡ Power-up'}</button>
+                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'🕯️Curse'}</button>
               )}
               {/* show who eliminated this player when applicable */}
               {isEliminated && eliminatedByName && (
@@ -777,7 +712,7 @@ export default function PlayerCircle({
                   {!hideInteractiveForWordSpy && (
                     // Put only the header text in a scrollable container
                     <div className="powerup-results-title" style={{ maxHeight: 48, overflow: 'auto' }}>
-                      <strong>Power-up results:</strong>
+                      <strong>Curse results:</strong>
                     </div>
                   )}
                   <div className="powerup-results-scroll" style={{ marginTop: 6, overflowY: 'scroll', maxHeight: '40vh', paddingRight: '20px' }}>

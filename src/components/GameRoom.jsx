@@ -250,6 +250,52 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [firstWordWins, setFirstWordWins] = useState(true)
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
+  // Underworld event banner when someone is eliminated by a guess
+  const [underworldEvent, setUnderworldEvent] = useState(null)
+  const prevPlayersRef = useRef({})
+  // Watch for player elimination transitions to show a centered underworld banner
+  useEffect(() => {
+    try {
+      const currPlayers = Array.isArray(state?.players) ? state.players.slice() : []
+      // initialize prev on first run and skip firing so we don't show messages on initial load
+      const prevMap = prevPlayersRef.current || {}
+      if (!prevMap || Object.keys(prevMap).length === 0) {
+        const m = {}
+        currPlayers.forEach(p => { if (p && p.id) m[p.id] = { ...p } })
+        prevPlayersRef.current = m
+        return
+      }
+      const currMap = {}
+      currPlayers.forEach(p => { if (p && p.id) currMap[p.id] = p })
+      // detect newly-eliminated players
+      Object.keys(currMap).forEach(pid => {
+        try {
+          const prevP = prevMap[pid] || {}
+          const currP = currMap[pid] || {}
+          const prevElim = !!prevP.eliminated
+          const currElim = !!currP.eliminated
+          if (!prevElim && currElim) {
+            // Determine who guessed them out (prefer last entry of guessedBy.__word)
+            const guessedArr = (currP.guessedBy && currP.guessedBy['__word']) ? currP.guessedBy['__word'] : []
+            const lastGuesserId = (Array.isArray(guessedArr) && guessedArr.length) ? guessedArr[guessedArr.length - 1] : null
+            const guesserNode = (state?.players || []).find(p => p.id === lastGuesserId) || {}
+            const guesserName = guesserNode && guesserNode.name ? guesserNode.name : (lastGuesserId || 'Someone')
+            const victimName = currP.name || pid
+            let text = `${guesserName} sent ${victimName} to the underworld`
+            if (ghostReEntryEnabled && !(currP.ghostState && currP.ghostState.reentered)) text += ' ... but for how long?'
+            else text += ' forever!'
+            setUnderworldEvent({ id: `uw_${Date.now()}`, text })
+            // auto-clear after a short interval
+            setTimeout(() => setUnderworldEvent(null), 3600)
+          }
+        } catch (e) {}
+      })
+      // update prev map
+      const newMap = {}
+      currPlayers.forEach(p => { if (p && p.id) newMap[p.id] = { ...p } })
+      prevPlayersRef.current = newMap
+    } catch (e) {}
+  }, [state?.players, ghostReEntryEnabled])
   // coin pieces shown when a double-down is won
   const [ddCoins, setDdCoins] = useState([])
   // transient overlay events when ghosts re-enter so we can show animated UI for everyone
@@ -1156,14 +1202,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             : 'Winner: Last one standing'}
         </strong>
         <small style={{ color: '#B4A3A3', fontSize: 12 }}>
-          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode' : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$' : (state?.gameMode === 'lastTeamStanding') ? 'Guess the other team\'s words to win' : 'Last person alive wins'}
+          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode'
+            : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$'
+            : (state?.gameMode === 'lastTeamStanding') ? (state?.firstWordWins ? 'First word guessed wins' : 'Eliminate all players on the other team to win')
+            : 'Last person alive wins'}
         </small>
         </div>
-        {/* show a rocket badge when power-ups are enabled (defaults to true) and visible to all players in the lobby */}
+        {/* show a rocket badge when curses/power-ups are enabled (defaults to true) and visible to all players in the lobby */}
           {powerUpsEnabled && phase === 'lobby' && (
-            <div title="Power-ups are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="powerup-rocket" style={{ fontSize: 18 }}>🚀</span>
-              <small style={{ color: '#B4A3A3', fontSize: 12 }}>Power-ups</small>
+            <div title="Curses are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="powerup-rocket" style={{ fontSize: 18 }}>🕯️</span>
+              <small style={{ color: '#B4A3A3', fontSize: 12 }}>Curses</small>
             </div>
           )}
           {isHost && phase === 'lobby' && (
@@ -1654,7 +1703,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               </div>
             )}
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
-              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Power-ups enabled
+              <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Curses enabled
             </label>
             <label htmlFor="ghostReEntryEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Allow eliminated players to attempt re-entry as ghosts by guessing a random word">
               <input id="ghostReEntryEnabled" name="ghostReEntryEnabled" type="checkbox" checked={ghostReEntryEnabled} onChange={e => { const nv = e.target.checked; setGhostReEntryEnabled(nv); updateRoomSettings({ ghostReEntryEnabled: !!nv }) }} /> Ghost Re-Entry enabled
@@ -1679,7 +1728,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                     }
                     setRevealPreserveOrder(nv)
                     updateRoomSettings({ revealPreserveOrder: !!nv })
-                  }} title={revealShowBlanks ? 'Preserve reveal order is required when Show blanks is enabled' : 'When on, revealed letters are shown in their positions within the word (helps when combined with blanks).'} /> Preserve reveal order
+                  }} title={revealShowBlanks ? 'This option is required when Show blanks is enabled' : 'When on, revealed letters are shown in their positions within the word (helps when combined with blanks).'} /> Reveal letters in order of their positions in the word
                 </label>
                 <label htmlFor="revealShowBlanks" title="Show blanks (underscores) for unrevealed letters. Enabling this will also enable Preserve reveal order.">
                   <input id="revealShowBlanks" name="revealShowBlanks" type="checkbox" checked={revealShowBlanks} onChange={e => { const nv = e.target.checked; setRevealShowBlanks(nv); if (nv) { setRevealPreserveOrder(true); updateRoomSettings({ revealShowBlanks: !!nv, revealPreserveOrder: true }) } else { updateRoomSettings({ revealShowBlanks: !!nv }) } }} /> Show blanks
@@ -3602,8 +3651,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }, 4200)
       setPowerUpOpen(false)
     } catch (e) {
-      console.error('Power-up purchase failed', e)
-      setToasts(t => [...t, { id: `pup_err_${Date.now()}`, text: 'Could not perform power-up. Try again.' }])
+      console.error('Curse purchase failed', e)
+      setToasts(t => [...t, { id: `pup_err_${Date.now()}`, text: 'Could not perform curse. Try again.' }])
     } finally {
       setPowerUpLoading(false)
     }
@@ -3802,7 +3851,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
           <div className="shop-modal-header">
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <strong>Power-ups for {targetName}</strong>
+              <strong>Curses on {targetName}</strong>
               <small style={{ fontSize: 12, color: '#ddd' }}>Use these to influence the round</small>
             </div>
             <button className="shop-modal-close" onClick={onClose}>✖</button>
@@ -4853,7 +4902,7 @@ try {
       {/* Preserve reveal order indicator shown in lobby and playing phases */}
       {(phase === 'lobby' || phase === 'playing') && (
         <div style={{ position: 'fixed', left: 18, top: 18, zIndex: 9998, fontSize: 12, color: '#ddd', background: 'rgba(0,0,0,0.18)', padding: '4px 8px', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }}>
-          Preserve reveal order: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'On' : 'Off') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
+          Reveal letters based on occurence in word: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'No' : 'Yes') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
         </div>
       )}
       {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
@@ -5347,7 +5396,7 @@ try {
             const wasPenalized = Object.keys(state?.timeouts || {}).some(k => (state?.timeouts && state.timeouts[k] && state.timeouts[k].player) === p.id && recentPenalty[k])
             const powerUpActive = powerUpsEnabled && (myId === currentTurnId) && p.id !== myId && !p.eliminated
             let pupReason = null
-            if (!powerUpsEnabled) pupReason = 'Power-ups are disabled'
+            if (!powerUpsEnabled) pupReason = 'Curses are disabled'
             else if (p.id === myId) pupReason = 'Cannot target yourself'
             else if (p.eliminated) pupReason = 'Player is eliminated'
             else if (ddShopLocked) pupReason = 'Double Down placed : make your guess first'
@@ -5362,7 +5411,7 @@ try {
                 myHang = Number(state?.teams?.[me.team]?.wordmoney || 0)
               }
               
-              if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy power-ups`
+              if (myHang < cheapest) pupReason = `Need at least ${cheapest} 🪙 to buy curses.`
               
             }
 
@@ -5587,6 +5636,20 @@ try {
       return overlayNode
     })()
   }
+  {/* Underworld elimination banner */}
+  {underworldEvent && (() => {
+    const overlayNode = (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 12010 }} aria-hidden>
+        <div style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.72), rgba(16,16,16,0.6))', color: '#fff', padding: '18px 24px', borderRadius: 12, boxShadow: '0 6px 24px rgba(0,0,0,0.6)', maxWidth: '92%', textAlign: 'center' }}>
+          <div style={{ fontSize: 20, opacity: 0.98, fontWeight: 700 }}>{underworldEvent.text}</div>
+        </div>
+      </div>
+    )
+    if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+      try { return ReactDOM.createPortal(overlayNode, ddOverlayRoot) } catch (e) { return overlayNode }
+    }
+    return overlayNode
+  })()}
   {/* Power-up modal (always rendered; visibility controlled by its `open` prop) */}
   {(() => {
     const node = <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />

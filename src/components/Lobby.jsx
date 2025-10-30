@@ -231,9 +231,9 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           <div key={t.id} className="toast" style={{ background: 'rgba(0,0,0,0.8)', color: 'white', padding: '8px 12px', borderRadius: 8, marginBottom: 8 }}>{t.text}</div>
         ))}
       </div>
-      <div className="wordspiracy-header">
-        <h1 className="wordspiracy-title">Wordspiracy <span className="bubble">🕵️</span></h1>
-        <p className="wordspiracy-tag">Protect your word. Expose theirs.</p>
+      <div className="underword-header">
+        <h1 className="underword-title">Underword <span className="bubble">🕯️</span></h1>
+        <p className="underword-tag">Hold your word in shadow. Drag theirs to light.</p>
       </div>
   <div style={{display:'flex',flexDirection:'column',gap:6}}>
     <div style={{display:'flex',gap:8,alignItems:'center'}}>
