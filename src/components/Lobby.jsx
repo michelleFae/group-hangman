@@ -103,12 +103,17 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           // allow rejoin with stored anon id : caller will preserve server-side name
           setJoinError('')
           onJoin(room, '', '')
+          try {
+            const url = buildRoomUrl(room)
+            window.history.replaceState({}, '', url)
+          } catch (e) { /* ignore */ }
           return
         }
         setJoinError('')
         // require name unless we have a stored anon id for this room
         if (storedAnon) {
           onJoin(room, '', password)
+          try { const url = buildRoomUrl(room); window.history.replaceState({}, '', url) } catch (e) {}
         } else if (!name || !name.toString().trim()) {
           setJoinError('Please enter a display name to join')
           return
@@ -117,6 +122,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           let finalName = name.toString()
           if (finalName.length > 14) finalName = finalName.slice(0, 14)
           onJoin(room, finalName, password) // Pass the password to onJoin
+          try { const url = buildRoomUrl(room); window.history.replaceState({}, '', url) } catch (e) {}
         }
       }).catch(err => {
         // if reading fails, allow join attempt and let DB rules handle it
@@ -127,13 +133,15 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           setJoinError('Please enter a display name to join')
           return
         }
-        onJoin(room, name, password) // Pass the password to onJoin
+  onJoin(room, name, password) // Pass the password to onJoin
+  try { const url = buildRoomUrl(room); window.history.replaceState({}, '', url) } catch (e) {}
       })
       return
     }
 
-    // no db configured - proceed
-    onJoin(room, name, password) // Pass the password to onJoin
+  // no db configured - proceed
+  onJoin(room, name, password) // Pass the password to onJoin
+  try { const url = buildRoomUrl(room); window.history.replaceState({}, '', url) } catch (e) {}
   }
 
   function shareLinkFor(id) {

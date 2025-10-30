@@ -1080,6 +1080,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     }))
   }, [state?.winnerByWordmoney])
 
+  // When a team wins, tint the page background to the team's color instead of rendering a
+  // high z-index overlay. Clean up on unmount or when the winner changes.
+  useEffect(() => {
+    try {
+      const prev = document.body.style.background || ''
+      if (phase === 'ended' && state && state.winnerTeam) {
+        const wt = state.winnerTeam
+        const teamColor = wt === 'red' ? '255,77,79' : (wt === 'blue' ? '24,144,255' : '136,136,136')
+        document.body.style.background = `linear-gradient(180deg, rgba(${teamColor},0.92), rgba(0,0,0,0.55))`
+      } else {
+        // restore previous background when not in a team-winner end-screen
+        document.body.style.background = prev
+      }
+      return () => { try { document.body.style.background = prev } catch (e) {} }
+    } catch (e) { /* ignore */ }
+  }, [phase, state && state.winnerTeam])
+
   
 
   const modeBadge = (
@@ -3829,6 +3846,9 @@ try {
   updates['winnerTeam'] = null
   // clear any team reveal state so teammates don't keep revealed words across rematch
   updates['teamReveals'] = null
+  // clear any ghost challenge/announcements so ghost target word isn't preserved
+  updates['ghostChallenge'] = null
+  updates['ghostAnnouncements'] = null
   // clear per-team initial counts and compensation applied if present
   try {
   const teamNames = state?.teams ? Object.keys(state.teams || {}) : []
@@ -3860,6 +3880,9 @@ try {
           }
           // allow starter bonus to be re-awarded after a restart
           updates[`players/${p.id}/starterBonusAwarded`] = null
+          // clear any ghost-related per-player state so previous ghost attempts don't persist
+          updates[`players/${p.id}/ghostState`] = null
+          updates[`players/${p.id}/ghostLastGuessAt`] = null
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
           updates[`players/${p.id}/privateWrong`] = null
@@ -3932,6 +3955,9 @@ try {
   updates['winnerTeam'] = null
   // clear persisted teammate reveals on automatic rematch so everyone starts fresh
   updates['teamReveals'] = null
+  // clear ghost challenge and announcements so ghost target word isn't carried over
+  updates['ghostChallenge'] = null
+  updates['ghostAnnouncements'] = null
   // clear per-team initial counts and compensationApplied values so rematch starts fresh
   try {
   const teamNames = state?.teams ? Object.keys(state.teams || {}) : []
@@ -3946,6 +3972,9 @@ try {
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
+          // clear ghost-related state for each player on automatic rematch
+          updates[`players/${p.id}/ghostState`] = null
+          updates[`players/${p.id}/ghostLastGuessAt`] = null
           try {
             if (state && state.gameMode === 'lastTeamStanding' && p.team) {
               if (typeof updates[`teams/${p.team}/wordmoney`] === 'undefined') updates[`teams/${p.team}/wordmoney`] = startMoney
@@ -4527,16 +4556,19 @@ try {
           <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
           <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
-          {/* If the room ended with a team winner, show a fullscreen tinted overlay */}
+          {/* If the room ended with a team winner, tint the page background to match the winning team
+              and show a centered winner card (no z-index overlay). Also include the losing team's words */}
           {state?.winnerTeam && (() => {
             try {
               const wt = state.winnerTeam
               const teamColor = wt === 'red' ? '255,77,79' : (wt === 'blue' ? '24,144,255' : '136,136,136')
               const teamMembers = (state?.players || []).filter(x => x && x.team === wt)
+              const losingMembers = (state?.players || []).filter(x => x && x.team && x.team !== wt)
               const teamWallet = Number(state?.teams?.[wt]?.wordmoney || 0)
+              // Apply a page-level background via body so reduced z-index overlays are not needed
               return (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(180deg, rgba(${teamColor},0.92), rgba(0,0,0,0.55))`, color: '#fff', padding: 20 }}>
-                  <div style={{ maxWidth: 980, width: '100%', borderRadius: 12, padding: 28, background: 'rgba(0,0,0,0.14)', boxShadow: '0 6px 30px rgba(0,0,0,0.4)', textAlign: 'center' }}>
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                  <div style={{ maxWidth: 980, width: '100%', borderRadius: 12, padding: 28, background: 'rgba(0,0,0,0.14)', boxShadow: '0 6px 30px rgba(0,0,0,0.4)', textAlign: 'center', color: '#fff' }}>
                     <div style={{ fontSize: 40, fontWeight: 900 }}>{wt.charAt(0).toUpperCase() + wt.slice(1)} Team Wins</div>
                     <div style={{ fontSize: 28, fontWeight: 900, marginTop: 8 }}>${teamWallet}</div>
                     <div style={{ marginTop: 18, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -4549,6 +4581,19 @@ try {
                         </div>
                       ))}
                     </div>
+                    {losingMembers.length > 0 && (
+                      <div style={{ marginTop: 20, textAlign: 'center' }}>
+                        <h4 style={{ marginBottom: 8 }}>Opposing team words</h4>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {losingMembers.map((m, i) => (
+                            <div key={`lm_${i}`} style={{ minWidth: 140, background: 'rgba(255,255,255,0.04)', padding: '10px 12px', borderRadius: 10 }}>
+                              <div style={{ fontWeight: 700 }}>{m && m.name ? m.name : (m && m.id ? m.id : 'Player')}</div>
+                              {showWordsOnEnd && (m && m.word) ? <div style={{ marginTop: 6, opacity: 0.95 }}>{m.word}</div> : <div style={{ marginTop: 6, opacity: 0.6, fontSize: 13 }}>No word</div>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
                       <div style={{ marginTop: 18 }}>
                         <strong>Ghost words:</strong>
@@ -4612,7 +4657,8 @@ try {
 
           <div style={{ marginTop: 14 }}>
             <div style={{ marginBottom: 8 }}>
-              {!state?.winnerTeam && <PlayAgainControls isHost={isHost} myId={myId} players={players} />}
+              {/* Always render PlayAgainControls for the host on the victory screen so they can restart regardless of mode */}
+              {isHost && <PlayAgainControls isHost={isHost} myId={myId} players={players} />}
             </div>
             <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
             {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (

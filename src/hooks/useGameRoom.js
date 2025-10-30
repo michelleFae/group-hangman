@@ -867,6 +867,9 @@ export default function useGameRoom(roomId, playerName) {
           players: null,
           phase: 'lobby',
           open: true,
+          // clear ghost challenge and announcements when resetting stale room
+          ghostChallenge: null,
+          ghostAnnouncements: null,
           teams: null,
           winnerTeam: null,
           winnerId: null,
@@ -1359,18 +1362,24 @@ export default function useGameRoom(roomId, playerName) {
       updates.timed = false
       updates.turnTimeoutSeconds = null
     }
-    // handle starter bonus option: generate a simple rule (require containing a letter)
-    if (options && options.starterEnabled) {
-      try {
-        const letters = 'abcdefghijklmnopqrstuvwxyz'
-        const letter = letters[Math.floor(Math.random() * letters.length)]
-        updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Your word contains the letter "${letter.toLowerCase()}".`, applied: false }
-      } catch (e) {
-        // ignore
+    // handle starter bonus option: only modify starterBonus when the caller
+    // explicitly provided the starterEnabled flag. If omitted, preserve the
+    // room's existing starterBonus setting so resets/rematches don't toggle it.
+    if (options && typeof options.starterEnabled !== 'undefined') {
+      if (options.starterEnabled) {
+        try {
+          const letters = 'abcdefghijklmnopqrstuvwxyz'
+          const letter = letters[Math.floor(Math.random() * letters.length)]
+          updates.starterBonus = { enabled: true, type: 'contains', value: letter, description: `Your word contains the letter "${letter.toLowerCase()}".`, applied: false }
+        } catch (e) {
+          // ignore
+        }
+      } else {
+        // explicitly requested to disable starter bonus
+        updates.starterBonus = null
       }
     } else {
-      // ensure no stale starterBonus remains
-      updates.starterBonus = null
+      // no explicit instruction from caller: leave starterBonus unchanged
     }
 
     // Ensure every player has an explicit starting wordmoney set. Do not overwrite
