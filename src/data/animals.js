@@ -8,7 +8,7 @@ const BASE_ANIMALS = [
   'addax','vaquita','condor',
 
   // // common dog breeds (single-word, lowercase)
-  // 'beagle','bulldog','dachshund','doberman','husky','poodle','chihuahua','pug','rottweiler','boxer','labrador','mastiff','greyhound','collie','shiba','akita','terrier',
+  'beagle','bulldog','dachshund','doberman','husky','poodle','chihuahua','pug','rottweiler','boxer','labrador','mastiff','greyhound','collie','shiba','akita','terrier',
 
   // // common cat breeds (single-word, lowercase)
   // 'siamese','persian','sphynx','ragdoll','bengal','abyssinian','ocicat','manx','burmese','tonkinese',

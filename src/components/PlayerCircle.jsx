@@ -509,6 +509,33 @@ export default function PlayerCircle({
     return true
   })
 
+  // De-duplicate visually-similar power-up reveal entries so the target's
+  // tile doesn't show essentially the same message twice (e.g., letter_for_letter
+  // side-effect + a generic fallback entry). Keep first occurrence and preserve order.
+  const _deduped = []
+  try {
+    const seen = new Set()
+    ;(visiblePrivatePowerReveals || []).forEach(r => {
+      try {
+        if (!r || !r.result) return
+        const pid = r.powerId || ''
+        const from = r.from || r.by || ''
+        const res = r.result || {}
+        // Use HTML message when available for stability, else fallback to plain message
+        const msg = String(res.messageHtml || res.message || '')
+        // include prominent letter fields so letter_for_letter variants collapse
+        const letterKey = String((res.letterFromBuyer || res.letterFromTarget || res.letter || (Array.isArray(res.letters) ? res.letters.join(',') : '')) || '')
+        const teamOnlyFlag = res.teamOnly ? 'T' : 'F'
+        const sig = `${pid}::${from}::${letterKey}::${msg}::${teamOnlyFlag}`
+        if (!seen.has(sig)) {
+          seen.add(sig)
+          _deduped.push(r)
+        }
+      } catch (e) { _deduped.push(r) }
+    })
+  } catch (e) { /* fallback: leave as-is */ }
+  const visiblePrivatePowerRevealsDeduped = _deduped
+
   return (
   <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${player && player.stale ? 'player-stale' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
       {/* Host remove control (red X) shown only to host during lobby or ended phases */}
@@ -701,7 +728,7 @@ export default function PlayerCircle({
                     </div>
                   )}
                   <div className="powerup-results-scroll" style={{ marginTop: 6, overflowY: 'scroll', maxHeight: '40vh', paddingRight: '20px' }}>
-                {visiblePrivatePowerReveals.map((r, idx) => {
+                {visiblePrivatePowerRevealsDeduped.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
                   const actorName = (actorId && (playerIdToName && playerIdToName[actorId])) || actorId || 'Someone'
@@ -735,6 +762,7 @@ export default function PlayerCircle({
                           boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.06)',
                           border: '2px solid #3b75c9'
                         }
+                    
                   return (
                     <div key={idx}>
                       {(r.powerId === 'letter_scope' && res && (typeof res.letters === 'number' || typeof res.letters === 'string')) ? (
@@ -753,30 +781,11 @@ export default function PlayerCircle({
                         )
                       ) : r.powerId === 'letter_for_letter' ? (
                         (() => {
-                          if (res && res.letterFromTarget) {
-                            const letter = String(res.letterFromTarget || '').slice(0,1)
-                            const occ = (ownerWord && letter) ? (ownerWord.split('').filter(ch => (ch || '').toLowerCase() === letter.toLowerCase()).length) : 1
-                            const points = (Number(res.count || res.occurrences) || occ || 1) * 2
-                            if (actorIsViewer) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>You</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word : <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
-                            }
-                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter</strong>:<em>{actorName}</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> from <em>{player.name}</em>'s word and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
-                          }
-
-                          if (res && res.letterFromBuyer) {
-                            const letter = String(res.letterFromBuyer || '').slice(0,1)
-                            const occ = Number(res.count || res.occurrences || res.hits) || 1
-                            const points = occ * 2
-                            if (player && viewerId && player.id === viewerId) {
-                              return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><strong style={{ color: revealedLetterColor }}>'{letter}'</strong> revealed; <strong style={{ color: revealedLetterColor }}>you got +${points}</strong>.</div>
-                            }
-                            return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Letter for Letter Side Effect:</strong><em>{player.name}</em> revealed <strong style={{ color: revealedLetterColor }}>'{letter}'</strong> and earned <strong style={{ color: revealedLetterColor }}>+${points}</strong>.</div>
-                          }
-
-                          return <div style={chipStyle}><strong style={{ color: powerNameColor }}>{r.powerId}</strong>: {JSON.stringify(res)}</div>
+                          return <div></div>
                         })()
                       ) : (
                         (() => {
+                          
                           try {
                             if (actorIsViewer) {
                               if (r.powerId === 'letter_scope' && (typeof res.letters === 'number' || typeof res.letters === 'string')) {

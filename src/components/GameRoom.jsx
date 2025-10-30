@@ -19,6 +19,89 @@ import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
 
+// Small, memoized component to isolate starting balance and min-word-size controls.
+// This keeps frequent local edits (typing) from re-rendering the entire Settings UI.
+const StartingMinSettings = React.memo(function StartingMinSettings({ initialStarting, initialMin, onPersistStarting, onPersistMin, isHost }) {
+  const [localStart, setLocalStart] = React.useState(typeof initialStarting === 'number' ? initialStarting : 0)
+  const [localMin, setLocalMin] = React.useState(typeof initialMin === 'number' ? initialMin : 2)
+
+  // Keep inputs in sync when authoritative values change from outside
+  React.useEffect(() => { try { setLocalStart(typeof initialStarting === 'number' ? initialStarting : 0) } catch (e) {} }, [initialStarting])
+  React.useEffect(() => { try { setLocalMin(typeof initialMin === 'number' ? initialMin : 2) } catch (e) {} }, [initialMin])
+
+  return (
+    <div>
+      <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
+        Min word length:
+        <input
+          id="minWordSize"
+          name="minWordSize"
+          type="number"
+          min={2}
+          max={10}
+          value={localMin}
+          onChange={e => { try { setLocalMin(Number(e.target.value || 2)) } catch (er) {} }}
+          onBlur={() => {
+            try {
+              const parsed = Number(localMin)
+              const v = Number.isFinite(parsed) ? Math.max(2, Math.min(10, parsed)) : 2
+              setLocalMin(v)
+              try { if (typeof onPersistMin === 'function') onPersistMin(v) } catch (e) {}
+            } catch (e) {}
+          }}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          style={{ width: 80, marginLeft: 8 }}
+        />
+      </label>
+
+      <label htmlFor="startingWordmoney" title="Starting wordmoney assigned to each player when they join or when the room is reset" style={{ display: 'block', marginTop: 8 }}>
+        Starting balance:
+        <input
+          id="startingWordmoney"
+          name="startingWordmoney"
+          type="number"
+          min={0}
+          step={1}
+          value={localStart}
+          onChange={e => { try { setLocalStart(e.target.value) } catch (er) {} }}
+          onBlur={async () => {
+            try {
+              const parsed = Number(localStart)
+              const v = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
+              setLocalStart(v)
+              try { if (typeof onPersistStarting === 'function') await onPersistStarting(v) } catch (e) {}
+            } catch (e) {}
+          }}
+          style={{ width: 100, marginLeft: 8 }}
+        />
+      </label>
+    </div>
+  )
+})
+
+// Small control to isolate the Letter Peek input so typing doesn't re-render the
+// entire power-up list. It manages its own local state and forwards a ref to
+// the underlying input so parent effects (autofocus) still work.
+const LetterPeekControl = React.memo(React.forwardRef(function LetterPeekControl({ open, disabled, displayPrice, onBuy, powerUpLoading, buyerBalance, isMyTurn }, ref) {
+  const [localPos, setLocalPos] = React.useState('')
+  const inputRef = React.useRef(null)
+  // expose the input DOM node to parent via forwarded ref
+  React.useEffect(() => { try { if (ref) { if (typeof ref === 'function') ref(inputRef.current); else ref.current = inputRef.current } } catch (e) {} }, [ref])
+  // clear local input when modal closes
+  React.useEffect(() => { if (!open) setLocalPos('') }, [open])
+
+  const disabledFinal = Boolean(disabled || powerUpLoading || buyerBalance < displayPrice || !isMyTurn)
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input className="powerup-input" ref={inputRef} id={`powerup_letter_peek_choice`} name={`powerup_letter_peek_choice`} placeholder="position" value={localPos} onChange={e => setLocalPos(e.target.value)} disabled={disabled} />
+      <button className="powerup-buy" disabled={disabledFinal} onClick={() => { try { onBuy && onBuy(localPos) } catch (e) {} }}>
+        {powerUpLoading ? '...' : 'Buy'}
+      </button>
+    </div>
+  )
+}))
+
 export default function GameRoom({ roomId, playerName, password }) { // Added password as a prop
   const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId,
     // Word Spy hooks
@@ -115,6 +198,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const powerUpChoiceRef = useRef(null)
   const powerupListRef = useRef(null)
   const powerupScrollRef = useRef(0)
+  const settingsListRef = useRef(null)
+  const settingsScrollRef = useRef(0)
   const multiHitSeenRef = useRef({})
   // control whether certain power-ups reveal publicly (when available in UI)
   const [powerUpRevealPublic, setPowerUpRevealPublic] = useState(false)
@@ -132,6 +217,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostReenterEvents, setGhostReenterEvents] = useState([])
   // portal root for dd overlay attached to document.body to avoid stacking-context issues
   const [ddOverlayRoot, setDdOverlayRoot] = useState(null)
+  // portal root for modals (settings / power-up) attached to document.body to avoid layout jumps
+  const [modalRoot, setModalRoot] = useState(null)
   const [recentPenalty, setRecentPenalty] = useState({})
   const [pendingDeducts, setPendingDeducts] = useState({})
   const [showConfirmReset, setShowConfirmReset] = useState(false)
@@ -201,6 +288,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         document.body.appendChild(el)
       }
       setDdOverlayRoot(el)
+      return () => {
+        try { if (el && el.parentNode) el.parentNode.removeChild(el) } catch (e) {}
+      }
+    } catch (e) {}
+  }, [roomId])
+
+  // create a dedicated modal root on document.body for Settings / PowerUp modals
+  useEffect(() => {
+    try {
+      const id = `gh-modal-root-${roomId || 'global'}`
+      let el = document.getElementById(id)
+      if (!el) {
+        el = document.createElement('div')
+        el.id = id
+        document.body.appendChild(el)
+      }
+      setModalRoot(el)
       return () => {
         try { if (el && el.parentNode) el.parentNode.removeChild(el) } catch (e) {}
       }
@@ -1307,12 +1411,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // (Settings gear moved into the modeBadge) helper removed
 
   function SettingsModal({ open, onClose }) {
-    if (!open) return null
+    // Always render the settings modal element so it remains in the DOM even when hidden.
+    // Visibility is controlled via inline style to avoid mount/unmount cycles that reset scroll.
     // immediate update: write minWordSize on change to avoid spinner revert issues
 
     return (
-      <div className="settings-modal" style={{ position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }} onMouseDown={e => { try { e.stopPropagation() } catch (er) {} }} onClick={e => { try { e.stopPropagation() } catch (er) {} }}>
-        <div className="card" style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
+      <div id="settings" className="settings-modal" style={{ display: open ? 'block' : 'none', overflowY: 'auto', height: '100%', position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }} onMouseDown={e => { try { e.stopPropagation() } catch (er) {} }} onClick={e => { try { e.stopPropagation() } catch (er) {} }}>
+        <div className="card" ref={settingsListRef} onScroll={() => { try { settingsScrollRef.current = settingsListRef.current ? settingsListRef.current.scrollTop : 0 } catch (e) {} }} style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
             {/* fixed-size close button to avoid jitter when hovered/focused */}
@@ -1508,55 +1613,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <label htmlFor="revealShowBlanks" title="Show blanks (underscores) for unrevealed letters. Enabling this will also enable Preserve reveal order.">
                   <input id="revealShowBlanks" name="revealShowBlanks" type="checkbox" checked={revealShowBlanks} onChange={e => { const nv = e.target.checked; setRevealShowBlanks(nv); if (nv) { setRevealPreserveOrder(true); updateRoomSettings({ revealShowBlanks: !!nv, revealPreserveOrder: true }) } else { updateRoomSettings({ revealShowBlanks: !!nv }) } }} /> Show blanks
                 </label>
-              <label htmlFor="minWordSize" title="Minimum allowed word length for submissions (2-10)">
-                Min word length:
-                <input
-                  id="minWordSize"
-                  name="minWordSize"
-                  type="number"
-                  min={2}
-                  max={10}
-                  value={minWordSizeInput}
-                  onChange={e => setMinWordSizeInput(e.target.value)}
-                  onBlur={() => {
-                    // parse and persist a clamped numeric value when the user finishes editing
-                    const parsed = Number(minWordSizeInput)
-                    const v = Number.isFinite(parsed) ? Math.max(2, Math.min(10, parsed)) : 2
-                    setMinWordSize(v)
-                    setMinWordSizeInput(String(v))
-                    updateRoomSettings({ minWordSize: v })
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.currentTarget.blur()
-                    }
-                  }}
-                  style={{ width: 80, marginLeft: 8 }}
-                />
-              </label>
-              <label htmlFor="startingWordmoney" title="Starting wordmoney assigned to each player when they join or when the room is reset">
-                Starting balance:
-                <input
-                  id="startingWordmoney"
-                  name="startingWordmoney"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={String(startingWordmoney || 0)}
-                  onChange={e => setStartingWordmoney(e.target.value)}
-                  onBlur={async (e) => {
+                {/* Isolated starting/min controls to avoid re-rendering the whole settings UI while typing */}
+                <StartingMinSettings
+                  initialStarting={startingWordmoney}
+                  initialMin={minWordSize}
+                  onPersistStarting={async (v) => {
                     try {
-                      const parsed = Number(e.currentTarget.value)
-                      const v = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
                       setStartingWordmoney(v)
                       await updateRoomSettings({ startingWordmoney: v })
-                    } catch (err) {
-                      console.warn('Could not update startingWordmoney', err)
-                    }
+                    } catch (e) { console.warn('Could not persist startingWordmoney', e) }
                   }}
-                  style={{ width: 100, marginLeft: 8 }}
+                  onPersistMin={(v) => {
+                    try {
+                      setMinWordSize(v)
+                      setMinWordSizeInput(String(v))
+                      updateRoomSettings({ minWordSize: v })
+                    } catch (e) { console.warn('Could not persist minWordSize', e) }
+                  }}
+                  isHost={isHost}
                 />
-              </label>
           </div>
         </div>
       </div>
@@ -1667,38 +1742,40 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (totalSurgeAmount) cost = baseCost + totalSurgeAmount
    
   // check buyer/team wordmoney affordability (viewer/player and gmMode resolved earlier)
-  // me, myHang, and gmMode were set above to avoid TDZ errors
-    
-      console.log(`GH: Attempting to purchase power-up ${powerId} for $${cost} (base $${baseCost} + surge $${totalSurgeAmount}) by player ${myId} in mode ${gmMode} with myHang $${myHang} and teamMoney $${teamMoney}`)
-     
-    if (gmMode === 'lastTeamStanding' && me.team) {
-      // Try to read the authoritative team wallet from the DB to avoid using a stale local state
-      try {
-        const teamRef = dbRef(db, `rooms/${roomId}/teams/${me.team}/wordmoney`)
-        const snap = await dbGet(teamRef)
-        let live = null
-        try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
-        if (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) {
-          teamMoney = Number(live)
-        } else {
-          // fallback to room state snapshot
-          teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
-        }
-      } catch (e) {
-  // DB read failed — fall back to local room state
-  teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
+  // Compute an explicit buyerBalance that is the authoritative balance to check for affordability.
+  // This ensures we only consider the team wallet when the room is actually in lastTeamStanding.
+  let buyerBalance = Number(me.wordmoney) || 0
+  if (gmMode === 'lastTeamStanding' && me.team) {
+    // Try to read the authoritative team wallet from the DB to avoid using a stale local state
+    try {
+      const teamRef = dbRef(db, `rooms/${roomId}/teams/${me.team}/wordmoney`)
+      const snap = await dbGet(teamRef)
+      let live = null
+      try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
+      if (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) {
+        teamMoney = Number(live)
+      } else {
+        // fallback to room state snapshot
+        teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
       }
-
-      if (teamMoney - cost < 0) {
-        setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough team wordmoney to buy that power-up.' }])
-        return
-      }
-    } else {
-      if (myHang - cost < 0) {
-        setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough wordmoney to buy that power-up.' }])
-        return
-      }
+    } catch (e) {
+      // DB read failed — fall back to local room state
+      teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
     }
+    buyerBalance = Number(teamMoney) || 0
+  }
+
+  console.log(`GH: Attempting to purchase power-up ${powerId} for $${cost} (base $${baseCost} + surge $${totalSurgeAmount}) by player ${myId} in mode ${gmMode} with buyerBalance $${buyerBalance} (myHang ${myHang})`)
+
+  if (buyerBalance - cost < 0) {
+    // If we're in team mode show a team-specific message
+    if (gmMode === 'lastTeamStanding' && me.team) {
+      setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough team wordmoney to buy that power-up.' }])
+    } else {
+      setToasts(t => [...t, { id: `pup_err_money_${Date.now()}`, text: 'Not enough wordmoney to buy that power-up.' }])
+    }
+    return
+  }
 
     // Guard: only allow longest_word_bonus once per buyer
     if (powerId === 'longest_word_bonus') {
@@ -2480,10 +2557,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // recognizes the entry as a power-up result (same pattern as letter_for_letter).
     const vowels = (targetWord.match(/[aeiou]/ig) || []).length
     resultPayload = { vowels }
-  const buyerMsg = `Vowel Vision: There are ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word.`
-  const targetMsg = `Vowel Vision: ${buyerName} saw ${vowels} vowel${vowels === 1 ? '' : 's'} from your word.`
-  const buyerMessageHtml = `<strong class="power-name">Vowel Vision</strong>: There are <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} in <em>${targetName}</em>'s word.`
-  const targetMessageHtml = `<strong class="power-name">Vowel Vision</strong>: <em>${buyerName}</em> saw <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} from your word.`
+  const buyerMsg = `Vowel Vision: There ${vowels === 1 ? 'is' : 'are'} ${vowels} vowel${vowels === 1 ? '' : 's'} in ${targetName}'s word.`
+  const targetMsg = `Vowel Vision: ${buyerName} knows there ${vowels === 1 ? 'is' : 'are'} ${vowels} vowel${vowels === 1 ? '' : 's'} from your word.`
+  const buyerMessageHtml = `<strong class="power-name">Vowel Vision</strong>: There ${vowels === 1 ? 'is' : 'are'} <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} in <em>${targetName}</em>'s word.`
+  const targetMessageHtml = `<strong class="power-name">Vowel Vision</strong>: <em>${buyerName}</em> knows there ${vowels === 1 ? 'is' : 'are'} <strong class="revealed-letter">${vowels}</strong> vowel${vowels === 1 ? '' : 's'} in your word.`
   const buyerData = { ...buyerBase, result: { vowels, message: buyerMsg, messageHtml: buyerMessageHtml } }
   const targetData = { ...targetBase, result: { vowels, message: targetMsg, messageHtml: targetMessageHtml } }
     updates[`players/${myId}/privatePowerReveals/${powerUpTarget}/${key}`] = buyerData
@@ -2694,7 +2771,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const buyerDivMsg = (typeof targetAward === 'number' && targetAward > 0)
             ? { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed. They earned +${targetAward} points`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
             : { message: `letter for letter: ${playerIdToName[powerUpTarget] || powerUpTarget} had letter '${targetLetter}' revealed. No points were awarded`, letterFromBuyer: targetLetter, messageHtml: buyerDivHtml }
-          updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${buyerDivKey}`] = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(buyerDivMsg || {}), ...(targetResultPayload || {}) } }
+          // Only write a buyer-div style message into the TARGET's own privatePowerReveals
+          // when in team mode (lastTeamStanding). In non-team modes the buyer's own
+          // privatePowerReveals (written above under the buyer's node) is sufficient
+          // and avoids showing duplicate messages in the target's tile.
+          if ((state && state.gameMode) === 'lastTeamStanding') {
+            updates[`players/${powerUpTarget}/privatePowerReveals/${myId}/${buyerDivKey}`] = { powerId, ts: Date.now(), from: powerUpTarget, to: myId, result: { ...(buyerDivMsg || {}), ...(targetResultPayload || {}) } }
+          }
 
           // Also store the side-effect payload under the BUYER's own node so the buyer can see the summary
           // in their own view (unchanged behavior)
@@ -3434,7 +3517,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } catch (e) {}
     }, 0)
     return () => clearTimeout(t)
-  }, [powerUpOpen])
+  // Re-run restoration whenever room state that can affect the modal layout updates
+  // (players, turn order, phase, price surge, teams, or game mode). This ensures
+  // scrollTop is reapplied after realtime updates so the modal doesn't jump to top.
+  }, [powerUpOpen, state?.players, state?.priceSurge, state?.turnOrder, state?.currentTurnIndex, state?.phase, state?.gameMode, state?.teams])
 
   // Preserve the scroll position of the power-up list while the modal is open.
   // Some room state updates re-render the list and can reset scrollTop; remember
@@ -3457,7 +3543,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
     }
     return () => { try { el.removeEventListener && el.removeEventListener('scroll', onScroll) } catch (e) { el.onscroll = null } }
-  }, [powerUpOpen])
+  // Re-run restoration whenever room state that can affect the modal layout updates
+  // (players, turn order, phase, price surge, teams, or game mode). This ensures
+  // scrollTop is reapplied after realtime updates so the modal doesn't jump to top.
+  }, [powerUpOpen, state?.players, state?.priceSurge, state?.turnOrder, state?.currentTurnIndex, state?.phase, state?.gameMode, state?.teams])
 
   // Ensure scrollTop is restored immediately after any state changes while the modal
   // remains open. Using useLayoutEffect prevents a visible jump by restoring before
@@ -3484,7 +3573,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
       } catch (e) {}
     } catch (e) {}
-  }, [state, powerUpOpen])
+  // Re-run restoration whenever room state that can affect the modal layout updates
+  // (players, turn order, phase, price surge, teams, or game mode). This ensures
+  // scrollTop is reapplied before paint after realtime updates so the modal doesn't jump.
+  }, [powerUpOpen, state?.players, state?.priceSurge, state?.turnOrder, state?.currentTurnIndex, state?.phase, state?.gameMode, state?.teams])
 
   // When the power-up modal is open, add a body-level class to pause site animations
   useEffect(() => {
@@ -3497,29 +3589,95 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => { try { document.body.classList.remove('modal-open') } catch (e) {} }
   }, [powerUpOpen])
 
+  // Preserve the scroll position of the Settings modal when it is open.
+  useEffect(() => {
+    const el = settingsListRef.current
+    if (!el) return () => {}
+    const onScroll = () => {
+      try { settingsScrollRef.current = el.scrollTop } catch (e) {}
+    }
+    try { el.addEventListener('scroll', onScroll, { passive: true }) } catch (e) { el.onscroll = onScroll }
+    if (showSettings) {
+      const t = setTimeout(() => { try { if (typeof settingsScrollRef.current === 'number') el.scrollTop = settingsScrollRef.current } catch (e) {} }, 0)
+      return () => { clearTimeout(t); try { el.removeEventListener && el.removeEventListener('scroll', onScroll) } catch (e) { el.onscroll = null } }
+    }
+    return () => { try { el.removeEventListener && el.removeEventListener('scroll', onScroll) } catch (e) { el.onscroll = null } }
+  // Re-run restoration whenever room state that can affect the Settings modal
+  // layout updates. This prevents the settings card from jumping to the top when
+  // realtime room data (players/turns/price surge/etc) changes while the modal is open.
+  }, [showSettings, state?.players, state?.priceSurge, state?.turnOrder, state?.currentTurnIndex, state?.phase, state?.gameMode, state?.teams])
+
+  // Reapply stored scrollTop across layout changes while Settings modal is open (prevents paint jumps)
+  useLayoutEffect(() => {
+    if (!showSettings) return
+    const el = settingsListRef.current
+    if (!el) return
+    try {
+      const v = Number(settingsScrollRef.current) || 0
+      try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+      try {
+        let raf1 = null, raf2 = null, to = null
+        raf1 = requestAnimationFrame(() => {
+          try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+          raf2 = requestAnimationFrame(() => {
+            try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+            to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+          })
+        })
+        return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
+      } catch (e) {}
+    } catch (e) {}
+  }, [showSettings])
   function PowerUpModal({ open, targetId, onClose }) {
-    if (!open || !targetId) return null
+    // Always render the power-up modal container to avoid remounts that reset scrollTop.
+    // Visibility is controlled via inline style. The modal will be hidden when `open` is false
+    // or when no targetId is provided.
     const targetName = playerIdToName[targetId] || targetId
     const me = (state?.players || []).find(p => p.id === myId) || {}
-    let myHang =  Number(me.wordmoney) || 0 
-    console.log('GameRoom: rendering PowerUpModal for target', targetId, targetName, 'myHang=', myHang, 'state=', state)
-    if (state?.gameMode === "lastTeamStanding") {
-      console.log('GameRoom: lastTeamStanding mode detected, checking team hang ', state?.teams, 'myTeam=', me?.team)
-      const myTeam = me?.team
-      // teamHang
-      myHang = (state?.teams[myTeam] || {})?.wordmoney || 0
-    }
+    // buyerBalance is the authoritative balance used for enabling/disabling buy buttons.
+    // Default to player's personal wallet; when in lastTeamStanding and the player has a team,
+    // fetch the authoritative team wallet once when the modal opens.
+    const [buyerBalance, setBuyerBalance] = React.useState(Number(me.wordmoney) || 0)
+    React.useEffect(() => {
+      let mounted = true
+      async function computeBalance() {
+        try {
+          const base = Number(me.wordmoney) || 0
+          const gm = state?.gameMode
+          if (gm === 'lastTeamStanding' && me.team) {
+            try {
+              const teamRef = dbRef(db, `rooms/${roomId}/teams/${me.team}/wordmoney`)
+              const snap = await dbGet(teamRef)
+              let live = null
+              try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
+              const teamVal = (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) ? Number(live) : Number(state?.teams?.[me.team]?.wordmoney || 0)
+              if (mounted) setBuyerBalance(teamVal)
+            } catch (e) {
+              if (mounted) setBuyerBalance(Number(state?.teams?.[me.team]?.wordmoney || 0))
+            }
+          } else {
+            if (mounted) setBuyerBalance(base)
+          }
+        } catch (e) {
+          if (mounted) setBuyerBalance(Number(me.wordmoney) || 0)
+        }
+      }
+      if (open) computeBalance()
+      else setBuyerBalance(Number(me.wordmoney) || 0)
+      return () => { mounted = false }
+    // avoid depending on the entire `state` object — only depend on the specific pieces we read
+    }, [open, state?.gameMode, state?.teams?.[me.team]?.wordmoney, me && me.id, me && me.wordmoney, me && me.team, roomId])
 
     
   const isLobby = phase === 'lobby'
   const isMyTurn = (myId === currentTurnId)
     return (
-      <div className={`modal-overlay shop-modal ${powerUpOpen ? 'open' : 'closed'}`} role="dialog" aria-modal="true">
+      <div id="powerup" className={`modal-overlay shop-modal ${open ? 'open' : 'closed'}`} role="dialog" aria-modal="true" style={{ display: (open && targetId) ? 'flex' : 'none', overflowY: 'auto', height: '100%' }}>
         <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
           <div className="shop-modal-header">
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <strong>Power-ups for {targetName}</strong>
-              <small>Use these to influence the round</small>
+              <small style={{ fontSize: 12, color: '#ddd' }}>Use these to influence the round</small>
             </div>
             <button className="shop-modal-close" onClick={onClose}>✖</button>
           </div>
@@ -3568,31 +3726,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   </div>
                   <div className="powerup-actions">
                         {p.id === 'letter_peek' ? (
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input className="powerup-input" ref={powerUpChoiceRef} id={`powerup_${p.id}_choice`} name={`powerup_${p.id}_choice`} placeholder="position" value={powerUpChoiceValue} onChange={e => setPowerUpChoiceValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
-                        {/* stable button width and no transition to avoid layout shift when label changes */}
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { pos: powerUpChoiceValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
-                      </div>
+                      <LetterPeekControl
+                        ref={powerUpChoiceRef}
+                        open={powerUpOpen}
+                        disabled={isLobby || state?.phase === 'wordspy_playing'}
+                        displayPrice={displayPrice}
+                        onBuy={(pos) => purchasePowerUp(p.id, { pos })}
+                        powerUpLoading={powerUpLoading}
+                        buyerBalance={buyerBalance}
+                        isMyTurn={isMyTurn}
+                      />
                     ) : p.id === 'double_down' ? (
                       (() => {
                         // Double Down should use the stake input, not the letter_peek choice
                         const stakeVal = (powerUpStakeValue || '').toString().trim()
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
-                        // Max stake is your current wordmoney - 1 (you may stake up to your current balance minus the base price)
-                        let maxStake = (Number(me.wordmoney) || 0) - 1
-                        // When in team mode, stake from the team's wallet instead of player's personal wallet.
-                        if (state?.gameMode === 'lastTeamStanding') {
-                          const myTeam = me.team
-                          // Guard access to state.teams using optional chaining to avoid errors when teams not initialized yet
-                          maxStake = (state?.teams?.[myTeam]?.wordmoney || 0) - 1
-                        }
+                        // Max stake is your buyerBalance - 1 (buyerBalance is authoritative for enabling/disabling purchases)
+                        let maxStake = Math.max(0, Number(buyerBalance || 0) - 1)
                         const stakeTooLarge = !stakeInvalid && stakeNum > maxStake
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                               <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -3607,9 +3764,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       })()
                       ) : (
                       p.id === 'the_unseen' ? (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
                       ) : (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || myHang < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
                       )
                     )}
                   </div>
@@ -4528,7 +4685,13 @@ try {
         </div>
       )}
       <div className="app-content" style={appContentStyle}>
-  {phase === 'lobby' && <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />}
+  {(() => {
+    const node = <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+    if (modalRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+      try { return ReactDOM.createPortal(node, modalRoot) } catch (e) { return node }
+    }
+    return node
+  })()}
   {phase === 'lobby' && <h2>Room: {roomId}</h2>}
   {phase === 'lobby' && secretThemeEnabled && (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -4556,7 +4719,7 @@ try {
           {isHost ? (
             <>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (gameMode === 'wordSpy') {
                     // Word Spy requires at least 3 players
                     if ((players || []).length < 3) {
@@ -4569,7 +4732,15 @@ try {
                     const opts = timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney }
                     // include the local UI startingWordmoney so startGame can prefer it
                     opts.startingWordmoney = startingWordmoney
-                    startGame(opts)
+                    // Persist important settings (startingWordmoney, minWordSize) before starting the game
+                    try {
+                      await updateRoomSettings({ startingWordmoney: startingWordmoney, minWordSize: minWordSize })
+                    } catch (e) {
+                      console.warn('Failed to persist settings before starting game', e)
+                    }
+                    // close the settings panel if still open
+                    try { setShowSettings(false) } catch (e) {}
+                    try { await startGame(opts) } catch (e) { console.warn('startGame failed', e) }
                   }
                 }}
                 disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSpy' && players.length < 3)}
@@ -5193,8 +5364,14 @@ try {
       return overlayNode
     })()
   }
-  {/* Power-up modal rendered when requested */}
-  {powerUpOpen && <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />}
+  {/* Power-up modal (always rendered; visibility controlled by its `open` prop) */}
+  {(() => {
+    const node = <PowerUpModal open={powerUpOpen} targetId={powerUpTarget} onClose={() => setPowerUpOpen(false)} />
+    if (modalRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+      try { return ReactDOM.createPortal(node, modalRoot) } catch (e) { return node }
+    }
+    return node
+  })()}
 
   {/* Ghost Re-Entry modal for eliminated players */}
   {ghostModalOpen && (

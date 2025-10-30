@@ -22,6 +22,8 @@ export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
   const playerIdRef = useRef(null)
   const heartbeatRef = useRef(null)
+  const tabIdRef = useRef(null)
+  const tabUnloadHandlerRef = useRef(null)
   // track whether we've already triggered an auto-start for the current waiting round
   const lastAllReadyRef = useRef(false)
   // track whether we've already triggered an auto-end for the current playing round
@@ -161,8 +163,8 @@ export default function useGameRoom(roomId, playerName) {
       try {
         if (unsub) unsub()
         if (unsubscribeAuth && typeof unsubscribeAuth === 'function') unsubscribeAuth()
-        // stop any running heartbeat when the hook unmounts
-        try { if (heartbeatRef.current) clearInterval(heartbeatRef.current) } catch (e) {}
+        // stop any running heartbeat when the hook unmounts (also unregisters tab)
+        try { stopHeartbeat() } catch (e) {}
       } catch (e) {}
     }
   }, [roomId])
@@ -211,6 +213,10 @@ export default function useGameRoom(roomId, playerName) {
         heartbeatRef.current = null
       }
     } catch (e) {}
+    try {
+      // unregister this tab when stopping heartbeat (tab closed or cleanup)
+      unregisterTab().catch(() => {})
+    } catch (e) {}
   }
 
   function startHeartbeat() {
@@ -219,11 +225,54 @@ export default function useGameRoom(roomId, playerName) {
     const pid = playerIdRef.current
     if (!pid) return
     const pRef = dbRef(db, `rooms/${roomId}/players/${pid}`)
+    // Ensure this browser tab is registered so other tabs won't cause us to be
+    // marked stale. registerTab writes an ephemeral node under players/<pid>/tabs/<tabId>.
+    try { registerTab().catch(() => {}) } catch (e) {}
     // write immediate lastSeen then schedule periodic updates
     try { update(pRef, { lastSeen: Date.now(), stale: null }) } catch (e) {}
     heartbeatRef.current = setInterval(() => {
       try { update(pRef, { lastSeen: Date.now(), stale: null }) } catch (e) {}
     }, 30000)
+  }
+
+  // Register an ephemeral per-tab presence entry under players/<pid>/tabs/<tabId>
+  async function registerTab() {
+    try {
+      if (!db) return
+      const pid = playerIdRef.current
+      if (!pid) return
+      if (tabIdRef.current) return
+      const tabId = `${Math.random().toString(36).slice(2)}_${Date.now()}`
+      tabIdRef.current = tabId
+      const tabRef = dbRef(db, `rooms/${roomId}/players/${pid}/tabs/${tabId}`)
+      try { await dbSet(tabRef, Date.now()) } catch (e) {}
+      // ensure we remove the tab node on unload
+      const handler = async () => { try { await dbSet(tabRef, null) } catch (e) {} }
+      tabUnloadHandlerRef.current = handler
+      try { window.addEventListener('beforeunload', handler) } catch (e) {}
+    } catch (e) {
+      console.warn('registerTab failed', e)
+    }
+  }
+
+  async function unregisterTab() {
+    try {
+      if (!db) return
+      const pid = playerIdRef.current
+      const tabId = tabIdRef.current
+      if (!pid || !tabId) return
+      const tabRef = dbRef(db, `rooms/${roomId}/players/${pid}/tabs/${tabId}`)
+      try { await dbSet(tabRef, null) } catch (e) {}
+      try {
+        if (tabUnloadHandlerRef.current) {
+          window.removeEventListener('beforeunload', tabUnloadHandlerRef.current)
+          tabUnloadHandlerRef.current = null
+        }
+      } catch (e) {}
+      tabIdRef.current = null
+    } catch (e) {
+      console.warn('unregisterTab failed', e)
+    }
   }
 
     // --- Word Spy mode helpers -------------------------------------------------
@@ -683,7 +732,7 @@ export default function useGameRoom(roomId, playerName) {
     // TTL for eviction when someone joins: 1 hour
     const EVICT_TTL_MS = 60 * 60 * 1000
   // Stale and kick thresholds for activity handling
-  const STALE_MS = 30 * 1000 // mark stale after 30s of no heartbeat
+  const STALE_MS = 60 * 1000 // mark stale after 60s of no heartbeat
   const KICK_MS = 3 * 60 * 1000 // kick after 3 minutes of no heartbeat
 
     // Remove stale (non-authenticated) players whose lastSeen is older than TTL.
@@ -865,6 +914,8 @@ export default function useGameRoom(roomId, playerName) {
             const p = players[pid] || {}
             // do not auto-kick likely-authenticated players (best-effort check)
             if (p.uid || p.authProvider || p.isAuthenticated) return
+            // If this player has one or more open tabs registered, do not mark stale or remove.
+            if (p.tabs && Object.keys(p.tabs).length > 0) return
             const last = p.lastSeen ? Number(p.lastSeen) : 0
             const isStale = !!p.stale
             if (!last || (now - last) > KICK_MS) {
@@ -1154,6 +1205,8 @@ export default function useGameRoom(roomId, playerName) {
             const p = players[pid] || {}
             // skip likely-authenticated players
             if (p.uid || p.authProvider || p.isAuthenticated) return
+            // If this player has one or more open tabs registered, do not mark stale or remove.
+            if (p.tabs && Object.keys(p.tabs).length > 0) return
             const last = p.lastSeen ? Number(p.lastSeen) : 0
             if (!last || (now - last) > KICK_MS) {
               updates[`players/${pid}`] = null
@@ -1338,12 +1391,13 @@ export default function useGameRoom(roomId, playerName) {
       // Respect lastTeamStanding: do not initialize per-player canonical balances when using team mode.
       const gm = (room && room.gameMode) ? room.gameMode : (options && options.gameMode)
       if (gm !== 'lastTeamStanding') {
+        // Apply the resolved starting money to every player explicitly so the
+        // host-configured `startingWordmoney` is honored when a game starts.
+        // Previously we only initialized missing entries; that could leave
+        // players with stale balances from lobby interactions. Overwrite here
+        // so every participant begins the round with the configured amount.
         Object.keys(playersObj).forEach(pid => {
-          // Only initialize per-player balances when a numeric value is not already present.
-          // This prevents clobbering concurrent transactional increments (starter bonuses)
-          // that may have been applied just before the batch update is committed.
-          const existing = playersObj[pid] && typeof playersObj[pid].wordmoney === 'number'
-          if (!existing) updates[`players/${pid}/wordmoney`] = startMoney
+          try { updates[`players/${pid}/wordmoney`] = startMoney } catch (e) {}
         })
       }
       // Debug: log resolved starting money and what will be written for players
