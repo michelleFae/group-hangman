@@ -3285,15 +3285,70 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 const currPid = order[curIdx]
                 const currNode = (state.players || []).find(p => p.id === currPid) || {}
                 const currTeam = currNode && currNode.team ? currNode.team : null
+                // Non-team modes or missing team info: simple next
                 if (!currTeam || (state && state.gameMode) !== 'lastTeamStanding') return (curIdx + 1) % len
-                // search for first player whose team differs from currTeam
-                for (let offset = 1; offset < len; offset++) {
-                  const idx = (curIdx + offset) % len
-                  const pid = order[idx]
-                  const node = (state.players || []).find(p => p.id === pid) || {}
-                  if (!node.team || node.team !== currTeam) return idx
+
+                // Build a fresh alternating order from currently alive players so we
+                // strictly alternate teams even when counts are uneven. Preserve the
+                // players list order when possible (use state.players order).
+                const alive = (state.players || []).filter(p => p && !p.eliminated)
+                const teams = {}
+                const unteamed = []
+                alive.forEach(p => {
+                  if (p.team) {
+                    teams[p.team] = teams[p.team] || []
+                    teams[p.team].push(p.id)
+                  } else {
+                    unteamed.push(p.id)
+                  }
+                })
+                const teamNames = Object.keys(teams)
+                // If meaningful teams not present, fallback to original order skipping eliminated players
+                if (teamNames.length <= 1) {
+                  const compact = (order || []).filter(pid => {
+                    const node = (state.players || []).find(p => p.id === pid) || {}
+                    return node && !node.eliminated
+                  })
+                  const pos = compact.indexOf(currPid)
+                  const nextPos = pos === -1 ? 0 : (pos + 1) % (compact.length || 1)
+                  // Map back to original order's index space if possible
+                  const nextPid = compact.length ? compact[nextPos] : null
+                  return nextPid ? (order.indexOf(nextPid) >= 0 ? order.indexOf(nextPid) : 0) : 0
                 }
-                return (curIdx + 1) % len
+
+                // Prefer starting from the team that is not the current player's team
+                const firstTeam = teamNames.find(t => t !== currTeam) || teamNames[0]
+                const orderedTeams = [firstTeam].concat(teamNames.filter(t => t !== firstTeam))
+                const queues = {}
+                orderedTeams.forEach(t => { queues[t] = teams[t] ? teams[t].slice() : [] })
+                const result = []
+                let idxPtr = 0
+                while (Object.keys(queues).some(k => queues[k].length > 0)) {
+                  let found = null
+                  for (let offset = 0; offset < orderedTeams.length; offset++) {
+                    const cand = orderedTeams[(idxPtr + offset) % orderedTeams.length]
+                    if (queues[cand] && queues[cand].length > 0) {
+                      found = cand
+                      idxPtr = idxPtr + offset
+                      break
+                    }
+                  }
+                  if (!found) break
+                  result.push(queues[found].shift())
+                  idxPtr++
+                }
+                // append any unteamed players at the end
+                const newOrder = result.concat(unteamed)
+                if (newOrder.length === 0) return 0
+                // persist the new alternating order so subsequent advances follow it
+                updates[`turnOrder`] = newOrder
+                // find current position in the new order (fallback to 0)
+                const curPos = newOrder.indexOf(currPid)
+                const curPosResolved = curPos === -1 ? 0 : curPos
+                const nextPosResolved = (curPosResolved + 1) % newOrder.length
+                const nextPid = newOrder[nextPosResolved]
+                // return the index of nextPid in the effective order space (newOrder)
+                return newOrder.indexOf(nextPid)
               } catch (e) { return (curIdx + 1) % (order.length || 1) }
             }
             const nextIndex = findNextIndex(effectiveTurnOrder, currentIndexLocal)
