@@ -33,6 +33,8 @@ export default function PlayerCircle({
   , roomId = null
   , teamRevealForPlayer = false
   , onToggleTeamReveal = null
+  , ready = false
+  , onToggleReady = null
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -588,7 +590,14 @@ export default function PlayerCircle({
             
           </div>
           <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
-            <div>{player.name}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div>{player.name}</div>
+              {/* Ready indicator visible to everyone */}
+              {typeof ready !== 'undefined' && !isSelf && phase === 'lobby' && (
+                <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: ready ? '#27ae60' : '#d1d5db', color: ready ? '#fff' : '#333', fontWeight: 700 }} title={ready ? 'Ready' : 'Not ready'}>
+                  {ready ? 'Ready' : 'Not ready'}
+                </div>
+              )}
             {teamName && (
               <div style={{ fontSize: 11, padding: '2px 6px', borderRadius: 8, background: teamName === 'red' ? '#ff5c5c' : '#5c9bff', color: '#fff', fontWeight: 800 }}>{teamName.toUpperCase()}</div>
             )}
@@ -712,6 +721,12 @@ export default function PlayerCircle({
                 <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
                   {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
                 </button>
+                {/* Ready toggle for local (non-host) players while in lobby */}
+                {phase === 'lobby' && isSelf && !isHost && typeof onToggleReady === 'function' && (
+                  <button onClick={() => { try { onToggleReady(player.id, !ready) } catch (e) { console.warn('toggle ready failed', e) } }} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8, background: ready ? '#27ae60' : undefined, color: ready ? '#fff' : undefined, marginTop: 6 }}>
+                    {ready ? 'Unready' : 'Ready'}
+                  </button>
+                )}
                 
               </div>
             )}
@@ -879,68 +894,6 @@ export default function PlayerCircle({
     </div>
   )
 }
-
-// Add minimal CSS for the wordmoney tooltip by injecting a style tag when module loads
-try {
-  const styleId = 'gh-playercircle-hang-style'
-  if (!document.getElementById(styleId)) {
-    const s = document.createElement('style')
-    s.id = styleId
-    s.innerHTML = `
-      /* make sure tooltip content is readable */
-      .gh-hang-tooltip { z-index: 2147483000 !important; position: absolute; min-width: 260px; max-width: 420px; }
-      .gh-hang-tooltip .line { display:flex; align-items:center; gap:8px; margin-bottom:6px }
-      .gh-hang-tooltip .delta { font-weight:700 }
-      /* revealed word wrapping */
-      .player .revealed { word-break: break-word; white-space: normal; }
-      .player .revealed span { flex: 0 0 auto; }
-  /* thin dark scrollbar for power-up results */
-  .powerup-results-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent; }
-  .powerup-results-scroll::-webkit-scrollbar { width: 8px; }
-  .powerup-results-scroll::-webkit-scrollbar-track { background: transparent; }
-  .powerup-results-scroll::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.45); border-radius: 8px; }
-  .powerup-results-scroll::-webkit-scrollbar-thumb:hover { background-color: rgba(0,0,0,0.6); }
-      .player .word-tooltip { max-width: 360px; word-break: break-word; }
-      /* eliminated player styling: greyed out and non-interactive */
-      .player.player-eliminated { opacity: 0.5; filter: grayscale(60%); }
-      .player.player-eliminated .action-button { pointer-events: none; opacity: 0.6; }
-      .player.player-eliminated button { pointer-events: none; }
-  /* double-down badge */
-  .double-down-badge { display: inline-block; margin-top: 6px; padding: 2px 6px; border-radius: 8px; background: #ffcc00; color: #2b2b2b; font-size: 11px; font-weight: 800; }
-  .player .double-down-badge { position: relative; z-index: 10; }
-  /* when viewer has active Double Down and this tile is not the target, visually lock guess button */
-  .dd-locked { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
-  /* frozen players: make buttons non-interactive and show frozen styling for the tile */
-  .player.player-frozen { opacity: 0.75; }
-  .player.player-frozen .action-button { pointer-events: none; opacity: 0.6; cursor: not-allowed; }
-  .frozen-locked { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
-  /* frozen badge styling */
-  .frozen-badge { position: absolute; right: -8px; top: -8px; background: rgba(255,255,255,0.95); color: #0b66ff; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.08); pointer-events: none; }
-  /* ex-ghost badge shown when a player re-enters after winning a ghost challenge */
-  .ex-ghost-badge { position: absolute; top: 28px; background: rgba(255, 255, 255, 0.75); color: #222; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-  .ex-ghost-badge[title] { cursor: help }
-
-  /* small transient toast shown when guess dialog is auto-closed */
-  .gh-guess-toast {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 24px;
-    background: rgba(0,0,0,0.82);
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 10px;
-    z-index: 2147484000;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
-    font-size: 13px;
-    opacity: 1;
-    transition: opacity 300ms ease, transform 300ms ease;
-    pointer-events: none;
-  }
-  .gh-guess-toast.hide { opacity: 0; transform: translateX(-50%) translateY(6px); }
-    `
-    document.head.appendChild(s)
-  }
-} catch (e) {}
+// Styles moved to src/styles.css
 
 

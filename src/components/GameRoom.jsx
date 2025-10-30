@@ -1032,8 +1032,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const phase = state?.phase || 'lobby'
   const hostId = state?.hostId
   const players = state?.players || []
+  // whether all non-host players have signaled ready in the lobby
+  const allNonHostPlayersReady = (Array.isArray(players) ? players.filter(p => p && p.id !== hostId) : []).every(p => !!p.ready)
   const playerIdToName = {}
   players.forEach(p => { playerIdToName[p.id] = p.name })
+  const waitingForSubmission = (players || []).filter(p => !p.hasWord)
+  const firstWaiting = waitingForSubmission && waitingForSubmission.length > 0 ? waitingForSubmission[0] : null
   const submittedCount = players.filter(p => p.hasWord).length
 
   const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
@@ -1211,6 +1215,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   await safeDbUpdate(roomRef, safe)
     } catch (e) {
       console.warn('Could not update room settings', e)
+    }
+  }
+
+  // Toggle the ready state for a player in the lobby. Only used for non-host players to
+  // mark themselves ready. Writes to players/<id>/ready in the room object.
+  async function togglePlayerReady(targetPlayerId, readyVal) {
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const updates = {}
+      updates[`players/${targetPlayerId}/ready`] = readyVal ? true : null
+      // store true when ready, remove the key when not ready (keeps payload small)
+      await safeDbUpdate(roomRef, updates)
+    } catch (e) {
+      console.warn('Could not toggle ready state', e)
     }
   }
 
@@ -3957,6 +3975,20 @@ try {
     }
   }, [state?.phase])
 
+  // Clear local submit input when the room is reset to lobby (e.g., host clicked Play Again / restart)
+  useEffect(() => {
+    try {
+      if (state && state.phase === 'lobby') {
+        // clear any draft word the local client was typing
+        try { setWord('') } catch (e) {}
+        try { setSubmitted(false) } catch (e) {}
+        try { setWordError('') } catch (e) {}
+        // Also clear the DOM input value if present (defensive)
+        try { const el = document.getElementById('submit_word'); if (el) el.value = '' } catch (e) {}
+      }
+    } catch (e) {}
+  }, [state?.phase])
+
   // If we're the host and everyone has opted into rematch (wantsRematch=true), perform a room reset.
   const resetAttemptRef = useRef(0)
   useEffect(() => {
@@ -4838,7 +4870,7 @@ try {
                     try { await startGame(opts) } catch (e) { console.warn('startGame failed', e) }
                   }
                 }}
-                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSpy' && players.length < 3)}
+                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSpy' && players.length < 3) || !allNonHostPlayersReady}
                 title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 4)
                   ? 'Need at least 4 players to start Last Team Standing'
                   : ((state && state.gameMode) === 'wordSpy' && players.length < 3)
@@ -4846,6 +4878,9 @@ try {
                     : (players.length < 2 ? 'Need at least 2 players to start' : '')}
                 className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSpy' && players.length < 3)) ? 'start-ready' : ''}
               >Start game</button>
+              {!allNonHostPlayersReady && (
+                <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for all players to mark Ready</div>
+              )}
               {players.length < 2 && <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for more players to join (need 2+ players)</div>}
               {/* When startGame detects Last Team Standing requires more players it sets state.ltsWarning; show it inline for host */}
               {isHost && state && state.ltsWarning && (
@@ -5113,7 +5148,7 @@ try {
                   return (
                     <>
                       <input id="share_link" name="share_link" readOnly value={u.toString()} style={{ width: 360 }} />
-                  <button onClick={async () => { await navigator.clipboard.writeText(u.toString()); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy</button>
+                  <button onClick={async () => { await navigator.clipboard.writeText(u.toString()); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy Link</button>
                     </>
                   )
                 } catch (e) {
@@ -5121,7 +5156,7 @@ try {
                   return (
                     <>
                       <input id="share_link_fallback" name="share_link_fallback" readOnly value={fallback} style={{ width: 360 }} />
-                      <button onClick={async () => { await navigator.clipboard.writeText(fallback); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy</button>
+                      <button onClick={async () => { await navigator.clipboard.writeText(fallback); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy Link</button>
                     </>
                   )
                 }
@@ -5281,6 +5316,8 @@ try {
                 <PlayerCircle
                   key={p.id}
                   player={playerWithViewer}
+                  ready={!!p.ready}
+                  onToggleReady={async (targetId, newVal) => { try { if (targetId === myId) await togglePlayerReady(targetId, newVal) } catch (e) { console.warn('onToggleReady failed', e) } }}
                   teamName={p.team}
                   viewerTeam={viewerNode.team}
                   teamMoney={Number(state?.teams?.[p.team]?.wordmoney || 0)}
@@ -5436,6 +5473,42 @@ try {
       return overlayNode
     })()
   }
+  {/* Big overlays: Waiting for player or Your Turn */}
+  {(() => {
+    try {
+      // Show big waiting banner during submission phase
+      if (phase === 'submit' && firstWaiting) {
+        return (
+          <div className="big-waiting-overlay" aria-live="polite">
+            <div className="big-waiting-card">
+              <div className="big-avatar" style={{ background: (firstWaiting.color || '#888') }}>{(firstWaiting.name || '?')[0] || '?'}</div>
+              <div style={{ marginLeft: 18 }}>
+                <h1 style={{ margin: 0, fontSize: 48, lineHeight: '1.02' }}>Waiting for</h1>
+                <div style={{ fontSize: 40, fontWeight: 900 }}>{firstWaiting.name}</div>
+              </div>
+            </div>
+            <div className="big-waiting-sub">Other players are still submitting their words</div>
+          </div>
+        )
+      }
+      // Prominent Your Turn banner when it's your turn during play
+      if (phase === 'playing' && isMyTurnNow) {
+        const me = players.find(p => p.id === myId) || {}
+        return (
+          <div className="big-yourturn-overlay" aria-live="polite">
+            <div className="big-yourturn-card">
+              <div className="big-avatar big-self" style={{ background: (me.color || '#2b8cff') }}>{(me.name || 'You')[0] || '?'}</div>
+              <div style={{ marginLeft: 18 }}>
+                <h1 style={{ margin: 0, fontSize: 48, lineHeight: '1.02' }}>Your turn</h1>
+                <div style={{ fontSize: 28, fontWeight: 800 }}>{me.name || 'You'}</div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    } catch (e) {}
+    return null
+  })()}
   {/* Ghost re-enter overlay (floating ghosts + centered message) */}
   {
     ghostReenterEvents && ghostReenterEvents.length > 0 && (() => {

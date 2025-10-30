@@ -1,0 +1,31 @@
+/* Player avatar glow when a player has the turn */
+.player.player-turn { transform: translateY(-2px); transition: transform 220ms ease; }
+.player.player-turn .avatar { box-shadow: 0 0 0 6px rgba(255,214,102,0.06), 0 0 20px 6px rgba(255,214,102,0.18); transform: scale(1.04); transition: box-shadow 220ms ease, transform 220ms ease; }
+/* stronger glow for your own tile when it's your turn */
+.player.player-self.player-turn .avatar { box-shadow: 0 0 0 8px rgba(39,174,96,0.08), 0 0 28px 10px rgba(39,174,96,0.22); transform: scale(1.06); }
+
+/* big overlay styles for Waiting for <player> and Your turn */
+.big-waiting-overlay, .big-yourturn-overlay { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); z-index: 12005; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+.big-waiting-card, .big-yourturn-card { pointer-events: auto; display: flex; align-items: center; gap: 16px; background: rgba(0,0,0,0.68); color: #fff; padding: 18px 22px; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.6); backdrop-filter: blur(6px); }
+.big-avatar { width: 84px; height: 84px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 900; color: #fff; box-shadow: 0 8px 36px rgba(0,0,0,0.35); }
+.big-avatar.big-self { width: 96px; height: 96px; font-size: 44px; }
+.big-waiting-sub { margin-top: 12px; color: rgba(255,255,255,0.9); font-size: 14px }
+
+/* small transient toast shown when guess dialog is auto-closed */
+.gh-guess-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 24px;
+  background: rgba(0,0,0,0.82);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  z-index: 2147484000;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+  font-size: 13px;
+  opacity: 1;
+  transition: opacity 300ms ease, transform 300ms ease;
+  pointer-events: none;
+}
+.gh-guess-toast.hide { opacity: 0; transform: translateX(-50%) translateY(6px); }
