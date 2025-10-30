@@ -25,7 +25,7 @@ let COUNTRIES = [
   'tajikistan','tanzania','taiwan','thailand','togo','tonga','tunisia','turkey','turkmenistan','tuvalu',
   'uganda','ukraine','uruguay','uzbekistan',
   'vanuatu','vatican','venezuela','vietnam',
-  'yemen','zambia','zimbabwe',
+  'yemen','zambia','zimbabwe', 'korea',
 
   // Common regional / historic / colloquial names
   'america','americas','asia','africa','europe','oceania','antarctica',

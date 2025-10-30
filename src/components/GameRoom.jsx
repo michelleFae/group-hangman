@@ -209,6 +209,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostGuessCooldownSeconds, setGhostGuessCooldownSeconds] = useState(20)
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
+  const [firstWordWins, setFirstWordWins] = useState(true)
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // coin pieces shown when a double-down is won
@@ -416,6 +417,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
       } catch (e) {}
     }
+
+    // sync lastTeamStanding 'firstWordWins' setting (default true)
+    try {
+      setFirstWordWins(typeof state?.firstWordWins === 'undefined' ? true : !!state.firstWordWins)
+    } catch (e) {}
 
   // sync Word Spy settings if present
   if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
@@ -1574,6 +1580,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <option value="wordSpy">Word Spy</option>
               </select>
             </label>
+            {gameMode === 'lastTeamStanding' && isHost && (
+              <label htmlFor="firstWordWins" title="When on, the first team to correctly guess any opponent's word wins immediately">
+                <input id="firstWordWins" name="firstWordWins" type="checkbox" checked={firstWordWins} onChange={e => { const nv = e.target.checked; setFirstWordWins(nv); updateRoomSettings({ firstWordWins: !!nv }) }} /> First word guessed wins
+              </label>
+            )}
             {gameMode === 'wordSpy' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
                 {/* Word Spy uses the global Timed game seconds (computed as 60 * players by default). Do not show a separate Word Spy timer input. */}

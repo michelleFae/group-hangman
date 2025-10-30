@@ -71,8 +71,10 @@ module.exports = async (req, res) => {
   const from = decoded.uid
 
   try {
-    // Track whether this guess resulted in a correct reveal/elimination for the guesser
-    let guessWasCorrect = false
+  // Track whether this guess resulted in a correct reveal/elimination for the guesser
+  let guessWasCorrect = false
+  // Track whether this guess just eliminated a target via a correct full-word guess
+  let justEliminated = false
     const roomRef = db.ref(`/rooms/${roomId}`)
     const [roomSnap, playersSnap] = await Promise.all([roomRef.once('value'), roomRef.child('players').once('value')])
     const room = roomSnap.val() || {}
@@ -375,6 +377,9 @@ module.exports = async (req, res) => {
 
   // mark eliminated and add guessedBy for word
   updates[`players/${targetId}/eliminated`] = true
+  // Mark that this request caused an elimination so other logic (first-word-wins)
+  // can act on it after updates are applied.
+  justEliminated = true
   // record elimination timestamp so clients can order final standings by elimination order
   updates[`players/${targetId}/eliminatedAt`] = Date.now()
         const prevWordGuessedBy = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
@@ -572,6 +577,26 @@ module.exports = async (req, res) => {
     // Last Team Standing: balanced win condition using initial team sizes
     try {
       if ((room && room.gameMode) === 'lastTeamStanding' && alive.length > 0 && room.teams) {
+          // If host configured first-word-wins (default true) and this guess just eliminated
+          // a player, award an immediate team victory to the guesser's team.
+          try {
+            const firstWordWins = (typeof room.firstWordWins === 'undefined') ? true : !!room.firstWordWins
+            if (justEliminated && firstWordWins) {
+              const t = (guesser && guesser.team) ? guesser.team : null
+              if (t) {
+                const gameOverUpdates = {
+                  phase: 'ended',
+                  winnerTeam: t || null,
+                  winnerId: null,
+                  winnerName: t ? (t.charAt(0).toUpperCase() + t.slice(1) + ' Team') : null,
+                  endedAt: Date.now()
+                }
+                await roomRef.update(gameOverUpdates)
+                console.log('Game over : first-word-wins triggered for team:', t)
+                return res.status(200).json({ ok: true })
+              }
+            }
+          } catch (e) { /* ignore and fall back to balanced rule */ }
         // compute active counts by team
         const activeByTeam = {}
         alive.forEach(p => { try { const t = p && p.team ? p.team : null; if (t) activeByTeam[t] = (activeByTeam[t] || 0) + 1 } catch (e) {} })
