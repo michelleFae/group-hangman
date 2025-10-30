@@ -510,7 +510,7 @@ export default function PlayerCircle({
       {isHost && (phase === 'lobby' || phase === 'ended') && onRemove && !isSelf && (
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 72 }}>
           {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
             {(player && player.ghostState && player.ghostState.reentered) && (
