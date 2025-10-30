@@ -131,8 +131,8 @@ const ThemeSelect = React.memo(function ThemeSelect({ id, value, onChange, style
 
 export default function GameRoom({ roomId, playerName, password }) { // Added password as a prop
   const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId,
-    // Word Spy hooks
-    startWordSpy, markWordSpyReady, beginWordSpyPlaying, endWordSpyPlaying, voteForPlayer, tallyWordSpyVotes, submitSpyGuess, playNextWordSpyRound
+    // Word Seeker hooks
+    startWordSeeker, markWordSeekerReady, beginWordSeekerPlaying, endWordSeekerPlaying, voteForPlayer, tallyWordSeekerVotes, submitSpyGuess, playNextWordSeekerRound
   } = useGameRoom(roomId, playerName)
   const [word, setWord] = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -145,10 +145,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [revealPreserveOrder, setRevealPreserveOrder] = useState(true)
   const [revealShowBlanks, setRevealShowBlanks] = useState(true)
   const [winnerByWordmoney, setWinnerByWordmoney] = useState(false)
-  // multi-mode support: 'money' | 'lastOneStanding' | 'wordSpy'
+  // multi-mode support: 'money' | 'lastOneStanding' | 'wordSeeker'
   const [gameMode, setGameMode] = useState('lastOneStanding')
-  const [wordSpyTimerSeconds, setWordSpyTimerSeconds] = useState(120)
-  const [wordSpyRounds, setWordSpyRounds] = useState(3)
+  const [wordSeekerTimerSeconds, setWordSeekerTimerSeconds] = useState(120)
+  const [wordSeekerRounds, setWordSeekerRounds] = useState(3)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(true)
   const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
@@ -409,11 +409,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // keep local timed UI in sync with room state (so non-hosts can see current selection)
   useEffect(() => {
-    // If room explicitly sets timed, respect it; otherwise, when Word Spy is active
+    // If room explicitly sets timed, respect it; otherwise, when Word Seeker is active
     // default timed mode ON and compute seconds = 60 * number of players (clamped)
     if (state?.timed !== undefined) setTimedMode(!!state.timed);
     if (state?.turnTimeoutSeconds !== undefined) setTurnSeconds(state.turnTimeoutSeconds || 30);
-    if (state?.gameMode === 'wordSpy') {
+    if (state?.gameMode === 'wordSeeker') {
       try {
         setTimedMode(true)
         const playersCount = (state && state.players && Array.isArray(state.players)) ? state.players.length : 1
@@ -422,17 +422,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (typeof state?.turnTimeoutSeconds !== 'number') {
           setTurnSeconds(computed)
         }
-        // keep legacy wordSpyTimerSeconds in sync for compatibility
-        setWordSpyTimerSeconds(prev => (typeof state?.wordSpyTimerSeconds === 'number' ? Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))) : computed))
+        // keep legacy wordSeekerTimerSeconds in sync for compatibility
+        setWordSeekerTimerSeconds(prev => (typeof state?.wordSeekerTimerSeconds === 'number' ? Math.max(10, Math.min(600, Number(state.wordSeekerTimerSeconds))) : computed))
       } catch (e) {}
     }
     // legacy support: if gameMode exists, prefer it; otherwise derive from winnerByWordmoney
     if (state?.gameMode) setGameMode(state.gameMode)
     else setWinnerByWordmoney(!!state?.winnerByWordmoney);
-  // sync new gameMode and Word Spy settings when present
+  // sync new gameMode and Word Seeker settings when present
   if (state?.gameMode) setGameMode(state.gameMode)
-  if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
-  if (typeof state?.wordSpyRounds === 'number') setWordSpyRounds(Math.max(1, Math.min(20, Number(state.wordSpyRounds))))
+  if (typeof state?.wordSeekerTimerSeconds === 'number') setWordSeekerTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSeekerTimerSeconds))))
+  if (typeof state?.wordSeekerRounds === 'number') setWordSeekerRounds(Math.max(1, Math.min(20, Number(state.wordSeekerRounds))))
   setStarterEnabled(!!state?.starterBonus?.enabled);
   // default power-ups to enabled unless the room explicitly sets it to false
   setPowerUpsEnabled(state?.powerUpsEnabled ?? true);
@@ -507,9 +507,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       setFirstWordWins(typeof state?.firstWordWins === 'undefined' ? true : !!state.firstWordWins)
     } catch (e) {}
 
-  // sync Word Spy settings if present
-  if (typeof state?.wordSpyTimerSeconds === 'number') setWordSpyTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSpyTimerSeconds))))
-  if (typeof state?.wordSpyRounds === 'number') setWordSpyRounds(Math.max(1, Math.min(20, Number(state.wordSpyRounds))))
+  // sync Word Seeker settings if present
+  if (typeof state?.wordSeekerTimerSeconds === 'number') setWordSeekerTimerSeconds(Math.max(10, Math.min(600, Number(state.wordSeekerTimerSeconds))))
+  if (typeof state?.wordSeekerRounds === 'number') setWordSeekerRounds(Math.max(1, Math.min(20, Number(state.wordSeekerRounds))))
 
   }, [
     state?.timed,
@@ -534,17 +534,28 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     return () => {}
   }, [state?.winnerByWordmoney])
 
-  // Toggle Word Spy theme (pink/black) when the room's gameMode is 'wordSpy'
+  // Toggle Word Seeker theme (pink/black) when the room's gameMode is 'wordSeeker'
   useEffect(() => {
     try {
-      if (state?.gameMode === 'wordSpy') {
-        document.body.classList.add('wordspy-theme-body')
+      if (state?.gameMode === 'wordSeeker') {
+        document.body.classList.add('wordseeker-theme-body')
       } else {
-        document.body.classList.remove('wordspy-theme-body')
+        document.body.classList.remove('wordseeker-theme-body')
       }
     } catch (e) {}
     return () => {}
   }, [state?.gameMode])
+
+  // Always enable the underworld theme (visual theme) for the game UI.
+  // Money mode keeps its green theme via `money-theme-body` which will override
+  // the underworld background; WordSeeker keeps its own body class and will get
+  // a different underworld background via CSS overrides.
+  useEffect(() => {
+    try {
+      document.body.classList.add('underworld-theme')
+    } catch (e) {}
+    return () => { try { document.body.classList.remove('underworld-theme') } catch (e) {} }
+  }, [])
 
   // Small badge component to display the active secret-word theme with emoji + gradient
   function ThemeBadge({ type }) {
@@ -598,13 +609,13 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   async function updateRoomGameMode(mode, opts = {}) {
     try {
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      const safeMode = (mode === 'money' || mode === 'lastOneStanding' || mode === 'wordSpy' || mode === 'lastTeamStanding') ? mode : 'lastOneStanding'
+      const safeMode = (mode === 'money' || mode === 'lastOneStanding' || mode === 'wordSeeker' || mode === 'lastTeamStanding') ? mode : 'lastOneStanding'
       const updates = { gameMode: safeMode }
       // keep legacy boolean in sync
       updates['winnerByWordmoney'] = safeMode === 'money'
-      if (safeMode === 'wordSpy') {
-        if (opts.timerSeconds) updates['wordSpyTimerSeconds'] = Math.max(10, Math.min(600, Number(opts.timerSeconds)))
-        if (opts.rounds) updates['wordSpyRounds'] = Math.max(1, Math.min(20, Number(opts.rounds)))
+      if (safeMode === 'wordSeeker') {
+        if (opts.timerSeconds) updates['wordSeekerTimerSeconds'] = Math.max(10, Math.min(600, Number(opts.timerSeconds)))
+        if (opts.rounds) updates['wordSeekerRounds'] = Math.max(1, Math.min(20, Number(opts.rounds)))
       }
   await safeDbUpdate(roomRef, updates)
     } catch (e) {
@@ -1192,17 +1203,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // but keep the inner card interactive by re-enabling pointer-events on it
     <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
       <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSpy' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
+    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
         <strong style={{ fontSize: 13 }}>
-          {(state?.gameMode === 'wordSpy') ? 'Word Spy'
+          {(state?.gameMode === 'wordSeeker') ? 'Word Seeker'
             : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney'
             : (state?.gameMode === 'lastTeamStanding') ? 'Winner: Last team standing'
             : 'Winner: Last one standing'}
         </strong>
         <small style={{ color: '#B4A3A3', fontSize: 12 }}>
-          {(state?.gameMode === 'wordSpy') ? 'Word Spy mode'
+          {(state?.gameMode === 'wordSeeker') ? 'Word Seeker mode'
             : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$'
             : (state?.gameMode === 'lastTeamStanding') ? (state?.firstWordWins ? 'First word guessed wins' : 'Eliminate all players on the other team to win')
             : 'Last person alive wins'}
@@ -1666,8 +1677,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               Mode:
               <select id="gameMode" name="gameMode" value={gameMode} onChange={e => {
                 const nv = e.target.value
-                // when switching to Word Spy, default timed mode ON and set seconds = 60 * players
-                if (nv === 'wordSpy') {
+                // when switching to Word Seeker, default timed mode ON and set seconds = 60 * players
+                if (nv === 'wordSeeker') {
                   const playersCount = (state && state.players && Array.isArray(state.players)) ? state.players.length : ((players && Array.isArray(players)) ? players.length : 1)
                   const computed = Math.max(10, Math.min(600, 60 * Math.max(1, playersCount)))
                   setGameMode(nv)
@@ -1675,18 +1686,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                   setTurnSeconds(computed)
                   // persist mode and timing to room
                   updateRoomTiming(true, computed)
-                  updateRoomGameMode(nv, { timerSeconds: computed, rounds: wordSpyRounds })
+                  updateRoomGameMode(nv, { timerSeconds: computed, rounds: wordSeekerRounds })
                   updateRoomSettings({ gameMode: nv, timed: true, turnTimeoutSeconds: computed })
                 } else {
                   setGameMode(nv)
-                  updateRoomGameMode(nv, { timerSeconds: turnSeconds, rounds: wordSpyRounds })
+                  updateRoomGameMode(nv, { timerSeconds: turnSeconds, rounds: wordSeekerRounds })
                   updateRoomSettings({ gameMode: nv })
                 }
               }} style={{ marginLeft: 8 }}>
                 <option value="lastOneStanding">Last One Standing</option>
                   <option value="lastTeamStanding">Last Team Standing</option>
                 <option value="money">Money Wins</option>
-                <option value="wordSpy">Word Spy</option>
+                <option value="wordSeeker">Word Seeker</option>
               </select>
             </label>
             {gameMode === 'lastTeamStanding' && isHost && (
@@ -1694,11 +1705,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <input id="firstWordWins" name="firstWordWins" type="checkbox" checked={firstWordWins} onChange={e => { const nv = e.target.checked; setFirstWordWins(nv); updateRoomSettings({ firstWordWins: !!nv }) }} /> First word guessed wins
               </label>
             )}
-            {gameMode === 'wordSpy' && (
+            {gameMode === 'wordSeeker' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                {/* Word Spy uses the global Timed game seconds (computed as 60 * players by default). Do not show a separate Word Spy timer input. */}
-                <label htmlFor="wordSpyRounds">Rounds:
-                  <input id="wordSpyRounds" type="number" min={1} max={20} value={wordSpyRounds} onChange={e => { const v = Math.max(1, Math.min(20, Number(e.target.value || 1))); setWordSpyRounds(v); updateRoomGameMode('wordSpy', { timerSeconds: turnSeconds, rounds: v }); updateRoomSettings({ wordSpyRounds: v }) }} style={{ width: 120, marginLeft: 8 }} />
+                {/* Word Seeker uses the global Timed game seconds (computed as 60 * players by default). Do not show a separate Word Seeker timer input. */}
+                <label htmlFor="wordSeekerRounds">Rounds:
+                  <input id="wordSeekerRounds" type="number" min={1} max={20} value={wordSeekerRounds} onChange={e => { const v = Math.max(1, Math.min(20, Number(e.target.value || 1))); setWordSeekerRounds(v); updateRoomGameMode('wordSeeker', { timerSeconds: turnSeconds, rounds: v }); updateRoomSettings({ wordSeekerRounds: v }) }} style={{ width: 120, marginLeft: 8 }} />
                 </label>
               </div>
             )}
@@ -3904,7 +3915,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       <LetterPeekControl
                         ref={powerUpChoiceRef}
                         open={powerUpOpen}
-                        disabled={isLobby || state?.phase === 'wordspy_playing'}
+                        disabled={isLobby || state?.phase === 'wordseeker_playing'}
                         displayPrice={displayPrice}
                         onBuy={(pos) => purchasePowerUp(p.id, { pos })}
                         powerUpLoading={powerUpLoading}
@@ -3923,8 +3934,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordspy_playing'} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordspy_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordseeker_playing'} />
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordseeker_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -4951,14 +4962,14 @@ try {
             <>
               <button
                 onClick={async () => {
-                  if (gameMode === 'wordSpy') {
-                    // Word Spy requires at least 3 players
+                  if (gameMode === 'wordSeeker') {
+                    // Word Seeker requires at least 3 players
                     if ((players || []).length < 3) {
-                      try { setToasts(t => [...t, { id: `ws_minplayers_${Date.now()}`, text: 'Word Spy requires at least 3 players to start' }]) } catch (e) {}
+                      try { setToasts(t => [...t, { id: `ws_minplayers_${Date.now()}`, text: 'Word Seeker requires at least 3 players to start' }]) } catch (e) {}
                       setTimeout(() => setToasts(t => t.filter(x => !(x.id && String(x.id).startsWith('ws_minplayers_')))), 3500)
                       return
                     }
-                    try { startWordSpy({ timerSeconds: wordSpyTimerSeconds, rounds: wordSpyRounds }) } catch (e) { console.warn('startWordSpy failed', e) }
+                    try { startWordSeeker({ timerSeconds: wordSeekerTimerSeconds, rounds: wordSeekerRounds }) } catch (e) { console.warn('startWordSeeker failed', e) }
                   } else {
                     const opts = timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney }
                     // include the local UI startingWordmoney so startGame can prefer it
@@ -4974,13 +4985,13 @@ try {
                     try { await startGame(opts) } catch (e) { console.warn('startGame failed', e) }
                   }
                 }}
-                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSpy' && players.length < 3) || !allNonHostPlayersReady}
+                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSeeker' && players.length < 3) || !allNonHostPlayersReady}
                 title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 4)
                   ? 'Need at least 4 players to start Last Team Standing'
-                  : ((state && state.gameMode) === 'wordSpy' && players.length < 3)
-                    ? 'Need at least 3 players to start Word Spy'
+                  : ((state && state.gameMode) === 'wordSeeker' && players.length < 3)
+                    ? 'Need at least 3 players to start Word Seeker'
                     : (players.length < 2 ? 'Need at least 2 players to start' : '')}
-                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSpy' && players.length < 3)) ? 'start-ready' : ''}
+                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSeeker' && players.length < 3)) ? 'start-ready' : ''}
               >Start game</button>
               {!allNonHostPlayersReady && (
                 <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for all players to mark Ready</div>
@@ -4997,17 +5008,17 @@ try {
         </div>
       )}
 
-      {/* Word Spy specific UI flows */}
-      {state && state.gameMode === 'wordSpy' && state.wordSpy && (
+      {/* Word Seeker specific UI flows */}
+      {state && state.gameMode === 'wordSeeker' && state.wordSeeker && (
         (() => {
-          const ws = state.wordSpy || {}
+          const ws = state.wordSeeker || {}
           const myId = playerId()
           const isSpy = ws.spyId === myId
           // waiting phase
-          if ((state.phase === 'wordspy_wait' || ws.state === 'waiting')) {
+          if ((state.phase === 'wordseeker_wait' || ws.state === 'waiting')) {
             return (
               <div className="notice card">
-                <h4>Word Spy : Round {ws.currentRound} / {ws.roundsRemaining + ws.currentRound - 1}</h4>
+                <h4>Word Seeker : Round {ws.currentRound} / {ws.roundsRemaining + ws.currentRound - 1}</h4>
                 <div>
                   {!isSpy ? (
                     <>
@@ -5022,8 +5033,8 @@ try {
                   )}
 
                   {/* Ready button shown to everyone (including spy) */}
-                  <button onClick={() => { try { markWordSpyReady() } catch (e) { console.warn(e) } }}>Ready</button>
-                  {isHost && <button style={{ marginLeft: 8 }} onClick={() => { try { beginWordSpyPlaying() } catch (e) { console.warn('beginWordSpyPlaying failed', e) } }}>Force start</button>}
+                  <button onClick={() => { try { markWordSeekerReady() } catch (e) { console.warn(e) } }}>Ready</button>
+                  {isHost && <button style={{ marginLeft: 8 }} onClick={() => { try { beginWordSeekerPlaying() } catch (e) { console.warn('beginWordSeekerPlaying failed', e) } }}>Force start</button>}
                   {/* removed redundant Start playing button; Ready is sufficient and host can Force start */}
                 </div>
               </div>
@@ -5031,14 +5042,14 @@ try {
           }
 
           // playing phase
-          if (state.phase === 'wordspy_playing' || ws.state === 'playing') {
+          if (state.phase === 'wordseeker_playing' || ws.state === 'playing') {
             const startedAt = ws.playingStartedAt || ws.startedAt || state.currentTurnStartedAt || Date.now()
             const totalMs = (ws.timerSeconds || 120) * 1000
             const msLeft = Math.max(0, (startedAt + totalMs) - Date.now())
             const sLeft = Math.ceil(msLeft / 1000)
             return (
               <div className="notice card">
-                <h4>Word Spy : Playing</h4>
+                <h4>Word Seeker : Playing</h4>
                 {!isSpy ? (
                   <div>
                     <p>Word: <strong style={{ letterSpacing: 2 }}>{ws.word}</strong></p>
@@ -5051,18 +5062,18 @@ try {
                   </div>
                 )}
                 {/* Host can end playing early and move to voting regardless of whether they are the spy */}
-                {isHost && <div style={{ marginTop: 8 }}><button onClick={() => { try { endWordSpyPlaying() } catch (e) { console.warn(e) } }}>End playing / move to voting</button></div>}
+                {isHost && <div style={{ marginTop: 8 }}><button onClick={() => { try { endWordSeekerPlaying() } catch (e) { console.warn(e) } }}>End playing / move to voting</button></div>}
               </div>
             )
           }
 
           // voting phase
-          if (state.phase === 'wordspy_voting' || ws.state === 'voting') {
+          if (state.phase === 'wordseeker_voting' || ws.state === 'voting') {
             // players can click a person to vote
             const roundResults = (ws && ws.roundResults) ? Object.values(ws.roundResults).sort((a,b) => b.ts - a.ts) : []
             const myNodeLocal = (players || []).find(p => p.id === myId) || {}
-            const myVoteLocal = myNodeLocal.wordSpyVote || null
-            const votersList = (players || []).filter(p => p.wordSpyVote).map(p => ({ id: p.id, name: p.name, votedFor: p.wordSpyVote }))
+            const myVoteLocal = myNodeLocal.wordSeekerVote || null
+            const votersList = (players || []).filter(p => p.wordSeekerVote).map(p => ({ id: p.id, name: p.name, votedFor: p.wordSeekerVote }))
             return (
               <div className="notice card">
                 <h4>Vote for the spy</h4>
@@ -5100,7 +5111,7 @@ try {
                               onClick={() => { try { voteForPlayer(playerId(), p.id) } catch (e) { console.warn(e) } }
                               }
                               style={{ background: selected ? '#DFF0D8' : undefined, border: selected ? '2px solid #4CAF50' : undefined }}>
-                        {p.name}{p.wordSpyVote ? ' ✓' : ''}
+                        {p.name}{p.wordSeekerVote ? ' ✓' : ''}
                       </button>
                     )
                   })}
@@ -5117,7 +5128,7 @@ try {
                   )}
                 </div>
 
-                {isHost && <div style={{ marginTop: 8 }}><button onClick={async () => { try { await tallyWordSpyVotes() } catch (e) { console.warn('tally failed', e) } }}>Tally votes</button></div>}
+                {isHost && <div style={{ marginTop: 8 }}><button onClick={async () => { try { await tallyWordSeekerVotes() } catch (e) { console.warn('tally failed', e) } }}>Tally votes</button></div>}
 
     
               </div>
@@ -5125,9 +5136,9 @@ try {
           }
 
           // spy guess phase
-          if (state.phase === 'wordspy_spyguess' || ws.state === 'spyGuess') {
+          if (state.phase === 'wordseeker_spyguess' || ws.state === 'spyGuess') {
             const me = players.find(p => p.id === playerId()) || {}
-            const guessesObj = me.wordSpyGuesses || {}
+            const guessesObj = me.wordSeekerGuesses || {}
             const attempts = Object.keys(guessesObj || {}).length
             const maxAttempts = 3
             const lastReveal = ws.lastReveal || null
@@ -5203,7 +5214,7 @@ try {
                 ) : (
                   <div>
                     <p>{ws.spyId ? `Discuss and then vote for who you think the spy is.` : 'Waiting...'}</p>
-                    <div style={{ marginTop: 8 }}>{isHost && <button onClick={() => { try { playNextWordSpyRound() } catch (e) { console.warn(e) } }}>Next round</button>}</div>
+                    <div style={{ marginTop: 8 }}>{isHost && <button onClick={() => { try { playNextWordSeekerRound() } catch (e) { console.warn(e) } }}>Next round</button>}</div>
                   </div>
                 )}
               </div>
@@ -5214,16 +5225,16 @@ try {
         })()
       )}
 
-      {/* Word Spy round summary popup after tally */}
-      {state && state.wordSpy && state.wordSpy.lastRoundSummary && ((state.wordSpy.roundsRemaining || 0) > 0) && (
+      {/* Word Seeker round summary popup after tally */}
+      {state && state.wordSeeker && state.wordSeeker.lastRoundSummary && ((state.wordSeeker.roundsRemaining || 0) > 0) && (
         <div className="modal-backdrop">
           <div className="modal card" style={{ maxWidth: 520 }}>
-            <h3>Round {state.wordSpy.lastRoundSummary.round || '?'} summary</h3>
-            <p>The spy for that round was: <strong>{playerIdToName[state.wordSpy.lastRoundSummary.spyId] || state.wordSpy.lastRoundSummary.spyId}</strong></p>
-            <p>The word was: <strong>{state.wordSpy.lastRoundSummary.word || '-'}</strong></p>
+            <h3>Round {state.wordSeeker.lastRoundSummary.round || '?'} summary</h3>
+            <p>The spy for that round was: <strong>{playerIdToName[state.wordSeeker.lastRoundSummary.spyId] || state.wordSeeker.lastRoundSummary.spyId}</strong></p>
+            <p>The word was: <strong>{state.wordSeeker.lastRoundSummary.word || '-'}</strong></p>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               {isHost ? (
-                <button onClick={async () => { try { await playNextWordSpyRound(); } catch (e) { console.warn(e) } }}>Next round</button>
+                <button onClick={async () => { try { await playNextWordSeekerRound(); } catch (e) { console.warn(e) } }}>Next round</button>
               ) : (
                 <strong onClick={() => { /* non-host just dismiss */ }}>Wait for host</strong>
               )}
@@ -5426,7 +5437,7 @@ try {
                   viewerTeam={viewerNode.team}
                   teamMoney={Number(state?.teams?.[p.team]?.wordmoney || 0)}
                   gameMode={state?.gameMode}
-                  viewerIsSpy={state && state.wordSpy && state.wordSpy.spyId === myId}
+                  viewerIsSpy={state && state.wordSeeker && state.wordSeeker.spyId === myId}
                   isSelf={p.id === myId}
                   hostId={hostId}
                   isHost={isHost}

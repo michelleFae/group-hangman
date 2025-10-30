@@ -1,4 +1,4 @@
-// Single curated array of nouns (2000+) used by Word Spy.
+// Single curated array of nouns (2000+) used by Word Seeker.
 // All entries are lowercase, alphabetic, and common nouns (professions, places, objects, foods, animals, tools, etc.)
 const NOUNS = [
   'actor','actress','administrator','advisor','agriculture','aircraft','airplane','airline','airport','album','algae','alley','alligator','ambulance','anchor','android','angler','animal','ankle','antenna','antelope','apartment','apparatus','apple','apricot','apron','arch','archer','arena','armchair','armour','army','arrow','art','article','artist','ash','asparagus','assembly','assistant','astronaut','athlete','atom','attorney','auditor','author','automobile','autumn','aviation','axis',

@@ -69,8 +69,8 @@ export default function PlayerCircle({
   const [showOwnWord, setShowOwnWord] = useState(true)
 
   useEffect(() => {
-    // When entering Word Spy mode, ensure interactive controls are closed/hidden
-    if (gameMode === 'wordSpy') {
+    // When entering Word Seeker mode, ensure interactive controls are closed/hidden
+    if (gameMode === 'wordSeeker') {
       setShowGuessDialog(false)
       setExpanded(false)
     }
@@ -103,7 +103,7 @@ export default function PlayerCircle({
     }
   }, [timeLeftMs, currentTurnId, showGuessDialog, player.id])
 
-  const hideInteractiveForWordSpy = (gameMode === 'wordSpy')
+  const hideInteractiveForWordSeeker = (gameMode === 'wordSeeker')
 
   const viewerPrivate = player._viewer || {}
   const privateWrong = (viewerPrivate.privateWrong && viewerPrivate.privateWrong[player.id]) || []
@@ -550,9 +550,9 @@ export default function PlayerCircle({
           {player && player.doubleDown && player.doubleDown.active && (
             <div className="double-down-badge" title="Double Down active" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#ffcc00', color: '#2b2b2b', fontSize: 11, fontWeight: 800 }}>DD</div>
           )}
-          {/* Word Spy voted indicator: shows when this player has cast a vote in Word Spy */}
-          {player && player.wordSpyVote && (
-            <div className="voted-badge" title="Voted in Word Spy" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#4CAF50', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓ Voted</div>
+          {/* Word Seeker voted indicator: shows when this player has cast a vote in Word Seeker */}
+          {player && player.wordSeekerVote && (
+            <div className="voted-badge" title="Voted in Word Seeker" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#4CAF50', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓ Voted</div>
           )}
         </div>
 
@@ -561,8 +561,8 @@ export default function PlayerCircle({
             <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
               {isSelf ? (
                 showOwnWord ? (
-                  // If in Word Spy and the viewer is the spy, don't reveal the word : show a neutral message
-                  (gameMode === 'wordSpy' && viewerIsSpy) ? (
+                  // If in Word Seeker and the viewer is the spy, don't reveal the word : show a neutral message
+                  (gameMode === 'wordSeeker' && viewerIsSpy) ? (
                     <span style={{ fontStyle: 'italic', color: '#cfcfcf' }}>you are the spy</span>
                   ) : (
                     // show the submitted word with private reveals colored by revealer and public reveals in red
@@ -579,8 +579,8 @@ export default function PlayerCircle({
 
             <div className="actions" style={{ marginBottom: 8, overflow: 'visible' }}>
                 {isSelf ? (
-                // Hide the "Show my word" button during Word Spy mode
-                (gameMode === 'wordSpy') ? (
+                // Hide the "Show my word" button during Word Seeker mode
+                (gameMode === 'wordSeeker') ? (
                   <div style={{ fontSize: 13, color: '#999', fontStyle: 'italic' }}>{viewerIsSpy ? 'You are the spy' : ''}</div>
                 ) : (
                   // For normal modes, allow toggling own word
@@ -596,7 +596,7 @@ export default function PlayerCircle({
                 const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
                 return (
                   <>
-                    {!hideInteractiveForWordSpy && !viewerSameTeam && (
+                    {!hideInteractiveForWordSeeker && !viewerSameTeam && (
                       <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf)} onClick={() => { if (canGuess && !isEliminated && !ddLocked && !(isFrozen && !isSelf)) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
                     )}
                   </>
@@ -604,11 +604,11 @@ export default function PlayerCircle({
               })()}
 
               {/* Skip turn button: visible to the current player (self) when it's their turn */}
-              {isSelf && isTurn && !hideInteractiveForWordSpy && (
+              {isSelf && isTurn && !hideInteractiveForWordSeeker && (
                 <button className="action-button" title="End your turn" onClick={() => { try { if (typeof onSkip === 'function') onSkip() } catch (e) {} }} style={{ marginLeft: 8 }}>Skip turn</button>
               )}
 
-              {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSpy && (
+              {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSeeker && (
                 <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'🕯️Curse'}</button>
               )}
               {/* show who eliminated this player when applicable */}
@@ -624,7 +624,7 @@ export default function PlayerCircle({
 
 
           <div style={{ marginTop: 8 }}>
-            {!hideInteractiveForWordSpy && (
+            {!hideInteractiveForWordSeeker && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
                 {/* Show teammate's word button: only when in lastTeamStanding and viewer is on same team */}
                 {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam) && (
@@ -709,7 +709,7 @@ export default function PlayerCircle({
 
               {visiblePrivatePowerReveals.length > 0 && (
                 <div style={{ marginTop: 8 }}>
-                  {!hideInteractiveForWordSpy && (
+                  {!hideInteractiveForWordSeeker && (
                     // Put only the header text in a scrollable container
                     <div className="powerup-results-title" style={{ maxHeight: 48, overflow: 'auto' }}>
                       <strong>Curse results:</strong>
@@ -796,7 +796,7 @@ export default function PlayerCircle({
                               if (r.powerId === 'related_word' && res && res.message) return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Related Word</strong>: {res.message}</div>
                               if (r.powerId === 'dice_of_doom' && res && typeof res.roll === 'number') {
                                 const letters = Array.isArray(res.letters) ? res.letters.join(', ') : ''
-                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Dice of Doom</strong>: rolled <strong style={{ color: revealedLetterColor }}>{res.roll}</strong>{letters ? <> : revealed: <strong style={{ color: revealedLetterColor }}>{letters}</strong></> : null}</div>
+                                return <div style={chipStyle}><strong style={{ color: powerNameColor }}>Dice of Doom</strong>: rolled <strong style={{ color: revealedLetterColor }}>{res.roll}</strong>{letters ? <span>: revealed: <strong style={{ color: revealedLetterColor }}>{letters}</strong></span> : null}</div>
                               }
                               if (r.powerId === 'all_letter_reveal' && res && Array.isArray(res.letters)) {
                                 return <div style={chipStyle}><strong style={{ color: powerNameColor }}>All Letter Reveal</strong>: revealed <strong style={{ color: revealedLetterColor }}>{res.letters.length}</strong> unique letter{res.letters.length === 1 ? '' : 's'}</div>
@@ -823,6 +823,7 @@ export default function PlayerCircle({
           )}
         </div>
       )}
+      </div>
 
       
 

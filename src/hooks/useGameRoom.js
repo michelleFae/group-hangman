@@ -77,22 +77,22 @@ export default function useGameRoom(roomId, playerName) {
         console.warn('lobby stale-clear check failed', e)
       }
 
-      // Auto-start Word Spy: if we're in the waiting phase and all players are marked ready,
+      // Auto-start Word Seeker: if we're in the waiting phase and all players are marked ready,
       // let the host automatically begin the playing phase. Use a ref to avoid duplicate calls.
       try {
         const phase = raw.phase
-        const ws = raw.wordSpy || {}
+        const ws = raw.wordSeeker || {}
         const playerIds = Object.keys(playersObj || {})
-        if (phase === 'wordspy_wait' && playerIds.length > 0) {
+        if (phase === 'wordseeker_wait' && playerIds.length > 0) {
           const allReady = playerIds.every(pid => {
-            try { return !!(playersObj[pid] && playersObj[pid].wordSpyReady) } catch (e) { return false }
+            try { return !!(playersObj[pid] && playersObj[pid].wordSeekerReady) } catch (e) { return false }
           })
           if (allReady && !lastAllReadyRef.current) {
             lastAllReadyRef.current = true
             const myId = playerIdRef.current
-            // only the host should call beginWordSpyPlaying(); the function itself double-checks host
+            // only the host should call beginWordSeekerPlaying(); the function itself double-checks host
             if (myId && raw.hostId === myId) {
-              try { beginWordSpyPlaying().catch(() => {}) } catch (e) {}
+              try { beginWordSeekerPlaying().catch(() => {}) } catch (e) {}
             }
           } else if (!allReady) {
             lastAllReadyRef.current = false
@@ -100,13 +100,13 @@ export default function useGameRoom(roomId, playerName) {
         } else {
           lastAllReadyRef.current = false
         }
-      } catch (e) { console.warn('auto-start wordSpy check failed', e) }
+      } catch (e) { console.warn('auto-start wordSeeker check failed', e) }
 
-      // Auto-end Word Spy playing when timer expires: host should move to voting
+      // Auto-end Word Seeker playing when timer expires: host should move to voting
       try {
         const phase = raw.phase
-        const ws = raw.wordSpy || {}
-        if ((phase === 'wordspy_play' || phase === 'wordspy_playing' || ws.state === 'playing')) {
+        const ws = raw.wordSeeker || {}
+        if ((phase === 'wordseeker_play' || phase === 'wordseeker_playing' || ws.state === 'playing')) {
           const startedAt = (ws.playingStartedAt || ws.startedAt || raw.currentTurnStartedAt || 0)
           const totalMs = (ws.timerSeconds || 120) * 1000
           const now = Date.now()
@@ -115,7 +115,7 @@ export default function useGameRoom(roomId, playerName) {
             lastPlayingEndedRef.current = true
             const myId = playerIdRef.current
             if (myId && raw.hostId === myId) {
-              try { endWordSpyPlaying().catch(() => {}) } catch (e) {}
+              try { endWordSeekerPlaying().catch(() => {}) } catch (e) {}
             }
           } else if (!expired) {
             lastPlayingEndedRef.current = false
@@ -123,21 +123,21 @@ export default function useGameRoom(roomId, playerName) {
         } else {
           lastPlayingEndedRef.current = false
         }
-      } catch (e) { console.warn('auto-end wordSpy check failed', e) }
+      } catch (e) { console.warn('auto-end wordSeeker check failed', e) }
 
-      // Auto-tally Word Spy votes when all players have voted
+      // Auto-tally Word Seeker votes when all players have voted
       try {
         const phase = raw.phase
-        const ws = raw.wordSpy || {}
+        const ws = raw.wordSeeker || {}
         const playersObjLocal = raw.players || {}
         const playerIds = Object.keys(playersObjLocal || {})
-        if ((phase === 'wordspy_voting' || ws.state === 'voting') && playerIds.length > 0) {
-          const allVoted = playerIds.every(pid => { try { return !!(playersObjLocal[pid] && playersObjLocal[pid].wordSpyVote) } catch (e) { return false } })
+        if ((phase === 'wordseeker_voting' || ws.state === 'voting') && playerIds.length > 0) {
+          const allVoted = playerIds.every(pid => { try { return !!(playersObjLocal[pid] && playersObjLocal[pid].wordSeekerVote) } catch (e) { return false } })
           if (allVoted && !lastAllVotedRef.current) {
             lastAllVotedRef.current = true
             const myId = playerIdRef.current
             if (myId && raw.hostId === myId) {
-              try { tallyWordSpyVotes().catch(() => {}) } catch (e) {}
+              try { tallyWordSeekerVotes().catch(() => {}) } catch (e) {}
             }
           } else if (!allVoted) {
             lastAllVotedRef.current = false
@@ -145,7 +145,7 @@ export default function useGameRoom(roomId, playerName) {
         } else {
           lastAllVotedRef.current = false
         }
-      } catch (e) { console.warn('auto-tally wordSpy check failed', e) }
+      } catch (e) { console.warn('auto-tally wordSeeker check failed', e) }
     })
 
     // Keep an auth listener around (optional) but do not gate the DB subscription on it.
@@ -275,10 +275,10 @@ export default function useGameRoom(roomId, playerName) {
     }
   }
 
-    // --- Word Spy mode helpers -------------------------------------------------
-    // Start a Word Spy game. Only host should call this. Options:
+    // --- Word Seeker mode helpers -------------------------------------------------
+    // Start a Word Seeker game. Only host should call this. Options:
     // { timerSeconds: number, rounds: number }
-    async function startWordSpy(options = {}) {
+    async function startWordSeeker(options = {}) {
       if (!db) return
       const uid = playerIdRef.current
       if (!uid) return
@@ -286,7 +286,7 @@ export default function useGameRoom(roomId, playerName) {
       const snap = await get(roomRef)
       const room = snap.val() || {}
       if (room.hostId !== uid) return
-  // choose a word for Word Spy. If the room has a secretWordTheme enabled,
+  // choose a word for Word Seeker. If the room has a secretWordTheme enabled,
   // pick from that theme's curated list (animals, colours, elements, cppterms).
   // If no theme is active, fall back to the generic NOUNS list.
   let word = null
@@ -315,7 +315,7 @@ export default function useGameRoom(roomId, playerName) {
         if (relaxed.length > 0) {
           word = relaxed[Math.floor(Math.random() * relaxed.length)]
         } else {
-          console.warn('startWordSpy: theme enabled but pool produced no usable entries for type', theme)
+          console.warn('startWordSeeker: theme enabled but pool produced no usable entries for type', theme)
         }
       }
     }
@@ -345,10 +345,10 @@ export default function useGameRoom(roomId, playerName) {
       const spyId = playerIds[Math.floor(Math.random() * playerIds.length)]
       const now = Date.now()
       const updates = {}
-      updates['phase'] = 'wordspy_wait'
+      updates['phase'] = 'wordseeker_wait'
       updates['open'] = false
-      // include revealSequence null inside the wordSpy object to avoid ancestor/descendant path conflict
-      updates['wordSpy'] = {
+      // include revealSequence null inside the wordSeeker object to avoid ancestor/descendant path conflict
+      updates['wordSeeker'] = {
         word: word,
         spyId: spyId,
         timerSeconds: timerSeconds,
@@ -365,24 +365,24 @@ export default function useGameRoom(roomId, playerName) {
       }
       // clear player ready/votes/spyGuesses containers
       ;(playerIds || []).forEach(pid => {
-        updates[`players/${pid}/wordSpyReady`] = null
-        updates[`players/${pid}/wordSpyVote`] = null
-        updates[`players/${pid}/wordSpyGuesses`] = null
+        updates[`players/${pid}/wordSeekerReady`] = null
+        updates[`players/${pid}/wordSeekerVote`] = null
+        updates[`players/${pid}/wordSeekerGuesses`] = null
       })
       await update(roomRef, updates)
     }
 
     // Player marks ready in waiting phase (non-spy sees the word, spy sees "you are spy")
-    async function markWordSpyReady() {
+    async function markWordSeekerReady() {
       if (!db) return
       const uid = playerIdRef.current
       if (!uid) return
       const pRef = dbRef(db, `rooms/${roomId}/players/${uid}`)
-      try { await update(pRef, { wordSpyReady: true }) } catch (e) { console.warn('markWordSpyReady failed', e) }
+      try { await update(pRef, { wordSeekerReady: true }) } catch (e) { console.warn('markWordSeekerReady failed', e) }
     }
 
     // Host transitions waiting -> playing when all non-spies ready or when forced.
-    async function beginWordSpyPlaying() {
+    async function beginWordSeekerPlaying() {
       if (!db) return
       const uid = playerIdRef.current
       if (!uid) return
@@ -390,19 +390,19 @@ export default function useGameRoom(roomId, playerName) {
       const snap = await get(roomRef)
       const room = snap.val() || {}
       if (room.hostId !== uid) return
-      const ws = room.wordSpy || {}
+      const ws = room.wordSeeker || {}
       if (!ws) return
       const updates = {}
-      updates['phase'] = 'wordspy_playing'
-      updates['wordSpy/state'] = 'playing'
-      updates['wordSpy/playingStartedAt'] = Date.now()
+      updates['phase'] = 'wordseeker_playing'
+      updates['wordSeeker/state'] = 'playing'
+      updates['wordSeeker/playingStartedAt'] = Date.now()
       // clear previous votes
-      Object.keys(room.players || {}).forEach(pid => { updates[`players/${pid}/wordSpyVote`] = null })
+      Object.keys(room.players || {}).forEach(pid => { updates[`players/${pid}/wordSeekerVote`] = null })
       await update(roomRef, updates)
     }
 
     // End playing early (host) and move to voting phase
-    async function endWordSpyPlaying() {
+    async function endWordSeekerPlaying() {
       if (!db) return
       const uid = playerIdRef.current
       if (!uid) return
@@ -411,9 +411,9 @@ export default function useGameRoom(roomId, playerName) {
       const room = snap.val() || {}
       if (room.hostId !== uid) return
       const updates = {}
-      updates['phase'] = 'wordspy_voting'
-      updates['wordSpy/state'] = 'voting'
-      updates['wordSpy/votingStartedAt'] = Date.now()
+      updates['phase'] = 'wordseeker_voting'
+      updates['wordSeeker/state'] = 'voting'
+      updates['wordSeeker/votingStartedAt'] = Date.now()
       await update(roomRef, updates)
     }
 
@@ -424,11 +424,11 @@ export default function useGameRoom(roomId, playerName) {
       if (!uid) return
       const target = votedId || null
       const pRef = dbRef(db, `rooms/${roomId}/players/${uid}`)
-      try { await update(pRef, { wordSpyVote: target }) } catch (e) { console.warn('voteForPlayer failed', e) }
+      try { await update(pRef, { wordSeekerVote: target }) } catch (e) { console.warn('voteForPlayer failed', e) }
     }
 
     // Host tallies votes and moves to spy guess phase. Returns tally object.
-    async function tallyWordSpyVotes() {
+    async function tallyWordSeekerVotes() {
       if (!db) return null
       const uid = playerIdRef.current
       if (!uid) return null
@@ -439,7 +439,7 @@ export default function useGameRoom(roomId, playerName) {
       const playersObj = room.players || {}
       const votes = {}
       Object.keys(playersObj).forEach(pid => {
-        const v = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
+        const v = playersObj[pid] && playersObj[pid].wordSeekerVote ? playersObj[pid].wordSeekerVote : null
         if (v) votes[v] = (votes[v] || 0) + 1
       })
       // find top vote
@@ -455,68 +455,68 @@ export default function useGameRoom(roomId, playerName) {
       // require a clear majority before resolving votes
       if (!top || topCount < majorityNeeded) {
         // no clear majority : do not advance; return tally so caller can show UI
-        await update(roomRef, { ['wordSpy/lastTally']: tally })
+        await update(roomRef, { ['wordSeeker/lastTally']: tally })
         return { top, topCount, votes }
       }
 
       // We have a majority : resolve
       // If the majority picked the actual spy, award voters +4 and allow spy to guess
-      const ws = room.wordSpy || {}
+      const ws = room.wordSeeker || {}
   if (top === (ws && ws.spyId)) {
         // majority correctly identified the spy : move to spy-guess phase.
         // Do NOT write lastRoundSummary here; wait until the spy either guesses correctly
         // or exhausts all attempts, then submitSpyGuess will write the round summary and move to reveal.
-        updates['phase'] = 'wordspy_spyguess'
-        updates['wordSpy/state'] = 'spyGuess'
-        updates['wordSpy/lastTally'] = tally
+        updates['phase'] = 'wordseeker_spyguess'
+        updates['wordSeeker/state'] = 'spyGuess'
+        updates['wordSeeker/lastTally'] = tally
         // award +4 to each voter who voted for spy
         const deltas = {}
         Object.keys(playersObj).forEach(pid => {
           try {
-            const voted = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
+            const voted = playersObj[pid] && playersObj[pid].wordSeekerVote ? playersObj[pid].wordSeekerVote : null
             if (voted === top) {
               // team-aware credit: when in lastTeamStanding, credit team wallet; otherwise credit player
-                applyAwardToUpdates(updates, room, pid, 4, { reason: 'wordSpy_vote_correct', by: ws.spyId })
+                applyAwardToUpdates(updates, room, pid, 4, { reason: 'wordSeeker_vote_correct', by: ws.spyId })
               deltas[pid] = (deltas[pid] || 0) + 4
             }
           } catch (e) {}
         })
         // attach roundResults entry with deltas
         try {
-          const rrKey = `wordSpy/roundResults/${Date.now()}`
+          const rrKey = `wordSeeker/roundResults/${Date.now()}`
           const rr = { ts: Date.now(), tally, deltas }
           updates[rrKey] = rr
         } catch (e) {}
       } else {
         // majority picked wrong person : award spy 5 and award +3 to any players who voted for the actual spy
-        updates['phase'] = 'wordspy_reveal'
-        updates['wordSpy/state'] = 'spyWonByWrongGuess'
-        updates['wordSpy/lastTally'] = tally
+        updates['phase'] = 'wordseeker_reveal'
+        updates['wordSeeker/state'] = 'spyWonByWrongGuess'
+        updates['wordSeeker/lastTally'] = tally
         // record last round summary so UI can reveal who the spy was and the word after tally
         try {
-          updates['wordSpy/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
+          updates['wordSeeker/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
         } catch (e) {}
         const deltas = {}
           try {
             const spyNode = (room.players || {})[ws.spyId] || {}
             // team-aware: credit team wallet in lastTeamStanding
-            applyAwardToUpdates(updates, room, ws.spyId, 5, { reason: 'wordSpy_room_wrong', by: null })
+            applyAwardToUpdates(updates, room, ws.spyId, 5, { reason: 'wordSeeker_room_wrong', by: null })
             deltas[ws.spyId] = (deltas[ws.spyId] || 0) + 5
           } catch (e) {}
         // also award +3 to any players who voted for the actual spy (even if minority)
         try {
                 Object.keys(playersObj).forEach(pid => {
             try {
-              const voted = playersObj[pid] && playersObj[pid].wordSpyVote ? playersObj[pid].wordSpyVote : null
+              const voted = playersObj[pid] && playersObj[pid].wordSeekerVote ? playersObj[pid].wordSeekerVote : null
               if (voted === (ws && ws.spyId)) {
-                applyAwardToUpdates(updates, room, pid, 3, { reason: 'wordSpy_vote_correct', by: ws.spyId })
+                applyAwardToUpdates(updates, room, pid, 3, { reason: 'wordSeeker_vote_correct', by: ws.spyId })
                 deltas[pid] = (deltas[pid] || 0) + 3
               }
             } catch (e) {}
           })
         } catch (e) {}
         try {
-          const rrKey = `wordSpy/roundResults/${Date.now()}`
+          const rrKey = `wordSeeker/roundResults/${Date.now()}`
           const rr = { ts: Date.now(), tally, deltas }
           updates[rrKey] = rr
         } catch (e) {}
@@ -535,7 +535,7 @@ export default function useGameRoom(roomId, playerName) {
       const roomRef = dbRef(db, `rooms/${roomId}`)
       const snap = await get(roomRef)
       const room = snap.val() || {}
-      const ws = room.wordSpy || {}
+      const ws = room.wordSeeker || {}
       if (!ws) return { correct: false }
       if (ws.spyId !== uid) return { correct: false }
       const real = (ws.word || '').toString()
@@ -559,14 +559,14 @@ export default function useGameRoom(roomId, playerName) {
       const updates = {}
       // append guess to spy's guesses list
       const guessTs = Date.now()
-      const key = `players/${uid}/wordSpyGuesses/${guessTs}`
+      const key = `players/${uid}/wordSeekerGuesses/${guessTs}`
       updates[key] = g
 
       // determine current attempt number (try to infer from existing stored guesses)
       let currentAttempts = 0
       try {
         const playerNode = (room.players || {})[uid] || {}
-        const guessesNode = playerNode.wordSpyGuesses || {}
+        const guessesNode = playerNode.wordSeekerGuesses || {}
         currentAttempts = Object.keys(guessesNode || {}).length
       } catch (e) { currentAttempts = (ws.spyGuessesCount || 0) }
       const attemptNumber = currentAttempts + 1
@@ -575,10 +575,10 @@ export default function useGameRoom(roomId, playerName) {
         // spy guessed correctly: award spy based on attempt number
         const awardMap = { 1: 5, 2: 3, 3: 2 }
         const award = awardMap[attemptNumber] || 2
-        updates['wordSpy/state'] = 'spyWon'
+        updates['wordSeeker/state'] = 'spyWon'
         // move to reveal/round-summary phase so UI can show scores and next-round controls
-        updates['phase'] = 'wordspy_reveal'
-        updates[`wordSpy/spyWinAtAttempt`] = attemptNumber
+        updates['phase'] = 'wordseeker_reveal'
+        updates[`wordSeeker/spyWinAtAttempt`] = attemptNumber
         // apply award to spy's wordmoney (team-aware)
         try {
           applyAwardToUpdates(updates, room, uid, award, { reason: 'spyGuess', by: null })
@@ -587,8 +587,8 @@ export default function useGameRoom(roomId, playerName) {
             const lt = (ws && ws.lastTally && ws.lastTally.ts) ? ws.lastTally.ts : null
             const deltaObj = {}
             deltaObj[uid] = award
-            if (lt) updates[`wordSpy/roundResults/${lt}/deltas`] = deltaObj
-            else updates[`wordSpy/roundResults/${Date.now()}`] = { ts: Date.now(), tally: ws.lastTally || null, deltas: deltaObj }
+            if (lt) updates[`wordSeeker/roundResults/${lt}/deltas`] = deltaObj
+            else updates[`wordSeeker/roundResults/${Date.now()}`] = { ts: Date.now(), tally: ws.lastTally || null, deltas: deltaObj }
           } catch (e) {}
         } catch (e) {
           // if award helper fails, fall back to a direct per-player award
@@ -601,10 +601,10 @@ export default function useGameRoom(roomId, playerName) {
         }
         // write round summary so UI can show who the spy was and the word
         try {
-          updates['wordSpy/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
+          updates['wordSeeker/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
         } catch (e) {}
       } else {
-        updates['wordSpy/lastReveal'] = { ts: Date.now(), guess: g, revealed }
+        updates['wordSeeker/lastReveal'] = { ts: Date.now(), guess: g, revealed }
         // merge revealed letters into a persistent revealed map (letter -> count)
         try {
           const revealedMap = ws.revealed || {}
@@ -613,22 +613,22 @@ export default function useGameRoom(roomId, playerName) {
           Object.keys(add).forEach(ch => {
             const prev = typeof revealedMap[ch] === 'number' ? Number(revealedMap[ch]) : 0
             revealedMap[ch] = Math.max(0, prev + add[ch])
-            updates[`wordSpy/revealed/${ch}`] = revealedMap[ch]
+            updates[`wordSeeker/revealed/${ch}`] = revealedMap[ch]
           })
           // also persist reveal sequence entries so UI can render reveal-order (guess order)
           try {
-            const seqKey = `wordSpy/revealSequence/${guessTs}`
+            const seqKey = `wordSeeker/revealSequence/${guessTs}`
             // store letters array and timestamp
             updates[seqKey] = { ts: guessTs, letters: revealedLetters }
           } catch (e) {}
         } catch (e) {}
-          // reveal mapping already set above; no auto-tally here : tally is handled by tallyWordSpyVotes
+          // reveal mapping already set above; no auto-tally here : tally is handled by tallyWordSeekerVotes
           // If this was the spy's final attempt, end the spy-guess phase and show round summary
           try {
             if (attemptNumber >= 3) {
-              updates['phase'] = 'wordspy_reveal'
-              updates['wordSpy/state'] = 'spyFailed'
-              updates['wordSpy/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
+              updates['phase'] = 'wordseeker_reveal'
+              updates['wordSeeker/state'] = 'spyFailed'
+              updates['wordSeeker/lastRoundSummary'] = { spyId: ws.spyId, word: ws.word, ts: Date.now(), round: ws.currentRound || 1 }
             }
           } catch (e) {}
       }
@@ -637,8 +637,8 @@ export default function useGameRoom(roomId, playerName) {
       return { correct, revealed }
     }
 
-    // Host advances to next round or ends Word Spy session; carries forward scores.
-    async function playNextWordSpyRound() {
+    // Host advances to next round or ends Word Seeker session; carries forward scores.
+    async function playNextWordSeekerRound() {
       if (!db) return
       const uid = playerIdRef.current
       if (!uid) return
@@ -646,17 +646,17 @@ export default function useGameRoom(roomId, playerName) {
       const snap = await get(roomRef)
       const room = snap.val() || {}
       if (room.hostId !== uid) return
-      const ws = room.wordSpy || {}
+      const ws = room.wordSeeker || {}
       if (!ws) return
       const remaining = Math.max(0, (ws.roundsRemaining || 1) - 1)
       const updates = {}
       if (remaining <= 0) {
         updates['phase'] = 'ended'
-        updates['wordSpy/state'] = 'ended'
+        updates['wordSeeker/state'] = 'ended'
       } else {
         const nextRound = (ws.currentRound || 1) + 1
-        // assemble a single nested wordSpy object to avoid ancestor/descendant update conflicts
-        const newWordSpy = {
+        // assemble a single nested wordSeeker object to avoid ancestor/descendant update conflicts
+        const newWordSeeker = {
           ...(ws || {}),
           roundsRemaining: remaining,
           currentRound: nextRound,
@@ -696,19 +696,19 @@ export default function useGameRoom(roomId, playerName) {
 
         const playersList = Object.keys(room.players || {})
         const spyId = playersList[Math.floor(Math.random() * playersList.length)]
-          newWordSpy.word = word
-          newWordSpy.spyId = spyId
-          newWordSpy.revealSequence = null
+          newWordSeeker.word = word
+          newWordSeeker.spyId = spyId
+          newWordSeeker.revealSequence = null
           // clear revealed map and lastReveal carried over from previous round
-          newWordSpy.revealed = null
-          newWordSpy.lastReveal = null
-          newWordSpy.state = 'waiting'
-          newWordSpy.lastRoundSummary = null
-          updates['wordSpy'] = newWordSpy
+          newWordSeeker.revealed = null
+          newWordSeeker.lastReveal = null
+          newWordSeeker.state = 'waiting'
+          newWordSeeker.lastRoundSummary = null
+          updates['wordSeeker'] = newWordSeeker
           // set the room phase to waiting so the host auto-start checker can detect all-ready
-          updates['phase'] = 'wordspy_wait'
+          updates['phase'] = 'wordseeker_wait'
         // clear ready/vote/guesses
-        playersList.forEach(pid => { updates[`players/${pid}/wordSpyReady`] = null; updates[`players/${pid}/wordSpyVote`] = null; updates[`players/${pid}/wordSpyGuesses`] = null })
+        playersList.forEach(pid => { updates[`players/${pid}/wordSeekerReady`] = null; updates[`players/${pid}/wordSeekerVote`] = null; updates[`players/${pid}/wordSeekerGuesses`] = null })
       }
       await update(roomRef, updates)
     }
@@ -2036,12 +2036,12 @@ export default function useGameRoom(roomId, playerName) {
       // best-effort only; ignore errors and continue to submit the guess
     }
 
-    // Block normal guesses while Word Spy is actively in the playing phase
+    // Block normal guesses while Word Seeker is actively in the playing phase
     try {
       const roomSnapCheck = await get(dbRef(db, `rooms/${roomId}`))
       const roomCheck = roomSnapCheck.val() || {}
-      if (roomCheck && roomCheck.phase === 'wordspy_playing') {
-        console.warn('sendGuess blocked: Word Spy playing phase')
+      if (roomCheck && roomCheck.phase === 'wordseeker_playing') {
+        console.warn('sendGuess blocked: Word Seeker playing phase')
         return
       }
     } catch (e) { /* ignore check errors and proceed */ }
@@ -2089,6 +2089,6 @@ export default function useGameRoom(roomId, playerName) {
   }
 
   return { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId: () => playerIdRef.current,
-    // Word Spy helpers
-    startWordSpy, markWordSpyReady, beginWordSpyPlaying, endWordSpyPlaying, voteForPlayer, tallyWordSpyVotes, submitSpyGuess, playNextWordSpyRound }
+    // Word Seeker helpers
+    startWordSeeker, markWordSeekerReady, beginWordSeekerPlaying, endWordSeekerPlaying, voteForPlayer, tallyWordSeekerVotes, submitSpyGuess, playNextWordSeekerRound }
 }

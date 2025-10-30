@@ -29,3 +29,22 @@
   pointer-events: none;
 }
 .gh-guess-toast.hide { opacity: 0; transform: translateX(-50%) translateY(6px); }
+
+/* Underworld theme tweaks */
+/* Underworld theme applies except when money-theme-body is present (money keeps green) */
+body:not(.money-theme-body).underworld-theme { --uw-bg-top: #0b0210; --uw-bg-bottom: #1b0520; }
+body:not(.money-theme-body).underworld-theme { background: linear-gradient(180deg,var(--uw-bg-top),var(--uw-bg-bottom)); color: #f3e9ff; }
+body:not(.money-theme-body).underworld-theme .mode-badge.card { background: linear-gradient(90deg,#2a0520,#3b0628); border-color: rgba(255,80,120,0.08); }
+body:not(.money-theme-body).underworld-theme .mode-badge .powerup-rocket { filter: hue-rotate(-30deg) saturate(120%); }
+body:not(.money-theme-body).underworld-theme .big-waiting-card, body:not(.money-theme-body).underworld-theme .big-yourturn-card { background: linear-gradient(180deg, rgba(8,8,12,0.86), rgba(24,6,24,0.9)); border: 1px solid rgba(255,40,80,0.06); }
+body:not(.money-theme-body).underworld-theme .big-avatar { box-shadow: 0 12px 40px rgba(180,40,90,0.28); }
+body:not(.money-theme-body).underworld-theme .ghost-reenter-card { background: linear-gradient(90deg,#2b002b,#120012); color: #ffd6f7; border: 1px solid rgba(255,255,255,0.03); }
+
+/* WordSeeker-specific underworld variant (still underworldy but with different background) */
+body.wordseeker-theme-body.underworld-theme { --uw-ws-top: #14081a; --uw-ws-bottom: #291033; }
+body.wordseeker-theme-body.underworld-theme { background: linear-gradient(180deg,var(--uw-ws-top),var(--uw-ws-bottom)); color: #ffeef8; }
+body.wordseeker-theme-body.underworld-theme .mode-badge.card { background: linear-gradient(90deg,#2b0530,#3b0b4a); border-color: rgba(160,80,200,0.06); }
+body.wordseeker-theme-body.underworld-theme .big-waiting-card, body.wordseeker-theme-body.underworld-theme .big-yourturn-card { background: linear-gradient(180deg, rgba(20,8,24,0.86), rgba(36,10,40,0.9)); border: 1px solid rgba(140,60,200,0.06); }
+
+/* Underworld-specific small accent for the underworld banner */
+.underworld-banner { font-family: 'Cinzel', serif; letter-spacing: 0.6px; }

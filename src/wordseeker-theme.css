@@ -1,0 +1,55 @@
+/* Word Seeker theme: high-contrast pink-on-black for secret/spy mood */
+body.wordseeker-theme-body {
+  background: #2a0310 !important; /* dark background for max contrast */
+  color: rgb(148, 85, 125) !important; /* soft light pink text */
+}
+
+/* Cards should be slightly lifted but remain very dark so pink accents stand out */
+body.wordseeker-theme-body .card,
+body.wordseeker-theme-body .modal-dialog,
+body.wordseeker-theme-body .shop-modal-dialog {
+  background: linear-gradient(180deg, #0b0b0b, #0b0b0b) !important;
+  color: #9d166c !important;
+  border: 1px solid rgba(255,182,193,0.06) !important;
+}
+
+/* Accent color for interactive controls in Word Seeker mode */
+:root {
+  --wordseeker-accent: #7b1146; /* vibrant pink */
+  --wordseeker-accent-2: #ff77c9; /* lighter pink */
+  --wordseeker-muted: #b88ca3; /* muted pink for secondary text */
+}
+
+body.wordseeker-theme-body button {
+  background: linear-gradient(90deg, var(--wordseeker-accent), var(--wordseeker-accent-2)) !important;
+  color: #0b0b0b !important;
+}
+
+body.wordseeker-theme-body .mode-badge { background: rgba(255,77,166,0.06) !important }
+
+/* Ensure inputs remain readable */
+body.wordseeker-theme-body input,
+body.wordseeker-theme-body select,
+body.wordseeker-theme-body textarea {
+  background: rgba(255,255,255,0.04) !important;
+  color: #ffd6f0 !important;
+  border: 1px solid rgba(255,182,193,0.06) !important;
+}
+
+body.wordseeker-theme-body .wordmoney { color: var(--wordseeker-accent-2) !important }
+body.wordseeker-theme-body .avatar { background: linear-gradient(135deg, #ff77c9, #ff4da6); color: #0b0b0b !important }
+
+/* Toasts should be clearly readable */
+body.wordseeker-theme-body .toast { background: rgba(20,0,10,0.92) !important; color: #ffd6f0 !important }
+
+/* Ensure player tiles are legible */
+body.wordseeker-theme-body .player { background: linear-gradient(180deg, #070507, #0b0b0b) !important; color: #ffd6f0 !important }
+
+/* Make revealed letters pop with pink accents */
+body.wordseeker-theme-body .revealed { color: var(--wordseeker-accent-2) !important }
+
+/* Focus outlines for accessibility */
+body.wordseeker-theme-body a:focus, body.wordseeker-theme-body button:focus, body.wordseeker-theme-body input:focus, body.wordseeker-theme-body select:focus {
+  outline: 3px solid rgba(255,77,166,0.22) !important;
+  outline-offset: 2px !important;
+}
