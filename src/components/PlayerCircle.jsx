@@ -529,8 +529,8 @@ export default function PlayerCircle({
               <div>{player.name}</div>
               {/* Ready indicator visible to everyone */}
               {typeof ready !== 'undefined' && !isSelf && phase === 'lobby' && (
-                <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: ready ? '#27ae60' : '#d1d5db', color: ready ? '#fff' : '#333', fontWeight: 700 }} title={ready ? 'Ready' : 'Not ready'}>
-                  {ready ? 'Ready' : 'Not ready'}
+                <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: ready ? '#27ae60' : '#f96e87ff', color: ready ? '#fff' : '#333', fontWeight: 700 }} title={ready ? 'Ready' : 'Not ready'}>
+                  {ready ? 'Click When Ready' : 'Click If Not ready'}
                 </div>
               )}
             {teamName && (
@@ -583,8 +583,10 @@ export default function PlayerCircle({
                 (gameMode === 'wordSeeker') ? (
                   <div style={{ fontSize: 13, color: '#999', fontStyle: 'italic' }}>{viewerIsSpy ? 'You are the spy' : ''}</div>
                 ) : (
-                  // For normal modes, allow toggling own word
-                  <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
+                  // For normal modes, allow toggling own word — but hide this control in lobby/submit (waiting) phases
+                  (phase !== 'lobby' && phase !== 'submit') ? (
+                    <button className="action-button" title={ownerWord || 'No word submitted'} onClick={() => setShowOwnWord(s => !s)}>{showOwnWord ? 'Hide word' : 'Show my word'}</button>
+                  ) : null
                 )
               ) : (() => {
                 // When viewer has an active Double Down on someone else, visually lock other players' Guess buttons
@@ -608,7 +610,7 @@ export default function PlayerCircle({
                 <button className="action-button" title="End your turn" onClick={() => { try { if (typeof onSkip === 'function') onSkip() } catch (e) {} }} style={{ marginLeft: 8 }}>Skip turn</button>
               )}
 
-              {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSeeker && (
+              {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSeeker && (phase !== 'lobby' && phase !== 'submit') && (
                 <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'🕯️Curse'}</button>
               )}
               {/* show who eliminated this player when applicable */}
@@ -653,9 +655,11 @@ export default function PlayerCircle({
                     {(teamRevealForPlayer || showTeammateWord) ? `Hide ${player && player.name ? player.name : 'player'}'s word` : `Show ${player && player.name ? player.name : 'player'}'s word`}
                   </button>
                 )}
-                <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
-                  {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
-                </button>
+                {(phase !== 'lobby' && phase !== 'submit') ? (
+                  <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                    {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
+                  </button>
+                ) : null}
                 {/* Ready toggle for local (non-host) players while in lobby */}
                 {phase === 'lobby' && isSelf && !isHost && typeof onToggleReady === 'function' && (
                   <button onClick={() => { try { onToggleReady(player.id, !ready) } catch (e) { console.warn('toggle ready failed', e) } }} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8, background: ready ? '#27ae60' : undefined, color: ready ? '#fff' : undefined, marginTop: 6 }}>
