@@ -102,6 +102,33 @@ const LetterPeekControl = React.memo(React.forwardRef(function LetterPeekControl
   )
 }))
 
+// Theme select isolated to avoid re-rendering dropdown options when unrelated state changes.
+// The comparator only re-renders when the selected value or style/id changes.
+const THEME_OPTIONS = [
+  { value: 'animals', label: 'Animals' },
+  { value: 'colours', label: 'Colours' },
+  { value: 'instruments', label: 'Instruments' },
+  { value: 'countries', label: 'Countries' },
+  { value: 'ballsports', label: 'Ball Sports' },
+  { value: 'olympicsports', label: 'Olympic Sports' },
+  { value: 'gemstones', label: 'Gemstones' },
+  { value: 'fruits', label: 'Fruits & Vegetables' },
+  { value: 'occupations', label: 'Occupations' },
+  { value: 'elements', label: 'Periodic elements' },
+  { value: 'cpp', label: 'C++ terms' },
+  { value: 'custom', label: 'Custom' }
+]
+
+const ThemeSelect = React.memo(function ThemeSelect({ id, value, onChange, style }) {
+  return (
+    <select id={id} value={value} onChange={onChange} style={style}>
+      {THEME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+}, (prev, next) => {
+  return prev.value === next.value && prev.style === next.style && prev.id === next.id
+})
+
 export default function GameRoom({ roomId, playerName, password }) { // Added password as a prop
   const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId,
     // Word Spy hooks
@@ -131,6 +158,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showSettings, setShowSettings] = useState(false)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
+  // Stable handler for theme changes to avoid recreating the callback each render
+  const handleThemeChange = React.useCallback((e) => {
+    try { setSecretThemeType(e.target.value) } catch (er) {}
+  }, [setSecretThemeType])
+
+  // Persist secret theme settings whenever either the enabled flag or selected type changes.
+  React.useEffect(() => {
+    try {
+      updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: secretThemeType } })
+    } catch (e) {}
+  }, [secretThemeEnabled, secretThemeType])
   // Host-provided custom theme inputs (title + comma-separated list)
   const [customTitle, setCustomTitle] = useState('')
   const [customCsv, setCustomCsv] = useState('')
@@ -1342,7 +1380,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         console.log("michelle 8")
         return { ok: true, positions }
       } else {
-        // full word guess — if correct, re-enter the game: set players/{myId}/eliminated=false and set their word to challenge.word
+        // full word guess - if correct, re-enter the game: set players/{myId}/eliminated=false and set their word to challenge.word
         const correct = guess === target
         console.log("michelle 9")
         const roomRef = dbRef(db, `rooms/${roomId}`)
@@ -1356,7 +1394,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           // mark that this player has re-entered so they cannot re-enter again
           updates[`players/${myId}/ghostState/reentered`] = true
           updates[`players/${myId}/ghostState/reenteredAt`] = nowTs
-          // notify room: a ghost reentered — write into room.ghostAnnouncements to be observed by others
+          // notify room: a ghost reentered - write into room.ghostAnnouncements to be observed by others
           const annKey = `ga_${nowTs}`
           updates[`ghostAnnouncements/${annKey}`] = { player: myId, name: playerIdToName[myId] || myId, ts: nowTs }
           // When a ghost guesses the shared word correctly, record the previous target into ghostHistory
@@ -1477,20 +1515,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 </label>
                 {secretThemeEnabled && (
                   <label style={{ marginTop: 6 }} htmlFor="secretThemeType">Theme:
-                    <select id="secretThemeType" value={secretThemeType} onChange={e => { const nv = e.target.value; setSecretThemeType(nv); updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: nv } }) }} style={{ marginLeft: 8 }}>
-                      <option value="animals">Animals</option>
-                      <option value="colours">Colours</option>
-                      <option value="instruments">Instruments</option>
-                        <option value="countries">Countries</option>
-                        <option value="ballsports">Ball Sports</option>
-                        <option value="olympicsports">Olympic Sports</option>
-                        <option value="gemstones">Gemstones</option>
-                      <option value="fruits">Fruits & Vegetables</option>
-                        <option value="occupations">Occupations</option>
-                      <option value="elements">Periodic elements</option>
-                      <option value="cpp">C++ terms</option>
-                      <option value="custom">Custom</option>
-                    </select>
+                    <ThemeSelect id="secretThemeType" value={secretThemeType} onChange={handleThemeChange} style={{ marginLeft: 8 }} />
                   </label>
                 )}
                 {/* Host-only custom theme upload */}
@@ -1787,7 +1812,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
       }
     } catch (e) {
-      // DB read failed — fall back to local room state
+      // DB read failed - fall back to local room state
       teamMoney = Number(state?.teams?.[me.team]?.wordmoney || 0)
     }
     buyerBalance = Number(teamMoney) || 0
@@ -3693,7 +3718,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (open) computeBalance()
       else setBuyerBalance(Number(me.wordmoney) || 0)
       return () => { mounted = false }
-    // avoid depending on the entire `state` object — only depend on the specific pieces we read
+    // avoid depending on the entire `state` object - only depend on the specific pieces we read
     }, [open, state?.gameMode, state?.teams?.[me.team]?.wordmoney, me && me.id, me && me.wordmoney, me && me.team, roomId])
 
     
@@ -3838,6 +3863,9 @@ try {
       try {
         setSubmitting(true)
         setIsResetting(true)
+        // Immediately clear any victory tint so UI updates as soon as host clicks
+        try { document.body.style.background = '' } catch (e) {}
+        try { const vs = document.querySelector && document.querySelector('.victory-screen'); if (vs) vs.style.background = '' } catch (e) {}
 
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
@@ -3946,6 +3974,9 @@ try {
     ;(async () => {
       try {
         setIsResetting(true)
+        // clear any victory tint immediately when automatic rematch is triggered
+        try { document.body.style.background = '' } catch (e) {}
+        try { const vs = document.querySelector && document.querySelector('.victory-screen'); if (vs) vs.style.background = '' } catch (e) {}
         // Build a multi-path update: reset room phase and clear per-player wantsRematch and submissions
   const startMoney = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
@@ -4545,7 +4576,14 @@ try {
   if ( phase === 'ended') { // true) {
     return (
       <>
-          <div className={`victory-screen ${(state?.winnerTeam || isWinner) ? 'confetti' : 'sad'}`}>
+          <div
+            className={`victory-screen ${(state?.winnerTeam || isWinner) ? 'confetti' : 'sad'}`}
+            style={
+              (state && state.gameMode === 'lastTeamStanding' && state.winnerTeam)
+                ? { background: state.winnerTeam === 'red' ? '#ff000091' : (state.winnerTeam === 'blue' ? '#001bff33' : undefined) }
+                : undefined
+            }
+          >
           {confettiPieces.map((c, i) => (
             <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
           ))}
@@ -4553,7 +4591,7 @@ try {
             <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
           ))}
 
-          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
+          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '-'} Wins`}</h1>
           <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
           {/* If the room ended with a team winner, tint the page background to match the winning team
@@ -4722,7 +4760,7 @@ try {
       )}
       {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
       <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 1 }} className="turn-indicator fixed-turn-indicator">
-        {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '—'}` : null}
+        {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '-'}` : null}
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
       {/* Preserve reveal order indicator shown in lobby and playing phases */}
@@ -5043,7 +5081,7 @@ try {
           <div className="modal card" style={{ maxWidth: 520 }}>
             <h3>Round {state.wordSpy.lastRoundSummary.round || '?'} summary</h3>
             <p>The spy for that round was: <strong>{playerIdToName[state.wordSpy.lastRoundSummary.spyId] || state.wordSpy.lastRoundSummary.spyId}</strong></p>
-            <p>The word was: <strong>{state.wordSpy.lastRoundSummary.word || '—'}</strong></p>
+            <p>The word was: <strong>{state.wordSpy.lastRoundSummary.word || '-'}</strong></p>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               {isHost ? (
                 <button onClick={async () => { try { await playNextWordSpyRound(); } catch (e) { console.warn(e) } }}>Next round</button>
@@ -5059,7 +5097,7 @@ try {
       {phase === 'lobby' && !isHost && (
         <div className="notice card">
           <h4>Waiting for the host to start the game</h4>
-          <p>The host <strong>{playerIdToName[hostId] || '—'}</strong> can start the game when ready.</p>
+          <p>The host <strong>{playerIdToName[hostId] || '-'}</strong> can start the game when ready.</p>
         </div>
       )}
 
@@ -5456,7 +5494,7 @@ try {
               
                 const gw = (state && state.ghostChallenge && state.ghostChallenge.word) ? String(state.ghostChallenge.word) : null
                 // render blanks as spaced underscores: "_ _ _"
-                const blanks = gw ? gw.split('').map(() => '_').join(' ') : '—'
+                const blanks = gw ? gw.split('').map(() => '_').join(' ') : '-'
                 const lettersCount = gw ? gw.length : null
                 return (
                   <div>
@@ -5506,8 +5544,8 @@ try {
                 })
                 return (
                   <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 13 }}><strong>Correct guesses:</strong> {correctLetters.length > 0 ? correctLetters.join(' ') : '—'}</div>
-                    <div style={{ fontSize: 13, marginTop: 6 }}><strong>Wrong guesses:</strong> {(wrongLetters.concat(wrongWords).length > 0) ? wrongLetters.concat(wrongWords).join(', ') : '—'}</div>
+                    <div style={{ fontSize: 13 }}><strong>Correct guesses:</strong> {correctLetters.length > 0 ? correctLetters.join(' ') : '-'}</div>
+                    <div style={{ fontSize: 13, marginTop: 6 }}><strong>Wrong guesses:</strong> {(wrongLetters.concat(wrongWords).length > 0) ? wrongLetters.concat(wrongWords).join(', ') : '-'}</div>
                   </div>
                 )
               } catch (e) { return null }
@@ -5677,7 +5715,7 @@ try {
               <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
             ))}
 
-              <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '—'} Wins`}</h1>
+              <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '-'} Wins`}</h1>
             <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
 
             <div className="standings card" style={{ marginTop: 12 }}>

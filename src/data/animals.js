@@ -41,7 +41,7 @@ const BASE_ANIMALS = [
   'crocodile','komodo','marmot','ermine','stoat','nutria','myna','loris','tamarin','capuchin',
 
   // gendered animal forms (female/male terms)
-  'peahen','hen','rooster','cock','doe','hind','vixen','sow','nanny','mare','ewe','queen','tom','drake','cob','pen','buck','stag',
+  'peahen','hen','rooster','cock','doe','hind','vixen','sow','nanny','mare','ewe','queen','tom','drake','cob','pen','buck','stag', 'molly',
 
   // baby / juvenile animal names
   'puppy','pup','kitten','calf','foal','kid','joey','cub','chick','duckling','piglet','gosling','fawn','leveret','puggle','fry','tadpole','larva',

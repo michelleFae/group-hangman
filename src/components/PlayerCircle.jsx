@@ -56,6 +56,10 @@ export default function PlayerCircle({
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
+  // Toast shown when we auto-close the guess dialog (timeout or turn change)
+  const [showGuessClosedToast, setShowGuessClosedToast] = useState(false)
+  const [guessClosedToastMessage, setGuessClosedToastMessage] = useState('')
+  const toastTimeoutRef = useRef(null)
   // default expanded only for the player's own tile; other tiles start collapsed
   const [expanded, setExpanded] = useState(!!isSelf)
   // teammates' full-word view must be explicitly enabled; default off to avoid leakage
@@ -69,6 +73,33 @@ export default function PlayerCircle({
       setExpanded(false)
     }
   }, [gameMode])
+
+  // Close the guess dialog when the turn timer expires or the turn moves away.
+  useEffect(() => {
+    try {
+      // Only act when the dialog is currently open
+      if (!showGuessDialog) return
+      // If the guess dialog is open and there is no time left for this player, close it and show toast
+      if (typeof timeLeftMs === 'number' && timeLeftMs <= 0) {
+        setShowGuessDialog(false)
+        try { setGuessClosedToastMessage("Time's up! Guess closed") } catch (e) {}
+        try { setShowGuessClosedToast(true) } catch (e) {}
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+        toastTimeoutRef.current = setTimeout(() => setShowGuessClosedToast(false), 3000)
+      }
+      // If the guess dialog is open but the current turn changed away from this player, close it and show toast
+      else if (currentTurnId && currentTurnId !== player.id) {
+        setShowGuessDialog(false)
+        try { setGuessClosedToastMessage('Turn changed! Guess closed') } catch (e) {}
+        try { setShowGuessClosedToast(true) } catch (e) {}
+        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+        toastTimeoutRef.current = setTimeout(() => setShowGuessClosedToast(false), 3000)
+      }
+    } catch (e) {}
+    return () => {
+      if (toastTimeoutRef.current) { clearTimeout(toastTimeoutRef.current); toastTimeoutRef.current = null }
+    }
+  }, [timeLeftMs, currentTurnId, showGuessDialog, player.id])
 
   const hideInteractiveForWordSpy = (gameMode === 'wordSpy')
 
@@ -704,6 +735,13 @@ export default function PlayerCircle({
         </div>
       )}
 
+      {/* Toast shown when we auto-close the guess dialog (timeout or turn change) */}
+      {showGuessClosedToast && (
+        <div className="gh-guess-toast" role="status" aria-live="polite">
+          {guessClosedToastMessage}
+        </div>
+      )}
+
       {expanded && (
         <div style={{ marginTop: 10 }}>
           {privateWrong.length > 0 && (
@@ -881,6 +919,25 @@ try {
   /* ex-ghost badge shown when a player re-enters after winning a ghost challenge */
   .ex-ghost-badge { position: absolute; top: 28px; background: rgba(255, 255, 255, 0.75); color: #222; padding: 2px 6px; border-radius: 10px; font-size: 11px; font-weight: 800; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   .ex-ghost-badge[title] { cursor: help }
+
+  /* small transient toast shown when guess dialog is auto-closed */
+  .gh-guess-toast {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 24px;
+    background: rgba(0,0,0,0.82);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    z-index: 2147484000;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+    opacity: 1;
+    transition: opacity 300ms ease, transform 300ms ease;
+    pointer-events: none;
+  }
+  .gh-guess-toast.hide { opacity: 0; transform: translateX(-50%) translateY(6px); }
     `
     document.head.appendChild(s)
   }
