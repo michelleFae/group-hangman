@@ -530,7 +530,7 @@ export default function PlayerCircle({
               {/* Ready indicator visible to everyone */}
               {typeof ready !== 'undefined' && !isSelf && phase === 'lobby' && (
                 <div style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: ready ? '#27ae60' : '#f96e87ff', color: ready ? '#fff' : '#333', fontWeight: 700 }} title={ready ? 'Ready' : 'Not ready'}>
-                  {ready ? 'Click When Ready' : 'Click If Not ready'}
+                  {ready ? 'Ready' : 'Not Ready'}
                 </div>
               )}
             {teamName && (
@@ -663,7 +663,7 @@ export default function PlayerCircle({
                 {/* Ready toggle for local (non-host) players while in lobby */}
                 {phase === 'lobby' && isSelf && !isHost && typeof onToggleReady === 'function' && (
                   <button onClick={() => { try { onToggleReady(player.id, !ready) } catch (e) { console.warn('toggle ready failed', e) } }} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8, background: ready ? '#27ae60' : undefined, color: ready ? '#fff' : undefined, marginTop: 6 }}>
-                    {ready ? 'Unready' : 'Ready'}
+                    {ready ? 'Click if NOT Ready' : 'Click if Ready!'}
                   </button>
                 )}
                 
