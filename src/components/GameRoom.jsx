@@ -160,6 +160,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [showSettings, setShowSettings] = useState(false)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
+  // auto-disable ghost when host custom set explicitly allows any word (empty array)
+  const autoGhostDisabledDueToCustom = useRef(false)
   // Stable handler for theme changes to avoid recreating the callback each render
   const handleThemeChange = React.useCallback((e) => {
     try { setSecretThemeType(e.target.value) } catch (er) {}
@@ -449,8 +451,37 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   setStarterEnabled(!!state?.starterBonus?.enabled);
   // default power-ups to enabled unless the room explicitly sets it to false
   setPowerUpsEnabled(state?.powerUpsEnabled ?? true);
-  // sync Ghost Re-Entry setting from room state (default true)
-    setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
+    // sync Ghost Re-Entry setting from room state (default true)
+    // If the host custom set exists and is an empty array (meaning "allow any word"),
+    // automatically disable Ghost Re-Entry for UI purposes. Persisting the disabled
+    // value to room settings is handled when the host saves the custom set below.
+    try {
+      const customEmpty = (secretThemeType === 'custom') && (state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0)
+      if (customEmpty) {
+        // Force the local UI to show Ghost Re-Entry disabled
+        setGhostReEntryEnabled(false)
+        // If the current viewer is the host, persist this change once so the
+        // room settings reflect that Ghost Re-Entry is disabled when custom
+        // set explicitly allows any word (empty list).
+        try {
+          const amHostNow = state && state.hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === state.hostId
+          if (amHostNow && !autoGhostDisabledDueToCustom.current) {
+            // only persist when room still has ghostReEntryEnabled truthy (or undefined)
+            if (typeof state?.ghostReEntryEnabled === 'undefined' || state.ghostReEntryEnabled !== false) {
+              try { updateRoomSettings({ ghostReEntryEnabled: false }) } catch (e) {}
+              autoGhostDisabledDueToCustom.current = true
+            }
+          }
+        } catch (e) {}
+      } else {
+        setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
+        // reset auto-disable marker when not in custom-empty mode
+        try { autoGhostDisabledDueToCustom.current = false } catch (e) {}
+      }
+    } catch (e) {
+      // fallback to previous behavior
+      setGhostReEntryEnabled(state?.ghostReEntryEnabled ?? true)
+    }
     // sync ghost guess cooldown seconds (host-configurable). Default remains 20s when not set.
     try {
       if (typeof state?.ghostGuessCooldownSeconds === 'number') setGhostGuessCooldownSeconds(Math.max(1, Math.min(300, Number(state.ghostGuessCooldownSeconds))))
@@ -1699,6 +1730,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                             // Save to room settings (persist title and array). Empty array means "allow any word".
                             const titleVal = (customTitleRef.current ? (customTitleRef.current.value || '') : (customTitle || '')).toString().trim() || null
                             await updateRoomSettings({ secretWordTheme: { enabled: true, type: secretThemeType, custom: { title: titleVal, words: parts } } })
+                            // If the host saved an explicit empty custom list (meaning "allow any word"),
+                            // persist ghostReEntryEnabled=false so the toggle is globally turned off.
+                            try {
+                              if (Array.isArray(parts) && parts.length === 0) {
+                                await updateRoomSettings({ ghostReEntryEnabled: false })
+                                // mark we auto-disabled due to custom-empty so UI won't flip back
+                                try { autoGhostDisabledDueToCustom.current = true } catch (e) {}
+                              }
+                            } catch (e) { /* non-fatal */ }
                             // remember serialized value so we don't overwrite local edits unnecessarily
                             const serNow = JSON.stringify({ title: titleVal || '', words: parts })
                             prevCustomSerializedRef.current = serNow
@@ -1787,9 +1827,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <label htmlFor="powerUpsEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Enable in-game power ups such as revealing letter counts or the starting letter.">
               <input id="powerUpsEnabled" name="powerUpsEnabled" type="checkbox" checked={powerUpsEnabled} onChange={e => { const nv = e.target.checked; setPowerUpsEnabled(nv); updateRoomSettings({ powerUpsEnabled: !!nv }) }} /> Curses enabled
             </label>
-            <label htmlFor="ghostReEntryEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Allow eliminated players to attempt re-entry as ghosts by guessing a random word">
-              <input id="ghostReEntryEnabled" name="ghostReEntryEnabled" type="checkbox" checked={ghostReEntryEnabled} onChange={e => { const nv = e.target.checked; setGhostReEntryEnabled(nv); updateRoomSettings({ ghostReEntryEnabled: !!nv }) }} /> Ghost Re-Entry enabled
+            <label htmlFor="ghostReEntryEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={"Allow eliminated players to attempt re-entry as ghosts by guessing a random word"}>
+              <input id="ghostReEntryEnabled" name="ghostReEntryEnabled" type="checkbox" checked={ghostReEntryEnabled} onChange={e => { const nv = e.target.checked; setGhostReEntryEnabled(nv); updateRoomSettings({ ghostReEntryEnabled: !!nv }) }}
+                disabled={secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0}
+              /> Ghost Re-Entry enabled
             </label>
+            {(secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0) && (
+              <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Ghost Re-Entry is disabled when the host's custom set allows any word (empty list).</div>
+            )}
             {ghostReEntryEnabled && isHost && (
               <label htmlFor="ghostGuessCooldownSeconds" title="Seconds ghosts must wait between guesses">
                 Ghost guess cooldown (seconds):

@@ -10,16 +10,23 @@ const BASE = [
   'plantain','rambutan','jackfruit','soursop','tamarillo','tamarind','mangosteen',
   'longan','loquat','jujube','mulberry','gooseberry','breadfruit','salak','ackee',
   'ube','honeydew','galia',
-  'jambu','mangaba','jabuticaba','lucuma','sapodilla','pulasan','marang','lanzones',
+  'jambu','mangaba','jabuticaba','lucuma','sapodilla','pulasan','marang','lanzones','wolfberry','cloudberry','wampee',
+  // additional fruits containing the letter 'a' to expand theme pools
+  'acerola','ambarella','amla','canistel','feijoa','kiwano','medlar','nance','langsat','muscadine','santol','saskatoon','tangelo','starapple',
+  // additional fruits and vegetables containing the letter 'b' (single-word entries only)
+  'babaco','barberry','bilimbi','breadnut','babassu','sapote','carambola','calamansi','calamondin','cacao','cashew','cupuacu','cocona','capulin','calabash','carob',
   // Vegetables
   'artichoke','arugula','asparagus','beet','beetroot', 'bean','bokchoy','broccoli','brussels','brusselsprout','cabbage','carrot','soybean', 'edamame',
+  'basil','bellpepper','bittermelon','butternut','capsicum','caper','caraway','cauliflower','celeriac','chard','chayote','chicory','collard','cress','coriander','cardamom','celtuce','curlycress',
+  'dill','horseradish','mache','mizuna',
+  'salsify','sorrel','tatsoi',
   'lentil','lentils','chickpea','garbanzo','spinach','lettuce','watercress','microgreen','sprout','sprouts','scallion','springonion','chive','mustardgreen','snowpea','snappea',
   'cassava','taro','chayote','edamame',
   'jicama','sunchoke','lotusroot','burdock','yucca','yuca',
   'cauliflower','celery','chard','chicory','collard','corn','cucumber','daikon','eggplant','endive','fennel','garlic',
   'ginger','kale','leek','lettuce','mushroom','okra','onion','parsnip','pea','pepper','potato','pumpkin','radish','rhubarb',
   'rutabaga','shallot','spinach','squash','sweetpotato','tomato','turnip','yam','zucchini'
-  ,'celeriac','kohlrabi','radicchio'
+  ,'celeriac','kohlrabi','radicchio', 'wasabi','watercress','alfalfa','amaranth','bokchoy','broccolini','broccoflower','fiddlehead','frisee','mizuna','nopales','oregano','rapini','tatsoi'
 ]
 
 // A small map of irregular plurals or preferred plural forms
