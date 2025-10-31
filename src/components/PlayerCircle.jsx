@@ -58,6 +58,9 @@ export default function PlayerCircle({
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
+  // small transient ignore window to avoid immediately-closing the guess dialog
+  // when parent state updates (turn/time) race with the click that opened it.
+  const ignoreCloseUntilRef = useRef(0)
   // (removed guess-closed toast; keep dialog open/closed logic only)
   // default expanded only for the player's own tile; other tiles start collapsed
   const [expanded, setExpanded] = useState(!!isSelf)
@@ -80,17 +83,63 @@ export default function PlayerCircle({
       if (!showGuessDialog) return
       // If the guess dialog is open and there is no time left for this player, close it and show toast
       if (typeof timeLeftMs === 'number' && timeLeftMs <= 0) {
-        // simply close the dialog when time runs out
-        setShowGuessDialog(false)
+        // If the dialog was just opened, treat this as a transient update and skip closing
+        if (Date.now() < (ignoreCloseUntilRef.current || 0)) {
+          try { if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) console.debug('PlayerCircle: skipping close due to transient timeLeftMs update', { playerId: player.id, timeLeftMs, currentTurnId, ignoreUntil: ignoreCloseUntilRef.current }) } catch (e) {}
+        } else {
+          // Debug: log why we're closing the guess dialog
+          try { if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) console.debug('PlayerCircle: closing guess dialog due to timeLeftMs', { playerId: player.id, timeLeftMs, currentTurnId }) } catch (e) {}
+          // simply close the dialog when time runs out
+          ignoreCloseUntilRef.current = 0
+          console.log("Michelle 1: in the else")
+          setShowGuessDialog(false)
+        }
       }
       // If the guess dialog is open but the current turn changed away from this player, close it and show toast
       else if (currentTurnId && currentTurnId !== player.id) {
-        // simply close the dialog when the turn moves away
-        setShowGuessDialog(false)
+        // If the dialog was just opened, treat an immediate turn flip as possibly transient and skip
+        if (Date.now() < (ignoreCloseUntilRef.current || 0)) {
+          try { if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) console.debug('PlayerCircle: skipping close due to transient turn change', { playerId: player.id, currentTurnId, ignoreUntil: ignoreCloseUntilRef.current }) } catch (e) {}
+        } else {
+          try { if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) console.debug('PlayerCircle: closing guess dialog due to turn change', { playerId: player.id, currentTurnId }) } catch (e) {}
+          // simply close the dialog when the turn moves away
+          ignoreCloseUntilRef.current = 0
+          console.log("Michelle 3: in the else")
+          setShowGuessDialog(false)
+        }
       }
-    } catch (e) {}
+    } catch (e) {console.error("Michelle 2: in the else")}
     return () => {}
   }, [timeLeftMs, currentTurnId, showGuessDialog, player.id])
+
+
+  // Log showGuessDialog changes when debug flag is enabled to help trace rerenders
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) {
+        console.debug('PlayerCircle: showGuessDialog changed', { playerId: player.id, showGuessDialog, currentTurnId, timeLeftMs })
+      }
+    } catch (e) {}
+  }, [showGuessDialog, currentTurnId, timeLeftMs, player.id])
+
+  // Inject thin black scrollbar styling for powerup results (fallback to avoid editing global CSS file)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      if (document.getElementById('gh-powerup-scroll-css')) return
+      const css = `
+        .powerup-results-scroll { scrollbar-width: thin; scrollbar-color: #000000 transparent; }
+        .powerup-results-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .powerup-results-scroll::-webkit-scrollbar-track { background: transparent; }
+        .powerup-results-scroll::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.95); border-radius: 999px; border: 2px solid transparent; }
+      `
+      const s = document.createElement('style')
+      s.id = 'gh-powerup-scroll-css'
+      s.appendChild(document.createTextNode(css))
+      document.head.appendChild(s)
+    } catch (e) {}
+    return () => {}
+  }, [])
 
   const hideInteractiveForWordSeeker = (gameMode === 'wordSeeker')
 
@@ -500,25 +549,23 @@ export default function PlayerCircle({
       {isHost && onRemove && !isSelf && (
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 72 }}>
+      <div style={{ alignItems: 'center', gap: 12, justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 72 }}>
           {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
             {(player && player.ghostState && player.ghostState.reentered) && (
               <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
             )}
-          <div style={{ position: 'relative' }}>
+          
+          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'relative' }}>
             <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
-            {/* Presence indicator: show to hosts when this player has no registered open tabs */}
-            {isHost && !isSelf && (!(player && player.tabs) || Object.keys(player.tabs || {}).length === 0) && (
-              <div title="No active tabs" style={{ position: 'absolute', right: -6, top: -6, background: '#333', color: '#fff', padding: '4px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>Offline</div>
-            )}
+            {/* Presence indicator removed per UI preference: no offline badge shown */}
             {/* Frozen badge: visible when player is frozen (others see it) */}
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
             
           </div>
-          <div style={{ fontSize: 12, marginTop: 6, textAlign: 'center', flexDirection: 'column', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div>{player.name}</div>
              
@@ -594,11 +641,33 @@ export default function PlayerCircle({
                 const isFrozen = !!(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)))
                 const titleText = isEliminated ? 'Player eliminated' : (isFrozen ? 'Player is frozen : guesses disabled' : (ddLocked ? `Double Down active : only ${targetName} may be guessed` : 'Guess this word'))
                 const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
+                // compute disabled reason for easier debugging
+                const guessDisabled = (!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf))
+                const disabledReasons = []
+                if (!canGuess) disabledReasons.push('not your turn')
+                if (isEliminated) disabledReasons.push('player eliminated')
+                if (ddLocked) disabledReasons.push('double-down lock')
+                if (isFrozen && !isSelf) disabledReasons.push('player frozen')
+                try { if (typeof window !== 'undefined' && window.__GH_DEBUG_GUESS) console.debug('PlayerCircle: render guess control', { playerId: player.id, guessDisabled, disabledReasons, canGuess, isEliminated, ddLocked, isFrozen, isSelf, phase, currentTurnId, timeLeftMs }) } catch (e) {}
                 return (
                   <>
                     {!hideInteractiveForWordSeeker && !viewerSameTeam && phase !== 'lobby' && (
-                      <button className={className} title={titleText} disabled={!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf)} onClick={() => { if (canGuess && !isEliminated && !ddLocked && !(isFrozen && !isSelf)) { setShowGuessDialog(true); setGuessValue('') } }}>{'Guess'}</button>
+                      <button
+                        className={className}
+                        title={titleText}
+                        disabled={guessDisabled}
+                        data-guess-disabled={guessDisabled}
+                        onClick={() => {
+                          if (!guessDisabled) {
+                            // set a short ignore window so the dialog doesn't auto-close
+                            try { ignoreCloseUntilRef.current = Date.now() + 350 } catch (e) {}
+                            setShowGuessDialog(true);
+                            setGuessValue('')
+                          }
+                        }}
+                      >{'Guess'}</button>
                     )}
+                    
                   </>
                 )
               })()}
@@ -728,7 +797,7 @@ export default function PlayerCircle({
                       <strong>Curse results:</strong>
                     </div>
                   )}
-                  <div className="powerup-results-scroll" style={{ marginTop: 6, overflowY: 'scroll', maxHeight: '40vh', paddingRight: '20px' }}>
+                  <div className="powerup-results-scroll" style={{ marginTop: 6, overflowY: 'scroll', maxHeight: '50vh', paddingRight: '20px' }}>
                 {visiblePrivatePowerRevealsDeduped.map((r, idx) => {
                   const res = r && r.result
                   const actorId = r && (r.from || r.by)
