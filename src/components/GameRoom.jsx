@@ -253,6 +253,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
   const modeInfoRef = useRef(null)
+  // remember when the popover was last opened so we can ignore the same click event
+  const modeInfoOpenedAtRef = useRef(null)
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // Underworld event banner when someone is eliminated by a guess
@@ -308,6 +310,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // show a prominent "Your turn" banner briefly when the viewer's turn starts
   const [showYourTurnBanner, setShowYourTurnBanner] = useState(false)
   const yourTurnTimeoutRef = useRef(null)
+  // remember which turn index we've already shown the banner for so we don't re-show
+  // it on unrelated re-renders while the turn is still active
+  const lastShownTurnRef = useRef(null)
   // portal root for dd overlay attached to document.body to avoid stacking-context issues
   const [ddOverlayRoot, setDdOverlayRoot] = useState(null)
   // portal root for modals (settings / power-up) attached to document.body to avoid layout jumps
@@ -601,15 +606,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       if (isMyTurnNowLocal) {
         document.body.classList.add('my-turn-body')
         try {
-          setShowYourTurnBanner(true)
-          if (yourTurnTimeoutRef.current) clearTimeout(yourTurnTimeoutRef.current)
-          yourTurnTimeoutRef.current = setTimeout(() => setShowYourTurnBanner(false), 5000)
+          // only show the banner the first time this particular turn index becomes active
+          const idx = (typeof state?.currentTurnIndex === 'number') ? state.currentTurnIndex : null
+          if (idx !== null && lastShownTurnRef.current !== idx) {
+            lastShownTurnRef.current = idx
+            setShowYourTurnBanner(true)
+            if (yourTurnTimeoutRef.current) clearTimeout(yourTurnTimeoutRef.current)
+            yourTurnTimeoutRef.current = setTimeout(() => setShowYourTurnBanner(false), 5000)
+          }
         } catch (e) {}
       } else {
         document.body.classList.remove('my-turn-body')
         try {
           if (yourTurnTimeoutRef.current) { clearTimeout(yourTurnTimeoutRef.current); yourTurnTimeoutRef.current = null }
         } catch (e) {}
+        // clear lastShownTurnRef so the banner will show again the next time it's your turn
+        lastShownTurnRef.current = null
         setShowYourTurnBanner(false)
       }
     } catch (e) {}
@@ -1020,7 +1032,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     function onDoc(e) {
       try {
         const root = modeInfoRef && modeInfoRef.current
-        if (!root) return setShowModeInfo(false)
+        // If we don't yet have a ref to the badge element, don't auto-close
+        // (it may be in the process of mounting after the click that opened it).
+        if (!root) return
+        // If the popover was opened very recently (by the same click), ignore this event.
+        try {
+          const opened = modeInfoOpenedAtRef.current
+          if (opened && (Date.now() - opened) < 60) return
+        } catch (e) {}
         if (root.contains && root.contains(e.target)) return
         setShowModeInfo(false)
       } catch (err) { setShowModeInfo(false) }
@@ -1232,57 +1251,59 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   
 
-  const modeBadge = (
-  // make the outer container pointer-events:none so it does not block clicks on underlying player tiles
-  // but keep the inner card interactive by re-enabling pointer-events on it
-  <div ref={modeInfoRef} style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
-      <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
-    <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
-        <strong style={{ fontSize: 13 }}>
-          {(state?.gameMode === 'wordSeeker') ? 'Word Seeker'
-            : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney'
-            : (state?.gameMode === 'lastTeamStanding') ? 'Winner: Last team standing'
-            : 'Winner: Last one standing'}
-        </strong>
-        <small style={{ color: '#B4A3A3', fontSize: 12 }}>
-          {(state?.gameMode === 'wordSeeker') ? 'Word Seeker mode'
-            : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$'
-            : (state?.gameMode === 'lastTeamStanding') ? (state?.firstWordWins ? 'First word guessed wins' : 'Eliminate all players on the other team to win')
-            : 'Last person alive wins'}
-        </small>
-        </div>
-        {/* show a rocket badge when curses/power-ups are enabled (defaults to true) and visible to all players in the lobby */}
-          {powerUpsEnabled && phase === 'lobby' && (
-            <div title="Curses are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="powerup-rocket" style={{ fontSize: 18 }}>🕯️</span>
-              <small style={{ color: '#B4A3A3', fontSize: 12 }}>Curses</small>
+  function ModeBadge({ fixed = true }) {
+    // outer container uses fixed positioning on wide screens, static flow when inline
+    const outerStyle = fixed ? { position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' } : { position: 'static', right: 'auto', top: 'auto', zIndex: 'auto', pointerEvents: 'none' }
+    return (
+      <div style={outerStyle}>
+        <div ref={modeInfoRef} className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
+          <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1' }}>
+              <strong style={{ fontSize: 13 }}>
+                {(state?.gameMode === 'wordSeeker') ? 'Word Seeker'
+                  : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Winner: Most wordmoney'
+                  : (state?.gameMode === 'lastTeamStanding') ? 'Winner: Last team standing'
+                  : 'Winner: Last one standing'}
+              </strong>
+              <small style={{ color: '#B4A3A3', fontSize: 12 }}>
+                {(state?.gameMode === 'wordSeeker') ? 'Word Seeker mode'
+                  : (state?.gameMode === 'money' || state?.winnerByWordmoney) ? 'Mo$t wordmoney win$'
+                  : (state?.gameMode === 'lastTeamStanding') ? (state?.firstWordWins ? 'First word guessed wins' : 'Eliminate all players on the other team to win')
+                  : 'Last person alive wins'}
+              </small>
             </div>
-          )}
-          {/* Info icon to show mode-specific details */}
-          <button ref={modeInfoRef} onClick={() => setShowModeInfo(s => !s)} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
-          {showModeInfo && (
-            <div style={{ position: 'absolute', right: 18, top: 60, zIndex: 12002 }}>
-              <div className="mode-info-card card" style={{ pointerEvents: 'auto', padding: 12, maxWidth: 320 }}>
-                <div style={{ fontWeight: 800, marginBottom: 8 }}>Game info</div>
-                <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Reveal letters based on occurrence in word:</strong> {(typeof revealPreserveOrder !== 'undefined') ? (!revealPreserveOrder ? 'Yes' : 'No') : 'Unknown'}</div>
-                {state?.gameMode === 'lastTeamStanding' ? (
-                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
-                ) : (
-                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Ghost re-entry enabled:</strong> {(typeof state?.ghostReEntryEnabled !== 'undefined') ? (state.ghostReEntryEnabled ? 'Yes' : 'No') : (ghostReEntryEnabled ? 'Yes' : 'No')}</div>
-                )}
-                <div style={{ fontSize: 12, color: '#888' }}>Click the info icon again to close.</div>
+            {/* show a rocket badge when curses/power-ups are enabled (defaults to true) and visible to all players in the lobby */}
+            {powerUpsEnabled && phase === 'lobby' && (
+              <div title="Curses are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="powerup-rocket" style={{ fontSize: 18 }}>🕯️</span>
+                <small style={{ color: '#B4A3A3', fontSize: 12 }}>Curses</small>
               </div>
-            </div>
-          )}
-          {isHost && phase === 'lobby' && (
-            <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
-          )}
+            )}
+            {/* Info icon to show mode-specific details */}
+            <button onClick={(e) => { try { console.log('ModeBadge info clicked (wasOpen=', showModeInfo, ')') } catch (e) {} try { if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now() } catch (er) {} setShowModeInfo(s => !s) }} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
+            {showModeInfo && (
+              <div style={{ position: 'absolute', right: 18, top: 60, zIndex: 12002 }}>
+                <div className="mode-info-card card" style={{ pointerEvents: 'auto', padding: 12, maxWidth: 320 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Game info</div>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Reveal letters based on occurrence in word:</strong> {(typeof revealPreserveOrder !== 'undefined') ? (!revealPreserveOrder ? 'Yes' : 'No') : 'Unknown'}</div>
+                  {state?.gameMode === 'lastTeamStanding' ? (
+                    <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
+                  ) : (
+                    <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Ghost re-entry enabled:</strong> {(typeof state?.ghostReEntryEnabled !== 'undefined') ? (state.ghostReEntryEnabled ? 'Yes' : 'No') : (ghostReEntryEnabled ? 'Yes' : 'No')}</div>
+                  )}
+                  <div style={{ fontSize: 12, color: '#888' }}>Click the info icon again to close.</div>
+                </div>
+              </div>
+            )}
+            {isHost && phase === 'lobby' && (
+              <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // Debug helper: simulate a successful double-down (visible when ?debugDD=1 is in the URL)
   const showDebugDD = typeof window !== 'undefined' && /[?&]debugDD=1\b/.test(window.location.search)
@@ -4778,215 +4799,41 @@ try {
       setWordError('Submission failed : please try again')
     }
   }
-  // If the game has ended, render only the victory screen. This return comes after all hooks
-  // and derived values so it won't upset hook ordering.
-  if ( phase === 'ended') { // true) {
-    return (
-      <>
-          <div
-            className={`victory-screen ${(state?.winnerTeam || isWinner) ? 'confetti' : 'sad'}`}
-            style={
-              (state && state.gameMode === 'lastTeamStanding' && state.winnerTeam)
-                ? { background: state.winnerTeam === 'red' ? '#ff000091' : (state.winnerTeam === 'blue' ? '#001bff33' : undefined) }
-                : undefined
-            }
-          >
-          {confettiPieces.map((c, i) => (
-            <span key={i} className="confetti-piece" style={{ left: `${c.left}%`, width: c.size, height: c.size * 1.6, background: c.color, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s` }} />
-          ))}
-          {state?.winnerByWordmoney && cashPieces.map((c, i) => (
-            <span key={`cash-${i}`} className="cash-piece" style={{ left: `${c.left}%`, top: `${c.top}px`, transform: `rotate(${c.rotate}deg)`, animationDelay: `${c.delay}s`, position: 'absolute' }} />
-          ))}
+  // Note: the full victory-screen is rendered later in the main return so we avoid
+  // returning early here and breaking hook ordering. The prior early-return block
+  // was removed because hooks (e.g. responsive gutter state) are declared below.
 
-          <h1>{isWinner ? '🎉 You Win! 🎉' : `😢 ${winnerLabel || '-'} Wins`}</h1>
-          <p>{isWinner ? 'All words guessed. Nice work!' : 'Game over : better luck next time.'}</p>
-
-          {/* If the room ended with a team winner, tint the page background to match the winning team
-              and show a centered winner card (no z-index overlay). Also include the losing team's words */}
-          {state?.winnerTeam && (() => {
-            try {
-              const wt = state.winnerTeam
-              const teamColor = wt === 'red' ? '255,77,79' : (wt === 'blue' ? '24,144,255' : '136,136,136')
-              const teamMembers = (state?.players || []).filter(x => x && x.team === wt)
-              const losingMembers = (state?.players || []).filter(x => x && x.team && x.team !== wt)
-              const teamWallet = Number(state?.teams?.[wt]?.wordmoney || 0)
-              // Apply a page-level background via body so reduced z-index overlays are not needed
-              return (
-                <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                  <div style={{ maxWidth: 980, width: '100%', borderRadius: 12, padding: 28, background: 'rgba(0,0,0,0.14)', boxShadow: '0 6px 30px rgba(0,0,0,0.4)', textAlign: 'center', color: '#fff' }}>
-                    <div style={{ fontSize: 40, fontWeight: 900 }}>{wt.charAt(0).toUpperCase() + wt.slice(1)} Team Wins</div>
-                    <div style={{ fontSize: 28, fontWeight: 900, marginTop: 8 }}>${teamWallet}</div>
-                    <div style={{ marginTop: 18, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      {teamMembers.map((m, i) => (
-                        <div key={`tm_${i}`} style={{ minWidth: 140, background: 'rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 10, textAlign: 'left' }}>
-                          <div style={{ fontWeight: 800, fontSize: 16 }}>{m && m.name ? m.name : (m && m.id ? m.id : 'Player')}</div>
-                          {showWordsOnEnd && (m && m.word) && (
-                            <div style={{ fontSize: 13, opacity: 0.95, marginTop: 6 }}>{m.word}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {losingMembers.length > 0 && (
-                      <div style={{ marginTop: 20, textAlign: 'center' }}>
-                        <h4 style={{ marginBottom: 8 }}>Opposing team words</h4>
-                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-                          {losingMembers.map((m, i) => (
-                            <div key={`lm_${i}`} style={{ minWidth: 140, background: 'rgba(255,255,255,0.04)', padding: '10px 12px', borderRadius: 10 }}>
-                              <div style={{ fontWeight: 700 }}>{m && m.name ? m.name : (m && m.id ? m.id : 'Player')}</div>
-                              {showWordsOnEnd && (m && m.word) ? <div style={{ marginTop: 6, opacity: 0.95 }}>{m.word}</div> : <div style={{ marginTop: 6, opacity: 0.6, fontSize: 13 }}>No word</div>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
-                      <div style={{ marginTop: 18 }}>
-                        <strong>Ghost words:</strong>
-                        <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                          {Object.keys(state.ghostHistory).sort().map(k => {
-                            const g = state.ghostHistory[k] || {}
-                            return (
-                              <div key={`gh_${k}`} style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 10px', borderRadius: 8 }}>
-                                <strong style={{ marginRight: 8 }}>{g.word}</strong>
-                                {g.by ? <span style={{ opacity: 0.95 }}> (solved by {playerIdToName[g.by] || g.by})</span> : null}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            } catch (e) { return null }
-          })()}
-
-          {!state?.winnerTeam && (
-            <div className="standings card" style={{ marginTop: 12 }}>
-              <h4>Final standings</h4>
-              <ol>
-                {sanitizedStandings.map((p, idx) => {
-                  const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
-                  const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
-                  return (
-                    <li key={p.id} style={{ margin: '8px 0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ alignItems: 'center', gap: 8 }}>
-                        {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
-                        <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
-                        {showWordsOnEnd && p.word && (
-                          <span style={{
-                            marginLeft: 8,
-                            background: '#eef5ee',
-                            padding: '4px 8px',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            color: '#234',
-                            display: 'inline-block',
-                            maxWidth: '40vw',
-                            overflow: 'visible',
-                            whiteSpace: 'nowrap'
-                          }}>{p.word}</span>
-                        )}
-                      </div>
-                      <div style={{ fontWeight: 800 }}>
-                        <span style={{ background: '#f3f3f3', color: p.id === state?.winnerId ? '#b8860b' : '#222', padding: '6px 10px', borderRadius: 16, display: 'inline-block', minWidth: 48, textAlign: 'center' }}>
-                          ${p.wordmoney || 0}
-                        </span>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ol>
-            </div>
-          )}
-
-          <div style={{ marginTop: 14 }}>
-            <div style={{ marginBottom: 8 }}>
-              {/* Always render PlayAgainControls for the host on the victory screen so they can restart regardless of mode */}
-              {isHost && <PlayAgainControls isHost={isHost} myId={myId} players={players} />}
-            </div>
-            <div style={{ color: '#ddd' }}>If the host clicks Play again, the room will reset automatically.</div>
-            {ghostReEntryEnabled && state && state.ghostHistory && Object.keys(state.ghostHistory).length > 0 && (
-              <div className="card" style={{ marginTop: 12, padding: 10 }}>
-                <h4>Ghost challenge history</h4>
-                <div style={{ fontSize: 13 }}>
-                  {Object.keys(state.ghostHistory).sort().map(k => {
-                    const g = state.ghostHistory[k] || {}
-                    return (
-                      <div key={k} style={{ marginBottom: 6 }}>
-                        <strong style={{ marginRight: 8 }}>{g.word}</strong>
-                        {g.by ? <span style={{ color: '#888' }}> (solved by {playerIdToName[g.by] || g.by})</span> : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {/* If ghost re-entry is enabled, also show the active/last ghost target word at the bottom of the victory screen */}
-            {ghostReEntryEnabled && (() => {
-              try {
-                let wordToShow = null
-                if (state && state.ghostChallenge && state.ghostChallenge.word) wordToShow = state.ghostChallenge.word
-                else if (state && state.ghostHistory) {
-                  const keys = Object.keys(state.ghostHistory || {}).sort()
-                  if (keys.length) {
-                    const last = state.ghostHistory[keys[keys.length-1]] || {}
-                    if (last && last.word) wordToShow = last.word
-                  }
-                }
-                if (!wordToShow) return null
-                return (
-                  <div className="card" style={{ marginTop: 12, padding: 10 }}>
-                    <h4>Ghost target word</h4>
-                    <div style={{ fontSize: 16 }}><strong>{wordToShow}</strong></div>
-                  </div>
-                )
-              } catch (e) { return null }
-            })()}
-          </div>
-        </div>
-      </>
-    )
-  }
-
-  // Ensure top-right fixed overlays (modeBadge + turn indicator) do not obscure content
+  // Reserve a right gutter for the mode-badge / turn UI using CSS grid so the
+  // main content doesn't need explicit padding that shifts centering.
+  // Make the gutter responsive: collapse to a single column on narrow viewports.
   const appContentStyle = Object.assign(
-    { paddingTop: 110, paddingRight: 160 },
     powerUpOpen ? { pointerEvents: 'none', userSelect: 'none' } : {}
   )
 
+  // Responsive gutter state (collapse on small screens)
+  const [isNarrow, setIsNarrow] = React.useState(false)
+  React.useEffect(() => {
+    function onResize() {
+      try {
+        setIsNarrow(typeof window !== 'undefined' ? window.innerWidth < 900 : false)
+      } catch (e) { setIsNarrow(false) }
+    }
+    onResize()
+    try { window.addEventListener('resize', onResize) } catch (e) {}
+    return () => { try { window.removeEventListener('resize', onResize) } catch (e) {} }
+  }, [])
+
   return (
     <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''}`}>
-      {/* Render the mode badge as a fixed overlay (keeps consistent single source) */}
-      {modeBadge}
-      {/* When a team has won, render host Play Again controls as a fixed overlay above the team-tinted victory screen */}
-      {phase === 'ended' && state?.winnerTeam && (
-        <div style={{ position: 'fixed', right: 18, top: 110, zIndex: 2101 }}>
-          <PlayAgainControls isHost={isHost} myId={myId} players={players} />
-        </div>
-      )}
-      {/* Fixed turn indicator placed below the mode badge so it doesn't overlap other content */}
-      <div style={{ position: 'fixed', right: 18, top: 74, zIndex: 1 }} className="turn-indicator fixed-turn-indicator">
-        {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '-'}` : null}
-      </div>
-      {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
-      {/* Preserve reveal order indicator shown during playing phase (in-lobby it's shown inline next to timed controls) */}
-      {(phase === 'playing') && (
-        <div style={{ position: 'fixed', left: 18, top: 18, zIndex: 9998, fontSize: 12, color: '#ddd', background: 'rgba(0,0,0,0.18)', padding: '4px 8px', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }}>
-          Reveal letters based on occurence in word: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'No' : 'Yes') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
-        </div>
-      )}
-      {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
-        <div style={{ right: 18, zIndex: 1 }} className="turn-timer">
-          <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
-          <div className="time">{(() => {
-            const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
-            const s = Math.ceil(msLeft / 1000)
-            return `${s}s`
-          })()}</div>
-        </div>
-      )}
-      <div className="app-content" style={appContentStyle}>
+      {/* Layout: two-column grid. Left = main app content (centered by content styles),
+          Right = a fixed-width gutter that holds mode badge, turn indicator, timers, etc. */}
+  <div style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr ', gap: 0 }}>
+        <div style={{ gridColumn: '1 / 2' }}>
+          <div className="app-content" style={appContentStyle}>
+            {/* On narrow screens render the modeBadge inline at the top of app content so it remains discoverable */}
+            {isNarrow && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><ModeBadge fixed={false} /></div>
+            )}
   {(() => {
     if (modalRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
       try { return ReactDOM.createPortal(settingsNode, modalRoot) } catch (e) { return settingsNode }
@@ -5355,6 +5202,25 @@ try {
 
   <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
     {players.length === 0 && <div>No players yet : wait for others to join.</div>}
+    {/* Place the prominent "Your turn" card at the top of the players circle when it's your turn.
+        This renders inside the flow of the circle so it stays visually attached to the player list
+        instead of as a separate fixed overlay. */}
+    {phase === 'playing' && isMyTurnNow && (() => {
+      try {
+        const me = players.find(p => p.id === myId) || {}
+        return (
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: 12 }} aria-live="polite">
+            <div className="big-yourturn-card" style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '12px 18px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.96))', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
+              <div className="big-avatar big-self" style={{ background: (me.color || '#2b8cff'), width: 64, height: 64, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{(me.name || 'You')[0] || '?'}</div>
+              <div style={{ marginLeft: 0 }}>
+                <h1 style={{ margin: 0, fontSize: 28, lineHeight: '1.02' }}>Your turn</h1>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{me.name || 'You'}</div>
+              </div>
+            </div>
+          </div>
+        )
+      } catch (e) { return null }
+    })()}
         {/* Timer moved to fixed overlay near turn indicator */}
         {(() => {
           // defensive: ensure players is an array of objects (some DB writes may briefly produce non-object entries)
@@ -5639,6 +5505,50 @@ try {
       </div>
 
   </div>{/* end app-content */}
+
+        </div>{/* end left column */}
+        {!isNarrow && (
+          <div style={{ gridColumn: '2 / 3', padding: 12, boxSizing: 'border-box' }}>
+            <div style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-end' }}>
+              {/* authoritative mode badge rendered in the right gutter so it doesn't overlap centered content */}
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}><ModeBadge fixed={true} /></div>
+
+              {/* Host PlayAgain controls shown in the gutter (only when ended/team winner present) */}
+              {phase === 'ended' && state?.winnerTeam && (
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+                  <PlayAgainControls isHost={isHost} myId={myId} players={players} />
+                </div>
+              )}
+
+              {/* Turn indicator (flowed into the gutter instead of fixed) */}
+              <div className="turn-indicator" style={{ fontSize: 13, color: '#ddd', textAlign: 'right' }}>
+                {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '-'}` : null}
+              </div>
+
+              {/* Reveal indicator (kept visible during playing) */}
+              {/* {(phase === 'playing') && (
+                <div style={{ fontSize: 12, color: '#ddd', background: 'rgba(0,0,0,0.12)', padding: '6px 10px', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.06)', textAlign: 'right' }}>
+                  Reveal letters based on occurence in word: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'No' : 'Yes') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
+                </div>
+              )} */}
+
+              {/* Turn timer (flowed into gutter) */}
+              {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
+                <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+                  <div className="turn-timer" style={{ textAlign: 'right' }}>
+                    <div className="bar"><div className="fill" style={{ width: `${Math.max(0, (state?.currentTurnStartedAt + (state?.turnTimeoutSeconds*1000) - Date.now()) / (state?.turnTimeoutSeconds*1000) * 100)}%` }} /></div>
+                    <div className="time">{(() => {
+                      const msLeft = Math.max(0, (state?.currentTurnStartedAt || 0) + ((state?.turnTimeoutSeconds || 0)*1000) - Date.now())
+                      const s = Math.ceil(msLeft / 1000)
+                      return `${s}s`
+                    })()}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>{/* end two-column grid */}
   {/* falling coins overlay for recent double-down wins (rendered at top-level so z-index works) */}
   {
     ddCoins && ddCoins.length > 0 && (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)))
@@ -5679,21 +5589,7 @@ try {
           </div>
         )
       }
-      // Prominent Your Turn banner when it's your turn during play (auto-hides after 5s)
-      if (phase === 'playing' && isMyTurnNow && showYourTurnBanner) {
-        const me = players.find(p => p.id === myId) || {}
-        return (
-          <div className="big-yourturn-overlay" aria-live="polite">
-            <div className="big-yourturn-card">
-              <div className="big-avatar big-self" style={{ background: (me.color || '#2b8cff') }}>{(me.name || 'You')[0] || '?'}</div>
-              <div style={{ marginLeft: 18 }}>
-                <h1 style={{ margin: 0, fontSize: 48, lineHeight: '1.02' }}>Your turn</h1>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{me.name || 'You'}</div>
-              </div>
-            </div>
-          </div>
-        )
-      }
+      // Prominent Your Turn banner handled inside the players circle now; keep waiting overlay here
     } catch (e) {}
     return null
   })()}

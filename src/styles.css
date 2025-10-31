@@ -79,7 +79,7 @@ button[disabled] {
 }
 
 /* Player circles */
-.circle { display:flex; gap: 16px; flex-wrap:wrap; justify-content:center }
+.circle { display:flex; gap: 16px; flex-wrap:wrap; justify-content:center; padding-top: 2vh; }
 .player { width: 200px; border-radius: 16px; text-align: left; padding: 12px; background: linear-gradient(180deg, rgba(22,20,22,0.9), rgba(18,16,20,0.92)); box-shadow: 0 8px 20px rgba(0,0,0,0.6); transition: transform .18s }
  .player:hover { transform: translateY(-6px) }
 /* New layout helpers for playing phase: make player tiles slightly more compact and stable */
@@ -113,6 +113,7 @@ button[disabled] {
   min-width: 0; /* allow flex children to shrink */
   /* Ensure actions don't overflow the player tile horizontally; allow vertical growth */
   overflow: visible;
+  flex-direction: column;
 }
 
 .player .action-button {
