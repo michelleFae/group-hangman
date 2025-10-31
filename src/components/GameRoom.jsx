@@ -21,6 +21,7 @@ import { buildRoomUrl } from '../utils/url'
 
 // Small, memoized component to isolate starting balance and min-word-size controls.
 // This keeps frequent local edits (typing) from re-rendering the entire Settings UI.
+
 const StartingMinSettings = React.memo(function StartingMinSettings({ initialStarting, initialMin, onPersistStarting, onPersistMin, isHost }) {
   const [localStart, setLocalStart] = React.useState(typeof initialStarting === 'number' ? initialStarting : 0)
   const [localMin, setLocalMin] = React.useState(typeof initialMin === 'number' ? initialMin : 2)
@@ -28,6 +29,7 @@ const StartingMinSettings = React.memo(function StartingMinSettings({ initialSta
   // Keep inputs in sync when authoritative values change from outside
   React.useEffect(() => { try { setLocalStart(typeof initialStarting === 'number' ? initialStarting : 0) } catch (e) {} }, [initialStarting])
   React.useEffect(() => { try { setLocalMin(typeof initialMin === 'number' ? initialMin : 2) } catch (e) {} }, [initialMin])
+ 
 
   return (
     <div>
@@ -248,6 +250,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
   const [firstWordWins, setFirstWordWins] = useState(true)
+  // Mode badge info popover
+  const [showModeInfo, setShowModeInfo] = useState(false)
+  const modeInfoRef = useRef(null)
   // dedupe double-down room announcements so we only show them once per ts
   const processedDoubleDownRef = useRef({})
   // Underworld event banner when someone is eliminated by a guess
@@ -1009,6 +1014,20 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // Watch for ghost re-entry announcements and notify once
   const processedGhostAnnRef = useRef({})
+  // close mode info popover on outside click
+  useEffect(() => {
+    if (!showModeInfo) return undefined
+    function onDoc(e) {
+      try {
+        const root = modeInfoRef && modeInfoRef.current
+        if (!root) return setShowModeInfo(false)
+        if (root.contains && root.contains(e.target)) return
+        setShowModeInfo(false)
+      } catch (err) { setShowModeInfo(false) }
+    }
+    document.addEventListener('click', onDoc)
+    return () => document.removeEventListener('click', onDoc)
+  }, [showModeInfo])
   useEffect(() => {
     try {
       const anns = state?.ghostAnnouncements || {}
@@ -1214,9 +1233,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   
 
   const modeBadge = (
-    // make the outer container pointer-events:none so it does not block clicks on underlying player tiles
-    // but keep the inner card interactive by re-enabling pointer-events on it
-    <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
+  // make the outer container pointer-events:none so it does not block clicks on underlying player tiles
+  // but keep the inner card interactive by re-enabling pointer-events on it
+  <div ref={modeInfoRef} style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
       <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
     <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1239,6 +1258,22 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             <div title="Curses are enabled" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="powerup-rocket" style={{ fontSize: 18 }}>🕯️</span>
               <small style={{ color: '#B4A3A3', fontSize: 12 }}>Curses</small>
+            </div>
+          )}
+          {/* Info icon to show mode-specific details */}
+          <button ref={modeInfoRef} onClick={() => setShowModeInfo(s => !s)} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
+          {showModeInfo && (
+            <div style={{ position: 'absolute', right: 18, top: 60, zIndex: 12002 }}>
+              <div className="mode-info-card card" style={{ pointerEvents: 'auto', padding: 12, maxWidth: 320 }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>Game info</div>
+                <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Reveal letters based on occurrence in word:</strong> {(typeof revealPreserveOrder !== 'undefined') ? (!revealPreserveOrder ? 'Yes' : 'No') : 'Unknown'}</div>
+                {state?.gameMode === 'lastTeamStanding' ? (
+                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
+                ) : (
+                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Ghost re-entry enabled:</strong> {(typeof state?.ghostReEntryEnabled !== 'undefined') ? (state.ghostReEntryEnabled ? 'Yes' : 'No') : (ghostReEntryEnabled ? 'Yes' : 'No')}</div>
+                )}
+                <div style={{ fontSize: 12, color: '#888' }}>Click the info icon again to close.</div>
+              </div>
             </div>
           )}
           {isHost && phase === 'lobby' && (
@@ -1785,6 +1820,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   }
 
   // Power-up definitions
+  // Memoize the SettingsModal element in the GameRoom scope so unrelated re-renders
+  // don't recreate it and close native <select> dropdowns. The element is memoized
+  // (not the portal) and later rendered into the modalRoot via ReactDOM.createPortal.
+  const settingsNode = useMemo(() => {
+    try {
+      return <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+    } catch (e) {
+      return <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+    }
+  }, [showSettings, timedMode, turnSeconds, starterEnabled, secretThemeEnabled, secretThemeType, gameMode, firstWordWins, wordSeekerTimerSeconds, wordSeekerRounds, powerUpsEnabled, ghostReEntryEnabled, ghostGuessCooldownSeconds, minWordSize, startingWordmoney, revealPreserveOrder, revealShowBlanks])
   const POWER_UPS = [
     { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word, only to each other. Both players get points unless the letter has already been revealed before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
     { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Privately tells just you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
@@ -4925,8 +4970,8 @@ try {
         {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '-'}` : null}
       </div>
       {/* Fixed timer overlay placed below the turn indicator so it doesn't move with the player circle */}
-      {/* Preserve reveal order indicator shown in lobby and playing phases */}
-      {(phase === 'lobby' || phase === 'playing') && (
+      {/* Preserve reveal order indicator shown during playing phase (in-lobby it's shown inline next to timed controls) */}
+      {(phase === 'playing') && (
         <div style={{ position: 'fixed', left: 18, top: 18, zIndex: 9998, fontSize: 12, color: '#ddd', background: 'rgba(0,0,0,0.18)', padding: '4px 8px', borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,0.12)' }}>
           Reveal letters based on occurence in word: <strong style={{ marginLeft: 6, color: '#fff' }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'No' : 'Yes') : (revealPreserveOrder ? 'On' : 'Off')}</strong>
         </div>
@@ -4943,21 +4988,28 @@ try {
       )}
       <div className="app-content" style={appContentStyle}>
   {(() => {
-    const node = <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     if (modalRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
-      try { return ReactDOM.createPortal(node, modalRoot) } catch (e) { return node }
+      try { return ReactDOM.createPortal(settingsNode, modalRoot) } catch (e) { return settingsNode }
     }
-    return node
+    return settingsNode
   })()}
-  {phase === 'lobby' && <h2>Room: {roomId}</h2>}
-  {phase === 'lobby' && secretThemeEnabled && (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <ThemeBadge type={secretThemeType} />
-      {secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && state.secretWordTheme.custom.title ? (
-        <div style={{ fontSize: 13, color: '#666', marginLeft: 6 }} title={state.secretWordTheme.custom.title}>
-          {state.secretWordTheme.custom.title}{Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0 ? ' (any word allowed)' : ''}
-        </div>
-      ) : null}
+  {phase === 'lobby' && (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <h2 style={{ margin: 0 }}>Room: {roomId}</h2>
+        {secretThemeEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ThemeBadge type={secretThemeType} />
+            {secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && state.secretWordTheme.custom.title ? (
+              <div style={{ fontSize: 13, color: '#666', marginLeft: 6 }} title={state.secretWordTheme.custom.title}>
+                {state.secretWordTheme.custom.title}{Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0 ? ' (any word allowed)' : ''}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* (removed duplicate inline compact mode card — the fixed `modeBadge` overlay above is authoritative) */}
     </div>
   )}
       {phase === 'lobby' && (
@@ -4970,6 +5022,12 @@ try {
               <div style={{ color: '#555' }}>
                 Timed mode: <strong>{state?.timed ? 'On' : 'Off'}</strong>
                 {state?.timed && <span style={{ marginLeft: 12 }}>Seconds per turn: <strong>{state?.turnTimeoutSeconds}</strong></span>}
+                {/* Reveal-setting shown inline in lobby next to timed mode */}
+                <span style={{ marginLeft: 12 }}>Reveal letters based on occurrence in word: <strong style={{ marginLeft: 6 }}>{(typeof state?.revealPreserveOrder === 'boolean') ? (state.revealPreserveOrder ? 'No' : 'Yes') : (revealPreserveOrder ? 'On' : 'Off')}</strong></span>
+                {/* When in lastTeamStanding, surface the firstWordWins rule inline */}
+                {state?.gameMode === 'lastTeamStanding' && (
+                  <span style={{ marginLeft: 12 }}>Rule: <strong>{(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'First word guessed wins' : 'Full elimination required') : (firstWordWins ? 'First word guessed wins' : 'Full elimination required')}</strong></span>
+                )}
               </div>
             )}
           </div>
@@ -5556,7 +5614,7 @@ try {
 
           // Non-team modes: render players in a circular/wrap layout centered on screen
           return (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+            <div style={{ paddingTop: '2vh', display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
               {sanitized.map(p => (
                 <div key={`pc_circle_${p.id}`} style={{ flex: '0 0 auto' }}>{renderTile(p)}</div>
               ))}
