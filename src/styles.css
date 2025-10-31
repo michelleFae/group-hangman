@@ -414,6 +414,12 @@ button[disabled] {
 /* header mode badge */
 .mode-badge { background: rgba(255,255,255,0.02); box-shadow: 0 8px 22px rgba(0,0,0,0.7); border-radius: 12px }
 
+/* Prevent the mode badge from 'lifting' on hover like other .card elements */
+.mode-badge.card, .mode-badge.card:hover {
+  transform: none !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.7) !important;
+}
+
  /* small rocket badge used to indicate power-ups are enabled in the room */
 .powerup-rocket { display: inline-block; padding: 4px 6px; border-radius: 8px; background: linear-gradient(90deg,#3b2b1f,#2e271f); box-shadow: 0 6px 14px rgba(0,0,0,0.6) }
 

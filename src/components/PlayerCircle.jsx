@@ -58,10 +58,7 @@ export default function PlayerCircle({
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
   const [guessValue, setGuessValue] = useState('')
-  // Toast shown when we auto-close the guess dialog (timeout or turn change)
-  const [showGuessClosedToast, setShowGuessClosedToast] = useState(false)
-  const [guessClosedToastMessage, setGuessClosedToastMessage] = useState('')
-  const toastTimeoutRef = useRef(null)
+  // (removed guess-closed toast; keep dialog open/closed logic only)
   // default expanded only for the player's own tile; other tiles start collapsed
   const [expanded, setExpanded] = useState(!!isSelf)
   // teammates' full-word view must be explicitly enabled; default off to avoid leakage
@@ -83,24 +80,16 @@ export default function PlayerCircle({
       if (!showGuessDialog) return
       // If the guess dialog is open and there is no time left for this player, close it and show toast
       if (typeof timeLeftMs === 'number' && timeLeftMs <= 0) {
+        // simply close the dialog when time runs out
         setShowGuessDialog(false)
-        try { setGuessClosedToastMessage("Time's up! Guess closed") } catch (e) {}
-        try { setShowGuessClosedToast(true) } catch (e) {}
-        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
-        toastTimeoutRef.current = setTimeout(() => setShowGuessClosedToast(false), 3000)
       }
       // If the guess dialog is open but the current turn changed away from this player, close it and show toast
       else if (currentTurnId && currentTurnId !== player.id) {
+        // simply close the dialog when the turn moves away
         setShowGuessDialog(false)
-        try { setGuessClosedToastMessage('Turn changed! Guess closed') } catch (e) {}
-        try { setShowGuessClosedToast(true) } catch (e) {}
-        if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
-        toastTimeoutRef.current = setTimeout(() => setShowGuessClosedToast(false), 3000)
       }
     } catch (e) {}
-    return () => {
-      if (toastTimeoutRef.current) { clearTimeout(toastTimeoutRef.current); toastTimeoutRef.current = null }
-    }
+    return () => {}
   }, [timeLeftMs, currentTurnId, showGuessDialog, player.id])
 
   const hideInteractiveForWordSeeker = (gameMode === 'wordSeeker')
@@ -506,8 +495,9 @@ export default function PlayerCircle({
 
   return (
   <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${player && player.stale ? 'player-stale' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
-      {/* Host remove control (red X) shown only to host during lobby or ended phases */}
-      {isHost && (phase === 'lobby' || phase === 'ended') && onRemove && !isSelf && (
+      {/* Host remove control (red X) shown to host for non-self players in all phases.
+          Automated stale/kick behavior is disabled; hosts should remove absent players manually. */}
+      {isHost && onRemove && !isSelf && (
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'center' }}>
@@ -518,6 +508,10 @@ export default function PlayerCircle({
             )}
           <div style={{ position: 'relative' }}>
             <div className="avatar" style={{ background: avatarColor }}>{player.name ? player.name[0] : '?'}</div>
+            {/* Presence indicator: show to hosts when this player has no registered open tabs */}
+            {isHost && !isSelf && (!(player && player.tabs) || Object.keys(player.tabs || {}).length === 0) && (
+              <div title="No active tabs" style={{ position: 'absolute', right: -6, top: -6, background: '#333', color: '#fff', padding: '4px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,0.18)' }}>Offline</div>
+            )}
             {/* Frozen badge: visible when player is frozen (others see it) */}
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
@@ -562,7 +556,7 @@ export default function PlayerCircle({
 
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
+            <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', justifyContent: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
               {isSelf ? (
                 showOwnWord ? (
                   // If in Word Seeker and the viewer is the spy, don't reveal the word : show a neutral message
@@ -709,12 +703,7 @@ export default function PlayerCircle({
         </div>
       )}
 
-      {/* Toast shown when we auto-close the guess dialog (timeout or turn change) */}
-      {showGuessClosedToast && (
-        <div className="gh-guess-toast" role="status" aria-live="polite">
-          {guessClosedToastMessage}
-        </div>
-      )}
+      {/* guess-closed toast removed: dialog will simply close when time expires or turn changes */}
 
       {expanded && (
         <div style={{ marginTop: 10 }}>
