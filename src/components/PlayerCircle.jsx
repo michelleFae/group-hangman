@@ -590,7 +590,10 @@ export default function PlayerCircle({
           {player && player.wordSeekerVote && (
             <div className="voted-badge" title="Voted in Word Seeker" style={{ marginTop: 6, padding: '2px 6px', borderRadius: 8, background: '#4CAF50', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓ Voted</div>
           )}
-           {/* Ready indicator visible to everyone. Show host as ready on other players' screens in the lobby */}
+           
+        </div>
+        <div>
+        {/* Ready indicator visible to everyone. Show host as ready on other players' screens in the lobby */}
           {typeof ready !== 'undefined' && !isSelf && phase === 'lobby' && (() => {
             const displayedReady = (player && player.id && hostId && player.id === hostId) ? true : !!ready
             return (
@@ -601,7 +604,32 @@ export default function PlayerCircle({
           })()}
         </div>
 
-        <div style={{ flex: 1 }}>
+        <div >
+                          {/* Ready toggle for local (non-host) players while in lobby */}
+                {phase === 'lobby' && isSelf && !isHost && typeof onToggleReady === 'function' && (
+                  <button
+                    onClick={() => { try { onToggleReady(player.id, !ready) } catch (e) { console.warn('toggle ready failed', e) } }}
+                    aria-pressed={!!ready}
+                    title={ready ? 'Click to unset Ready' : 'Click to set Ready'}
+                    style={{
+                      fontSize: 13,
+                      padding: '6px 12px',
+                      borderRadius: 999,
+                      marginTop: 6,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: ready ? 'linear-gradient(90deg,#27ae60,#16a34a)' : 'linear-gradient(90deg,#ff7a7a,#ff3b3b)',
+                      color: '#fff',
+                      boxShadow: ready ? '0 6px 18px rgba(39,174,96,0.28), 0 0 12px rgba(39,174,96,0.32)' : '0 6px 18px rgba(255,92,92,0.32), 0 0 18px rgba(255,92,92,0.48)',
+                      fontWeight: 800,
+                      transition: 'box-shadow 220ms ease, transform 220ms ease'
+                    }}
+                    onMouseEnter={e => { if (!ready) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={e => { if (!ready) e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    {ready ? 'Ready' : 'Click to set Ready'}
+                  </button>
+                )}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div className="revealed" title={isSelf && ownerWord ? `Your word: ${ownerWord}` : `Revealed letters for ${player.name}`} style={{ marginBottom: 8, position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', justifyContent: 'center', fontSize: 13, lineHeight: '1.1', maxWidth: '100%', overflow: 'visible' }}>
               {isSelf ? (
@@ -727,28 +755,7 @@ export default function PlayerCircle({
                     {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
                   </button>
                 ) : null}
-                {/* Ready toggle for local (non-host) players while in lobby */}
-                {phase === 'lobby' && isSelf && !isHost && typeof onToggleReady === 'function' && (
-                  <button
-                    onClick={() => { try { onToggleReady(player.id, !ready) } catch (e) { console.warn('toggle ready failed', e) } }}
-                    aria-pressed={!!ready}
-                    title={ready ? 'Click to unset Ready' : 'Click to set Ready'}
-                    style={{
-                      fontSize: 13,
-                      padding: '6px 12px',
-                      borderRadius: 999,
-                      marginTop: 6,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: ready ? 'linear-gradient(90deg,#27ae60,#16a34a)' : undefined,
-                      color: ready ? '#fff' : undefined,
-                      boxShadow: ready ? '0 6px 18px rgba(39,174,96,0.28), 0 0 12px rgba(39,174,96,0.32)' : undefined,
-                      fontWeight: 800
-                    }}
-                  >
-                    {ready ? 'Ready' : 'Click if Ready!'}
-                  </button>
-                )}
+
                 
               </div>
             )}

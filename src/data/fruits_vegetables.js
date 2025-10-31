@@ -7,9 +7,9 @@ const BASE = [
   'kiwi','kumquat','lemon','lime','lychee','mango','mandarin','nectarine','orange','papaya','passionfruit','peach',
   'pear','persimmon','pineapple','plum','pomegranate','quince','raspberry','starfruit','strawberry','tangerine','ugli',
   'watermelon','melon','cantaloupe',
-  'plantain','rambutan','jackfruit','soursop','tamarillo','tamarind','mangosteen',
+  'plantain','rambutan','jackfruit','soursop','tamarillo','tamarind','mangosteen','ladyfinger','longkong',
   'longan','loquat','jujube','mulberry','gooseberry','breadfruit','salak','ackee',
-  'ube','honeydew','galia',
+  'ube','honeydew','galia','brinjal','aubergine',
   'jambu','mangaba','jabuticaba','lucuma','sapodilla','pulasan','marang','lanzones','wolfberry','cloudberry','wampee',
   // additional fruits containing the letter 'a' to expand theme pools
   'acerola','ambarella','amla','canistel','feijoa','kiwano','medlar','nance','langsat','muscadine','santol','saskatoon','tangelo','starapple',
