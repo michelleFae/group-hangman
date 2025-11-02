@@ -62,7 +62,7 @@ const BASE_ANIMALS = [
   // neotropical rodents / related species added
   'agouti','paca','pacarana','acouchi','acouchy','coendou','peccary','javelina','tayassu',
   // additional requested animals
-  'crane','nia','nene','nilgai','nandu','nudibranch',
+  'crane','nia','nene','nilgai','nandu','nudibranch','veery','vireo','wren','wildebeest','wallaroo','warbler','weasel','whippet','widgeon','wigglefish','wobbegong','woodlouse','woodcock','wrangler','wryneck',
 ]
 
 // A small set of well-known irregular plurals and no-change plurals

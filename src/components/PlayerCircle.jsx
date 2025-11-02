@@ -280,7 +280,10 @@ export default function PlayerCircle({
     }
     const sourceId = privateLetterSource[lower]
     // only show privately-revealed letters when viewer is allowed to see them
-    if (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId]) return <span key={idx} style={{ color: playerColors[sourceId], fontWeight: 700 }}>{ch}</span>
+    if (sourceId && allowedPrivateLetters.has(lower)) {
+      const color = (playerColors && playerColors[sourceId]) ? playerColors[sourceId] : revealedLetterColor
+      return <span key={idx} style={{ color, fontWeight: 700 }}>{ch}</span>
+    }
     return <span key={idx} style={{ color: '#9aa47f' }}>{ch}</span>
   })
 
@@ -432,7 +435,10 @@ export default function PlayerCircle({
       }
       const sourceId = instanceSource || privateLetterSource[lower]
       // Only render private-letter coloring when the viewer is allowed to see that letter
-      if (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId]) return <span key={`g_${idx}`} style={{ marginRight: 6, color: playerColors[sourceId] }}>{letter}</span>
+      if (sourceId && allowedPrivateLetters.has(lower)) {
+        const color = (playerColors && playerColors[sourceId]) ? playerColors[sourceId] : revealedLetterColor
+        return <span key={`g_${idx}`} style={{ marginRight: 6, color }}>{letter}</span>
+      }
       return <span key={`g_${idx}`} style={{ marginRight: 6 }}>{letter}</span>
     })
   } else {
@@ -448,7 +454,10 @@ export default function PlayerCircle({
       }
       const sourceId = privateLetterSource[lower]
       // Only render private-letter coloring when the viewer is allowed to see that letter
-      if ((isSelf) || (sourceId && allowedPrivateLetters.has(lower) && playerColors && playerColors[sourceId])) return <span key={`r_${idx}`} style={{ marginRight: 4, color: playerColors[sourceId] }}>{ch}</span>
+      if ((isSelf) || (sourceId && allowedPrivateLetters.has(lower))) {
+        const color = (playerColors && playerColors[sourceId]) ? playerColors[sourceId] : (isSelf ? '#000' : revealedLetterColor)
+        return <span key={`r_${idx}`} style={{ marginRight: 4, color }}>{ch}</span>
+      }
       if (revealShowBlanks) return <span key={`r_${idx}`} style={{ color: '#999', marginRight: 4 }}>_</span>
       return null
     }).filter(Boolean)
@@ -724,7 +733,7 @@ export default function PlayerCircle({
             {!hideInteractiveForWordSeeker && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
                 {/* Show teammate's word button: only when in lastTeamStanding and viewer is on same team */}
-                {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam) && (
+                {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam && phase !== 'lobby') && (
                   <button
                     onClick={async () => {
                       // If parent provided handler, use it to persist reveal to DB; otherwise fall back to local toggle

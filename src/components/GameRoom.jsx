@@ -159,6 +159,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // starting wordmoney is hard-coded to 2; no local state needed
   const [startingWordmoney, setStartingWordmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
+  const [startGameHint, setStartGameHint] = useState(null)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
   // auto-disable ghost when host custom set explicitly allows any word (empty array)
@@ -1314,20 +1315,34 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             )}
             {/* Info icon to show mode-specific details */}
             <button onClick={(e) => { try { console.log('ModeBadge info clicked (wasOpen=', showModeInfo, ')') } catch (e) {} try { if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now() } catch (er) {} setShowModeInfo(s => !s) }} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
-            {showModeInfo && (
-              <div style={{ position: 'absolute', right: 18, top: 60, zIndex: 12002 }}>
-                <div className="mode-info-card card" style={{ pointerEvents: 'auto', padding: 12, maxWidth: 320 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Game info</div>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Reveal letters based on occurrence in word:</strong> {(typeof revealPreserveOrder !== 'undefined') ? (!revealPreserveOrder ? 'Yes' : 'No') : 'Unknown'}</div>
-                  {state?.gameMode === 'lastTeamStanding' ? (
-                    <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
-                  ) : (
+            {showModeInfo && (() => {
+              // Render the info popover via a portal to avoid being blocked by player tiles
+              const node = (
+                <div style={{ position: 'absolute', right: 18, top: 60, zIndex: 12002 }}>
+                  <div className="mode-info-card card" style={{ pointerEvents: 'auto', padding: 12, maxWidth: 320 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>Game info</div>
+                    <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Reveal letters based on occurrence in word:</strong> {(typeof revealPreserveOrder !== 'undefined') ? (!revealPreserveOrder ? 'Yes' : 'No') : 'Unknown'}</div>
+                    {state?.gameMode === 'lastTeamStanding' ? (
+                      <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
+                    ) : null}
                     <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Ghost re-entry enabled:</strong> {(typeof state?.ghostReEntryEnabled !== 'undefined') ? (state.ghostReEntryEnabled ? 'Yes' : 'No') : (ghostReEntryEnabled ? 'Yes' : 'No')}</div>
-                  )}
-                  <div style={{ fontSize: 12, color: '#888' }}>Click the info icon again to close.</div>
+                    <div style={{ fontSize: 13, marginBottom: 6 }}>
+                      <strong>Secret-word theme:</strong>
+                      {secretThemeEnabled ? (
+                        <div style={{ display: 'inline-block', marginLeft: 8 }}><ThemeBadge type={secretThemeType} /></div>
+                      ) : (
+                        <span style={{ marginLeft: 8, color: '#888' }}>None</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#888' }}>Click the info icon again to close.</div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+              try {
+                if (modalRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) return ReactDOM.createPortal(node, modalRoot)
+              } catch (e) {}
+              return node
+            })()}
             {isHost && phase === 'lobby' && (
               <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
             )}
@@ -1373,6 +1388,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (typeof safe.startingWordmoney !== 'undefined') {
           const n = Number(safe.startingWordmoney)
           safe.startingWordmoney = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+        }
+      } catch (e) {}
+      // If the mode is being changed to lastTeamStanding and firstWordWins is unset,
+      // initialize it to true for sensible default behaviour.
+      try {
+        if (safe.gameMode === 'lastTeamStanding') {
+          if (typeof (state && state.firstWordWins) === 'undefined' || state.firstWordWins === null) {
+            safe.firstWordWins = true
+          }
         }
       } catch (e) {}
   await safeDbUpdate(roomRef, safe)
@@ -3544,7 +3568,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             updates[`currentTurnIndex`] = nextIndex
             updates[`currentTurnStartedAt`] = Date.now()
               try {
-                const nextPlayer = effectiveTurnOrder[nextIndex]
+                const nextOrder = (updates && Object.prototype.hasOwnProperty.call(updates, 'turnOrder')) ? updates['turnOrder'] : effectiveTurnOrder
+                const nextPlayer = nextOrder[nextIndex]
                 const nextNode = (state.players || []).find(p => p.id === nextPlayer) || {}
                 // Award +1 to the player whose turn begins. Use applyAward so team-mode credits team wallet.
                 try {
@@ -4185,10 +4210,14 @@ try {
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
           updates[`players/${p.id}/noScoreReveals`] = null
+          // Clear any previous team assignment so teams do not persist across restarts
+          try { updates[`players/${p.id}/team`] = null } catch (e) {}
           // Clear any prior guess-blocking records so players can be guessed again on automatic rematch
           updates[`players/${p.id}/guessedBy`] = null
         })
 
+  // clear the entire teams branch so team wallets/metadata don't persist across restarts
+  try { updates['teams'] = null } catch (e) {}
   const ok = await attemptReset(updates)
         if (ok) {
           const idOk = `rematch_host_ok_${Date.now()}`
@@ -4305,8 +4334,12 @@ try {
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
           updates[`players/${p.id}/noScoreReveals`] = null
+          // Clear any previous team assignment so teams do not persist across automatic rematches
+          try { updates[`players/${p.id}/team`] = null } catch (e) {}
         })
-        const ok = await attemptReset(updates)
+  // clear the entire teams branch so team wallets/metadata don't persist across automatic rematches
+  try { updates['teams'] = null } catch (e) {}
+  const ok = await attemptReset(updates)
         if (!ok) console.warn('Host reset attempted but failed; players may still be opted in')
       } catch (e) {
         console.error('Host attempted rematch reset failed', e)
@@ -4971,13 +5004,24 @@ try {
             <>
               <button
                 onClick={async () => {
-                  if (gameMode === 'wordSeeker') {
-                    // Word Seeker requires at least 3 players
-                    if ((players || []).length < 3) {
-                      try { setToasts(t => [...t, { id: `ws_minplayers_${Date.now()}`, text: 'Word Seeker requires at least 3 players to start' }]) } catch (e) {}
-                      setTimeout(() => setToasts(t => t.filter(x => !(x.id && String(x.id).startsWith('ws_minplayers_')))), 3500)
+                  // compute human-friendly reasons why start is blocked
+                  try {
+                    const reasons = []
+                    const pcount = (players || []).length
+                    if (pcount < 2) reasons.push('Need at least 2 players to start')
+                    if ((state && state.gameMode) === 'lastTeamStanding' && pcount < 4) reasons.push('Need at least 4 players to start Last Team Standing')
+                    if ((state && state.gameMode) === 'wordSeeker' && pcount < 3) reasons.push('Need at least 3 players to start Word Seeker')
+                    if (!allNonHostPlayersReady) reasons.push('Waiting for all players to mark Ready')
+                    if (reasons.length > 0) {
+                      const msg = reasons.join(' · ')
+                      setStartGameHint(msg)
+                      setTimeout(() => { try { setStartGameHint(null) } catch (e) {} }, 4000)
                       return
                     }
+                  } catch (e) {}
+
+                  // no blocking reasons — proceed with existing start logic
+                  if (gameMode === 'wordSeeker') {
                     try { startWordSeeker({ timerSeconds: wordSeekerTimerSeconds, rounds: wordSeekerRounds }) } catch (e) { console.warn('startWordSeeker failed', e) }
                   } else {
                     const opts = timedMode ? { timed: true, turnSeconds, starterEnabled, winnerByWordmoney } : { starterEnabled, winnerByWordmoney }
@@ -4994,14 +5038,16 @@ try {
                     try { await startGame(opts) } catch (e) { console.warn('startGame failed', e) }
                   }
                 }}
-                disabled={players.length < 2 || ((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) || ((state && state.gameMode) === 'wordSeeker' && players.length < 3) || !allNonHostPlayersReady}
                 title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 4)
                   ? 'Need at least 4 players to start Last Team Standing'
                   : ((state && state.gameMode) === 'wordSeeker' && players.length < 3)
                     ? 'Need at least 3 players to start Word Seeker'
                     : (players.length < 2 ? 'Need at least 2 players to start' : '')}
-                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSeeker' && players.length < 3)) ? 'start-ready' : ''}
+                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSeeker' && players.length < 3) && allNonHostPlayersReady) ? 'start-ready' : ''}
               >Start game</button>
+              {startGameHint && (
+                <div style={{ marginTop: 8, color: '#f3f3f3', background: '#8b2b2b', padding: '6px 10px', borderRadius: 8, fontSize: 13 }} role="status">{startGameHint}</div>
+              )}
               {!allNonHostPlayersReady && (
                 <div style={{ fontSize: 13, color: '#7b6f8a', marginTop: 6 }}>Waiting for all players to mark Ready</div>
               )}
@@ -5668,21 +5714,7 @@ try {
   {/* Big overlays: Waiting for player or Your Turn */}
   {(() => {
     try {
-      // Show big waiting banner during submission phase
-      if (phase === 'submit' && firstWaiting) {
-        return (
-          <div className="big-waiting-overlay" aria-live="polite">
-            <div className="big-waiting-card">
-              <div className="big-avatar" style={{ background: (firstWaiting.color || '#888') }}>{(firstWaiting.name || '?')[0] || '?'}</div>
-              <div style={{ marginLeft: 18 }}>
-                <h1 style={{ margin: 0, fontSize: 48, lineHeight: '1.02' }}>Waiting for</h1>
-                <div style={{ fontSize: 40, fontWeight: 900 }}>{firstWaiting.name}</div>
-              </div>
-            </div>
-            <div className="big-waiting-sub">Other players are still submitting their words</div>
-          </div>
-        )
-      }
+      // Show big waiting banner during submission phase (removed)
       // Prominent Your Turn banner handled inside the players circle now; keep waiting overlay here
     } catch (e) {}
     return null
@@ -5876,7 +5908,7 @@ try {
 
       {/* Chat box (minimisable) - visible on all pages when state available */}
       {state && (
-        <ChatBox roomId={roomId} myId={myId} myName={myName} messages={state.chat || {}} />
+        <ChatBox roomId={roomId} myId={myId} myName={myName} messages={state.chat || {}} players={players} gameMode={state?.gameMode} phase={phase} />
       )}
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
@@ -5990,52 +6022,105 @@ try {
 
             <div className="standings card" style={{ marginTop: 12 }}>
               <h4>Final standings</h4>
-              <ol>
-                {sanitizedStandings.map((p, idx) => {
-                  const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
-                  const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
-                  return (
-                    <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
-                        <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
-                        {showWordsOnEnd && p.word && (
+              {state && state.gameMode === 'lastTeamStanding' ? (
+                (() => {
+                  try {
+                    const winnerTeam = state?.winnerTeam || null
+                    const winners = sanitizedStandings.filter(p => p && p.team === winnerTeam)
+                    const losers = sanitizedStandings.filter(p => p && p.team !== winnerTeam)
+                    return (
+                      <div style={{ display: 'flex', gap: 12, flexDirection: 'column' }}>
+                        <div style={{ padding: 8, borderRadius: 8, background: '#0b6623', color: '#fff' }}>
+                          <strong style={{ fontSize: 16 }}>Winners {winnerTeam ? `(Team ${winnerTeam})` : ''}</strong>
+                          <div style={{ marginTop: 8 }}>
+                            {winners.length === 0 && <div style={{ color: '#ddd' }}>No winners listed</div>}
+                            <ol style={{ margin: 0, paddingLeft: 18 }}>
+                              {winners.map((p, idx) => (
+                                <li key={p.id} style={{ margin: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <strong>{p.name}</strong>
+                                    {showWordsOnEnd && p.word && (
+                                      <span style={{ marginLeft: 8, background: '#eef5ee', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontWeight: 800 }}>${p.wordmoney || 0}</div>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        </div>
+
+                        <div style={{ padding: 8, borderRadius: 8, background: '#2b2b2b', color: '#fff' }}>
+                          <strong style={{ fontSize: 16 }}>Opponents</strong>
+                          <div style={{ marginTop: 8 }}>
+                            {losers.length === 0 && <div style={{ color: '#ddd' }}>No opponents listed</div>}
+                            <ol style={{ margin: 0, paddingLeft: 18 }}>
+                              {losers.map((p, idx) => (
+                                <li key={p.id} style={{ margin: '6px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <strong>{p.name}</strong>
+                                    {showWordsOnEnd && p.word && (
+                                      <span style={{ marginLeft: 8, background: '#eef5ee', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontWeight: 800 }}>${p.wordmoney || 0}</div>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  } catch (e) { return null }
+                })()
+              ) : (
+                <ol>
+                  {sanitizedStandings.map((p, idx) => {
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
+                    const accent = idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : undefined
+                    return (
+                      <li key={p.id} style={{ margin: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {medal && <span style={{ fontSize: 22 }}>{medal}</span>}
+                          <strong style={{ color: accent || 'inherit' }}>{idx+1}. {p.name}</strong>
+                          {showWordsOnEnd && p.word && (
+                            <span style={{
+                              marginLeft: 8,
+                              background: '#eef5ee',
+                              padding: '4px 8px',
+                              borderRadius: 8,
+                              fontSize: 12,
+                              color: '#234',
+                              display: 'inline-block',
+                              maxWidth: '40vw',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>{p.word}</span>
+                          )}
+                        </div>
+                        <div style={{ fontWeight: 800 }}>
                           <span style={{
-                            marginLeft: 8,
-                            background: '#eef5ee',
-                            padding: '4px 8px',
-                            borderRadius: 8,
-                            fontSize: 12,
-                            color: '#234',
+                            background: '#f3f3f3',
+                            color: p.id === state?.winnerId ? '#b8860b' : '#222',
+                            padding: '6px 10px',
+                            borderRadius: 16,
                             display: 'inline-block',
-                            maxWidth: '40vw',
+                            minWidth: 48,
+                            maxWidth: 120,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>{p.word}</span>
-                        )}
-                      </div>
-                      <div style={{ fontWeight: 800 }}>
-                        <span style={{
-                          background: '#f3f3f3',
-                          color: p.id === state?.winnerId ? '#b8860b' : '#222',
-                          padding: '6px 10px',
-                          borderRadius: 16,
-                          display: 'inline-block',
-                          minWidth: 48,
-                          maxWidth: 120,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          textAlign: 'center'
-                        }}>
-                          ${p.wordmoney || 0}
-                        </span>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ol>
+                            whiteSpace: 'nowrap',
+                            textAlign: 'center'
+                          }}>
+                            ${p.wordmoney || 0}
+                          </span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
             </div>
 
             <div style={{ marginTop: 14 }}>

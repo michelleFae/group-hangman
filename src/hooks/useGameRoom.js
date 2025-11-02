@@ -1365,7 +1365,6 @@ export default function useGameRoom(roomId, playerName) {
           }
           warnUnsub = dbOnValue(dbRef(db, `rooms/${roomId}`), warnCb)
           return
-          return
         }
         // shuffle player ids and split into two teams alternately
         const shuffled = playerIds.slice().sort(() => Math.random() - 0.5)

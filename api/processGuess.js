@@ -449,7 +449,8 @@ module.exports = async (req, res) => {
         updates[`currentTurnStartedAt`] = Date.now()
         // award +1 wordmoney to the player whose turn just started
         try {
-          const nextPlayer = effectiveTurnOrder[nextIndex]
+          const nextOrder = (updates && Object.prototype.hasOwnProperty.call(updates, 'turnOrder')) ? updates['turnOrder'] : effectiveTurnOrder
+          const nextPlayer = nextOrder[nextIndex]
           // In team mode, credit the team's wallet; otherwise credit the player
           const nextPlayerObj = players && players[nextPlayer] ? players[nextPlayer] : null
           if ((room && room.gameMode) === 'lastTeamStanding' && nextPlayerObj && nextPlayerObj.team) {
