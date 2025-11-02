@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react'
 import ReactDOM from 'react-dom'
 import PlayerCircle from './PlayerCircle'
+import ChatBox from './ChatBox'
 import useGameRoom from '../hooks/useGameRoom'
 import useUserActivation from '../hooks/useUserActivation'
 import COLOURS from '../data/colours'
@@ -5256,16 +5257,21 @@ try {
     {/* Place the prominent "Your turn" card at the top of the players circle when it's your turn.
         This renders inside the flow of the circle so it stays visually attached to the player list
         instead of as a separate fixed overlay. */}
-    {phase === 'playing' && isMyTurnNow && (() => {
+    {phase === 'playing' && (() => {
       try {
-        const me = players.find(p => p.id === myId) || {}
+        const currentPlayer = (players || []).find(p => p.id === currentTurnId) || {}
+        const isViewerCurrent = currentTurnId && myId && currentTurnId === myId
+        const displayName = currentPlayer.name || (currentTurnId || '-')
+        const titleText = isViewerCurrent ? 'Your turn' : `It is ${displayName}'s turn`
+        const cardBase = { display: 'flex', alignItems: 'center', gap: 18, padding: '12px 18px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.96))' }
+        const glowStyle = isViewerCurrent ? { boxShadow: '0 12px 36px rgba(255,214,102,0.28), 0 6px 18px rgba(0,0,0,0.6)' } : { boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }
         return (
           <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginBottom: 12 }} aria-live="polite">
-            <div className="big-yourturn-card" style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '12px 18px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.96))', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
-              <div className="big-avatar big-self" style={{ background: (me.color || '#2b8cff'), width: 64, height: 64, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{(me.name || 'You')[0] || '?'}</div>
+            <div className="big-yourturn-card" style={{ ...cardBase, ...glowStyle }}>
+              <div className="big-avatar big-self" style={{ background: (currentPlayer.color || '#2b8cff'), width: 64, height: 64, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{(displayName || '?')[0] || '?'}</div>
               <div style={{ marginLeft: 0 }}>
-                <h1 style={{ margin: 0, fontSize: 28, lineHeight: '1.02' }}>Your turn</h1>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{me.name || 'You'}</div>
+                <h1 style={{ margin: 0, fontSize: 28, lineHeight: '1.02' }}>{titleText}</h1>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{isViewerCurrent ? displayName : displayName}</div>
               </div>
             </div>
           </div>
@@ -5830,6 +5836,11 @@ try {
       </div>
     </div>
   )}
+
+      {/* Chat box (minimisable) - visible on all pages when state available */}
+      {state && (
+        <ChatBox roomId={roomId} myId={myId} myName={myName} messages={state.chat || {}} />
+      )}
 
       {/* Timer tick: client watches for timeout and advances turn if needed (best-effort) */}
         {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (
