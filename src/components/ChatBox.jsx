@@ -86,6 +86,15 @@ export default function ChatBox({ roomId, myId, myName, messages = {}, players =
     } catch (e) {}
   }, [open])
 
+  // Auto-minimize chat when entering the submit phase so players can focus on entering a word
+  useEffect(() => {
+    try {
+      if (phase === 'submit') {
+        setOpen(false)
+      }
+    } catch (e) {}
+  }, [phase])
+
   // compute unread messages counts by type (visible messages from others newer than lastSeenTs)
   const { unreadCount, unreadPrivateCount, unreadTeamCount, unreadPublicCount } = React.useMemo(() => {
     try {
@@ -152,8 +161,8 @@ export default function ChatBox({ roomId, myId, myName, messages = {}, players =
             {/* Recipient selector */}
             <select value={JSON.stringify(recipient)} onChange={e => { try { setRecipient(JSON.parse(e.target.value)) } catch (err) {} }} style={{ marginLeft: 8, padding: '6px 8px', borderRadius: 6, background: '#0b0b0b', color: '#fff', border: '1px solid rgba(255,255,255,0.04)' }}>
               <option value={JSON.stringify({ type: 'public' })}>Public</option>
-              {/* Team option only when in lastTeamStanding and in submit/playing */}
-              {gameMode === 'lastTeamStanding' && (phase === 'submit' || phase === 'playing') && myTeam ? (
+              {/* Team option only when in lastTeamStanding and in playing phase */}
+              {gameMode === 'lastTeamStanding' && phase === 'playing' && myTeam ? (
                 <option value={JSON.stringify({ type: 'team', team: myTeam })}>Team ({myTeam})</option>
               ) : null}
               <optgroup label="Players">

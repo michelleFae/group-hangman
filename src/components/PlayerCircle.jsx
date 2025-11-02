@@ -35,6 +35,9 @@ export default function PlayerCircle({
   , onToggleTeamReveal = null
   , ready = false
   , onToggleReady = null
+  , showGhostReenter = false
+  , onGhostReenter = null
+  , ghostReenterDisabled = false
 }) {
   // hostId prop supported for safety (may be passed in by parent)
   const hostId = arguments[0] && arguments[0].hostId ? arguments[0].hostId : null
@@ -559,7 +562,7 @@ export default function PlayerCircle({
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
       <div style={{ alignItems: 'center', gap: 12, justifyContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 72 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 72, gap: '2vw'}}>
           {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
             {(player && player.ghostState && player.ghostState.reentered) && (
               <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
@@ -760,9 +763,16 @@ export default function PlayerCircle({
                   </button>
                 )}
                 {(phase !== 'lobby' && phase !== 'submit') ? (
-                  <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
-                    {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
-                  </button>
+                  <>
+                    {showGhostReenter && typeof onGhostReenter === 'function' && (
+                      <button onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }} disabled={!!ghostReenterDisabled} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                        Re-enter as Ghost
+                      </button>
+                    )}
+                    <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                      {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}
+                    </button>
+                  </>
                 ) : null}
 
                 

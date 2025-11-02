@@ -13,11 +13,12 @@ import INSTRUMENTS from '../data/instruments'
 import ELEMENTS from '../data/elements'
 import NOUNS from '../data/nouns'
 import CPPTERMS from '../data/cppterms'
-import FRUITS_VEGS from '../data/fruits_vegetables'
+import FRUITS from '../data/fruits'
+import VEGETABLES from '../data/vegetables'
 import OCCUPATIONS from '../data/occupations'
 import COUNTRIES from '../data/countries'
 import { db } from '../firebase'
-import { ref as dbRef, get as dbGet, update as dbUpdate } from 'firebase/database'
+import { ref as dbRef, get as dbGet, update as dbUpdate, runTransaction } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
 
 // Small, memoized component to isolate starting balance and min-word-size controls.
@@ -115,7 +116,8 @@ const THEME_OPTIONS = [
   { value: 'ballsports', label: 'Ball Sports' },
   { value: 'olympicsports', label: 'Olympic Sports' },
   { value: 'gemstones', label: 'Gemstones' },
-  { value: 'fruits', label: 'Fruits & Vegetables' },
+  { value: 'fruits', label: 'Fruits' },
+  { value: 'vegetables', label: 'Vegetables' },
   { value: 'occupations', label: 'Occupations' },
   { value: 'elements', label: 'Periodic elements' },
   { value: 'cpp', label: 'C++ terms' },
@@ -153,6 +155,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [wordSeekerTimerSeconds, setWordSeekerTimerSeconds] = useState(120)
   const [wordSeekerRounds, setWordSeekerRounds] = useState(3)
   const [powerUpsEnabled, setPowerUpsEnabled] = useState(true)
+  const [freeBubblesEnabled, setFreeBubblesEnabled] = useState(true)
+  const [submitTimerEnabled, setSubmitTimerEnabled] = useState(false)
+  const [submitTimerSeconds, setSubmitTimerSeconds] = useState(60)
+  // track local claim-in-progress so the UI disables the bubble immediately after click
+  const [claimingBubbleId, setClaimingBubbleId] = useState(null)
   const [showWordsOnEnd, setShowWordsOnEnd] = useState(true)
   const [minWordSize, setMinWordSize] = useState(2)
   const [minWordSizeInput, setMinWordSizeInput] = useState(String(2))
@@ -175,6 +182,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: secretThemeType } })
     } catch (e) {}
   }, [secretThemeEnabled, secretThemeType])
+  // keep local freeBubblesEnabled in sync with room state (default true)
+  useEffect(() => {
+    try { setFreeBubblesEnabled(state?.freeBubblesEnabled ?? true) } catch (e) {}
+  }, [state?.freeBubblesEnabled])
+  // Auto-enable submit-timer when the room is configured as a timed game
+  useEffect(() => {
+    try {
+      if (state && state.timed && !state.submitTimerEnabled) {
+        // persist to room settings so everyone honors it
+        try { updateRoomSettings({ submitTimerEnabled: true }) } catch (e) {}
+      }
+    } catch (e) {}
+  }, [state?.timed])
+  // keep submit-timer settings in sync with room state (default off)
+  useEffect(() => {
+    try { setSubmitTimerEnabled(Boolean(state?.submitTimerEnabled)) } catch (e) {}
+    try { setSubmitTimerSeconds(Number(state?.submitTimerSeconds) || 60) } catch (e) {}
+  }, [state?.submitTimerEnabled, state?.submitTimerSeconds])
   // Host-provided custom theme inputs (title + comma-separated list)
   const [customTitle, setCustomTitle] = useState('')
   const [customCsv, setCustomCsv] = useState('')
@@ -253,6 +278,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ghostGuessCooldownSeconds, setGhostGuessCooldownSeconds] = useState(20)
   const [ghostModalOpen, setGhostModalOpen] = useState(false)
   const [ghostChallengeKeyLocal, setGhostChallengeKeyLocal] = useState(null)
+
+  // Auto-close ghost modal when the room ends (playing → ended).
+  useEffect(() => {
+    try {
+      if (phase === 'ended' && ghostModalOpen) {
+        setGhostModalOpen(false)
+      }
+    } catch (e) {}
+  }, [phase])
   const [firstWordWins, setFirstWordWins] = useState(true)
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
@@ -610,7 +644,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   ballsports: { emoji: '🏀', label: 'Ball Sports', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
   olympicsports: { emoji: '🏅', label: 'Olympic Sports', bg: 'linear-gradient(90deg,#ffb86b,#ff6b6b)' },
   colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
-  fruits: { emoji: '🥕', label: 'Fruits & Vegetables', bg: 'linear-gradient(90deg,#f97316,#84cc16)' },
+  fruits: { emoji: '🍎', label: 'Botanical Fruits', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
+  vegetables: { emoji: '🥬', label: 'Vegetables', bg: 'linear-gradient(90deg,#84cc16,#16a34a)' },
     occupations: { emoji: '🧑‍🔧', label: 'Occupations', bg: 'linear-gradient(90deg,#f59e0b,#a78bfa)' },
   countries: { emoji: '🌍', label: 'Countries', bg: 'linear-gradient(90deg,#06b6d4,#0ea5a1)' },
   instruments: { emoji: '🎵', label: 'Musical Instruments', bg: 'linear-gradient(90deg,#f97316,#ef4444)' },
@@ -670,6 +705,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       console.warn('Could not update room timing preview', e)
     }
   }
+
+    // Helper: sanitize multi-path update objects for Firebase Realtime Database.
+    // Firebase rejects updates that contain both an ancestor path and a descendant
+    // path in the same multi-path update object (e.g. { "teams": null, "teams/blue/x": 1 }).
+    // This function removes descendant keys when an ancestor is present, preferring
+    // the ancestor assignment (keeps the shorter key and drops any keys that start
+    // with that key + '/').
+    function sanitizeUpdatesForFirebase(updates) {
+      try {
+        if (!updates || typeof updates !== 'object') return updates
+        const keys = Object.keys(updates)
+        const sanitized = {}
+        for (const k of keys) {
+          // if any other key is an ancestor of k (i.e. otherKey + '/' is prefix of k),
+          // then skip k to avoid ancestor/descendant conflict
+          const hasAncestor = keys.some(a => a !== k && k.startsWith(a + '/'))
+          if (!hasAncestor) sanitized[k] = updates[k]
+        }
+        return sanitized
+      } catch (e) {
+        // on error, fallback to original updates (better to try than silently drop)
+        return updates
+      }
+    }
 
   async function updateRoomGameMode(mode, opts = {}) {
     try {
@@ -1099,6 +1158,223 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
   }, [state?.ghostAnnouncements])
 
+  // Scheduler & spawner for underworld-themed free bubbles (host schedules only)
+  const bubbleTimerRef = useRef(null)
+  useEffect(() => {
+    let mounted = true
+    try {
+      // only the host will schedule spawn attempts to reduce duplicated transactions
+      if (!isHost) return () => { mounted = false }
+
+      const scheduleNext = () => {
+        try {
+          // random delay: at least 2 minutes, up to ~5 minutes
+          const delay = 120000 + Math.floor(Math.random() * 180000)
+          if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current)
+          bubbleTimerRef.current = setTimeout(async () => {
+            try {
+              if (!mounted) return
+              // only spawn during an active playing phase and when enabled in room
+              if (!freeBubblesEnabled) { scheduleNext(); return }
+              if (state && state.gameMode === 'wordSeeker') { scheduleNext(); return }
+              if (phase !== 'playing') { scheduleNext(); return }
+
+              // attempt atomic creation using a transaction on rooms/<roomId>/freeBubble
+              const fbRef = dbRef(db, `rooms/${roomId}/freeBubble`)
+              const now = Date.now()
+              const id = `fb_${now}_${Math.random().toString(36).slice(2,8)}`
+              const amount = 2 + Math.floor(Math.random() * 4) // 2..5
+              try {
+                await runTransaction(fbRef, (curr) => {
+                  const n = Date.now()
+                  // if an active bubble exists and it's younger than 2 minutes, abort
+                  if (curr && curr.spawnedAt && (n - curr.spawnedAt) < 120000) return undefined
+                  // otherwise create a new bubble
+                  return { id, amount, spawnedAt: n, theme: 'underworld' }
+                })
+              } catch (e) {
+                // ignore transaction failures; we'll schedule the next attempt
+              }
+            } catch (e) {}
+            // schedule next spawn regardless
+            try { scheduleNext() } catch (e) {}
+          }, delay)
+        } catch (e) {}
+      }
+
+      // start scheduling when host, enabled and in playing phase
+      if (freeBubblesEnabled && phase === 'playing' && state && state.gameMode !== 'wordSeeker') scheduleNext()
+    } catch (e) {}
+    return () => { mounted = false; try { if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current) } catch (e) {} }
+  }, [isHost, freeBubblesEnabled, phase, state && state.gameMode, roomId])
+
+  // Handle claims and show toasts when a free bubble is created or claimed
+  useEffect(() => {
+    try {
+      const fb = state?.freeBubble || null
+      if (!fb) return
+      const id = fb.id || `fb_${fb.spawnedAt || Date.now()}`
+      // show a toast when bubble appears
+      try {
+        const text = fb && fb.amount ? `Underworld bubble: +${fb.amount} wordmoney (first click claims)` : 'A free bubble appeared!'
+        const toastId = `free_bubble_${id}`
+        setToasts(t => [...t, { id: toastId, text, fade: true }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 5000)
+      } catch (e) {}
+      // claiming is handled via a short-lived announcement node (`freeBubbleClaims`) so
+      // the bubble itself can be cleared immediately for everyone while clients show who claimed it.
+    } catch (e) {}
+  }, [state?.freeBubble])
+
+  // Process submit-auto-assigned announcements (so clients show a fading toast)
+  const processedAutoAssignRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state?.submitAutoAssigned || {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedAutoAssignRef.current[k]) return
+        processedAutoAssignRef.current[k] = true
+        const a = anns[k] || {}
+        try {
+          const name = a.name || a.player || 'Someone'
+          const text = `${name} didn't choose a word on time, was assigned a random word and lost ${a.penalty || 2} wordmoney.`
+          const id = `auto_assign_${k}`
+          setToasts(t => [...t, { id, text, fade: true }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+        } catch (e) {}
+        // attempt to remove announcement from DB
+        try { const roomRef = dbRef(db, `rooms/${roomId}`); dbUpdate(roomRef, { [`submitAutoAssigned/${k}`]: null }).catch(() => {}) } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.submitAutoAssigned])
+
+  // processed ref for free bubble claim announcements
+  const processedFbClaimRef = useRef({})
+  // Watch for freeBubbleClaims announcements and show a fading toast indicating who claimed it.
+  useEffect(() => {
+    try {
+      const claims = state?.freeBubbleClaims || {}
+      Object.keys(claims || {}).forEach(k => {
+        if (processedFbClaimRef.current[k]) return
+        processedFbClaimRef.current[k] = true
+        const c = claims[k] || {}
+        try {
+          const name = c.name || c.by || 'Someone'
+          const text = `${name} claimed the underworld bubble (+${c.amount || 0})`
+          const id = `free_bubble_claim_${k}`
+          setToasts(t => [...t, { id, text, fade: true }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000)
+        } catch (e) {}
+        // attempt to remove the announcement so it doesn't persist in DB
+        try {
+          const roomRef = dbRef(db, `rooms/${roomId}`)
+          dbUpdate(roomRef, { [`freeBubbleClaims/${k}`]: null }).catch(() => {})
+        } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.freeBubbleClaims])
+
+  // Watch for host start-block announcements and show a fading toast once
+  const processedStartAnnRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state?.startBlockedAnnouncements || {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedStartAnnRef.current[k]) return
+        processedStartAnnRef.current[k] = true
+        const a = anns[k] || {}
+        try {
+          const text = a && a.message ? (a.name ? `${a.name}: ${a.message}` : a.message) : 'Host attempted to start but could not.'
+          const id = `start_block_${k}`
+          setToasts(t => [...t, { id, text, fade: true }])
+          // remove toast locally after 5s
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000)
+        } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.startBlockedAnnouncements])
+
+  // Watch for setting change announcements and show a fading toast to all clients
+  // except the host (host doesn't need the notification since they initiated it).
+  const processedSettingChangeRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state?.settingChangeAnnouncements || {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedSettingChangeRef.current[k]) return
+        processedSettingChangeRef.current[k] = true
+        const a = anns[k] || {}
+        try {
+          const text = a && a.text ? a.text : 'Room settings were changed'
+          const id = `setting_change_${k}`
+          // don't show this toast to the host
+          if (myId && hostId && myId === hostId) {
+            // still attempt to remove the announcement from DB
+          } else {
+            setToasts(t => [...t, { id, text, fade: true }])
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+          }
+        } catch (e) {}
+        // attempt to remove announcement from DB
+        try { const roomRef = dbRef(db, `rooms/${roomId}`); dbUpdate(roomRef, { [`settingChangeAnnouncements/${k}`]: null }).catch(() => {}) } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.settingChangeAnnouncements, myId, hostId])
+
+  // When the room enters the submit phase, announce that chat was minimized so players
+  // can focus on entering a word. The host will write the announcement to DB and
+  // all clients will show a fading toast when they process it.
+  const prevPhaseRef = useRef(null)
+  useEffect(() => {
+    try {
+      const prev = prevPhaseRef.current
+      if (phase === 'submit' && prev !== 'submit') {
+        // only the host writes the DB announcement to reduce duplicate writes
+        try {
+          if (isHost) {
+            const roomRef = dbRef(db, `rooms/${roomId}`)
+            const key = `cm_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+            const text = 'Underworld hush: chat minimized so you can enter a word 👻'
+            const ann = { id: key, text, ts: Date.now(), by: myId || null }
+            const ups = {}
+            ups[`chatMinimizedAnnouncements/${key}`] = ann
+            try { dbUpdate(roomRef, ups).catch(() => {}) } catch (e) {}
+            // schedule removal after a short interval
+            setTimeout(() => { try { dbUpdate(roomRef, { [`chatMinimizedAnnouncements/${key}`]: null }).catch(() => {}) } catch (e) {} }, 7000)
+          }
+        } catch (e) {}
+        // also show a local toast for immediate feedback
+        try {
+          const id = `chat_min_${Date.now()}`
+          setToasts(t => [...t, { id, text: 'Underworld hush: chat minimized so you can enter a word 👻', fade: true }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+        } catch (e) {}
+      }
+      prevPhaseRef.current = phase
+    } catch (e) {}
+  }, [phase, isHost, roomId, myId])
+
+  // Process chat-minimized announcements written to DB so all clients display a fading toast
+  const processedChatMinRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state?.chatMinimizedAnnouncements || {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedChatMinRef.current[k]) return
+        processedChatMinRef.current[k] = true
+        const a = anns[k] || {}
+        try {
+          const text = a && a.text ? a.text : 'Chat minimized for submission phase'
+          const id = `chat_min_${k}`
+          setToasts(t => [...t, { id, text, fade: true }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+        } catch (e) {}
+        // attempt to remove the announcement from DB
+        try { const roomRef = dbRef(db, `rooms/${roomId}`); dbUpdate(roomRef, { [`chatMinimizedAnnouncements/${k}`]: null }).catch(() => {}) } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.chatMinimizedAnnouncements])
+
   // Debug: log when ddCoins changes so we can confirm pieces were created and the overlay should render
   useEffect(() => {
     try {
@@ -1399,7 +1675,46 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           }
         }
       } catch (e) {}
-  await safeDbUpdate(roomRef, safe)
+      // Build multi-path updates: include the requested safe changes, reset ready for all
+      // non-host players, and write a short-lived announcement so clients show a toast.
+      const updates = { ...safe }
+      try {
+        const pl = Array.isArray(state?.players) ? state.players.slice() : []
+        pl.forEach(p => {
+          try {
+            if (!p || !p.id) return
+            if (p.id === hostId) return
+            updates[`players/${p.id}/ready`] = null
+          } catch (e) {}
+        })
+      } catch (e) {}
+
+      // Create a concise human-readable description of the change
+      try {
+        const keys = Object.keys(safe || {})
+        let text = 'Room settings updated'
+        if (keys.length === 1) {
+          const k = keys[0]
+          const v = safe[k]
+          if (k === 'submitTimerEnabled') text = `Submit timer ${v ? 'enabled' : 'disabled'}`
+          else if (k === 'submitTimerSeconds') text = `Submit timer set to ${v}s`
+          else if (k === 'freeBubblesEnabled') text = `Free bubbles ${v ? 'enabled' : 'disabled'}`
+          else if (k === 'timed') text = `Timed mode ${v ? 'enabled' : 'disabled'}`
+          else if (k === 'turnTimeoutSeconds') text = `Turn timeout set to ${v || 'unset'}`
+          else if (k === 'gameMode') text = `Game mode set to ${v}`
+          else text = `Updated ${k}`
+        } else if (keys.length > 1) {
+          text = 'Room settings updated'
+        }
+        const annKey = `sc_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+        updates[`settingChangeAnnouncements/${annKey}`] = { id: annKey, text, ts: Date.now(), by: myId || null }
+        // schedule removal of the announcement
+        setTimeout(async () => {
+          try { await dbUpdate(roomRef, { [`settingChangeAnnouncements/${annKey}`]: null }) } catch (e) {}
+        }, 7000)
+      } catch (e) {}
+
+      await safeDbUpdate(roomRef, updates)
     } catch (e) {
       console.warn('Could not update room settings', e)
     }
@@ -1433,7 +1748,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         else if (type === 'instruments') pool = INSTRUMENTS
         else if (type === 'elements') pool = ELEMENTS
         else if (type === 'cpp') pool = CPPTERMS
-        else if (type === 'fruits') pool = FRUITS_VEGS
+  else if (type === 'fruits') pool = FRUITS
+  else if (type === 'vegetables') pool = VEGETABLES
         else if (type === 'occupations') pool = OCCUPATIONS
         else if (type === 'countries') pool = COUNTRIES
         else if (type === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length > 0) {
@@ -1488,6 +1804,56 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       console.warn('requestGhostReentry failed', e)
       return false
     }
+  }
+
+  // Claim a free underworld bubble (atomic claim using transaction).
+  async function claimFreeBubble(bubble) {
+    try {
+      if (!bubble) return
+      if (!myId) {
+        const id = `fb_claim_needlogin_${Date.now()}`
+        setToasts(t => [...t, { id, text: 'You must be signed in to claim the bubble.' }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500)
+        return
+      }
+      const fbRef = dbRef(db, `rooms/${roomId}/freeBubble`)
+      const res = await runTransaction(fbRef, (curr) => {
+        if (!curr) return
+        if (curr.claimedBy) return
+        return { ...curr, claimedBy: myId, claimedAt: Date.now() }
+      }, { applyLocally: false })
+      if (!res || !res.committed) return
+      const val = res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : (res && res.val) || {}
+      if (!val || val.claimedBy !== myId) return
+
+      // Award the amount to the player or their team depending on game mode
+      const amount = Number(val.amount || 0)
+      const updates = {}
+      const meNode = (state?.players || []).find(p => p.id === myId) || {}
+      if (state && state.gameMode === 'lastTeamStanding' && meNode.team) {
+        const teamKey = `teams/${meNode.team}/wordmoney`
+        const currTeam = Number(state?.teams?.[meNode.team]?.wordmoney || 0)
+        updates[teamKey] = Math.max(0, currTeam + amount)
+      } else {
+        const playerKey = `players/${myId}/wordmoney`
+        const currPlayer = Number(meNode.wordmoney || 0)
+        updates[playerKey] = Math.max(0, currPlayer + amount)
+      }
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      try { await dbUpdate(roomRef, updates) } catch (e) { /* best-effort */ }
+
+      // Create a short-lived announcement and clear the bubble immediately so it disappears for everyone.
+      try {
+        const claimKey = `fb_claim_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+        const ann = { by: myId, name: playerIdToName[myId] || myId, amount, ts: Date.now() }
+        const annUpdates = {}
+        annUpdates[`freeBubble`] = null
+        annUpdates[`freeBubbleClaims/${claimKey}`] = ann
+        try { await safeDbUpdate(roomRef, annUpdates) } catch (e) { try { await dbUpdate(roomRef, annUpdates) } catch (ee) {} }
+        // schedule removal of the announcement after a short period
+        setTimeout(async () => { try { await dbUpdate(roomRef, { [`freeBubbleClaims/${claimKey}`]: null }) } catch (e) {} }, 7000)
+      } catch (e) {}
+    } catch (e) { console.warn('claimFreeBubble failed', e) }
   }
 
   // Attempt a ghost guess (letter or full word). Ghosts cannot use power-ups.
@@ -1649,16 +2015,70 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             try { updates[`players/${myId}/revealed`] = [] } catch (e) {}
             // Recompute turnOrder to add the re-entering player (if not present).
             try {
-              const curOrder = Array.isArray(state && state.turnOrder) ? (state.turnOrder || []).slice() : []
-              if (!curOrder.includes(myId)) {
-                // Insert before the player whose current turn it is so the re-entered
-                // player will act just before the current turn (i.e. they'll go "last"
-                // relative to new entrants).
-                const insertIndex = (typeof state?.currentTurnIndex === 'number') ? state.currentTurnIndex : curOrder.length
-                const idx = Math.max(0, Math.min(curOrder.length, insertIndex))
-                const next = curOrder.slice()
-                next.splice(idx, 0, myId)
-                updates[`turnOrder`] = next
+              // Helper: build a deterministic alternating order for lastTeamStanding
+              // mode by keeping two lists (one per team) preserving the players
+              // array order and interleaving them with independent wraparound.
+              const buildLastTeamStandingOrder = (playersArr = [], includeId = null) => {
+                try {
+                  const alive = (playersArr || []).filter(p => p && (!p.eliminated || (includeId && p.id === includeId)))
+                  const teams = {}
+                  const unteamed = []
+                  alive.forEach(p => {
+                    if (p && p.team) {
+                      teams[p.team] = teams[p.team] || []
+                      teams[p.team].push(p.id)
+                    } else if (p && p.id) {
+                      unteamed.push(p.id)
+                    }
+                  })
+                  const teamNames = Object.keys(teams)
+                  // If exactly two teams present, interleave deterministically.
+                  if (teamNames.length === 2) {
+                    const a = teams[teamNames[0]] || []
+                    const b = teams[teamNames[1]] || []
+                    const total = a.length + b.length
+                    const result = []
+                    let ia = 0
+                    let ib = 0
+                    while (result.length < total) {
+                      if (a.length > 0) {
+                        const pickA = a[ia % a.length]
+                        if (!result.includes(pickA)) result.push(pickA)
+                        ia++
+                      }
+                      if (result.length >= total) break
+                      if (b.length > 0) {
+                        const pickB = b[ib % b.length]
+                        if (!result.includes(pickB)) result.push(pickB)
+                        ib++
+                      }
+                    }
+                    return result.concat(unteamed)
+                  }
+                  // Fallback: preserve players array order skipping eliminated.
+                  return alive.map(p => p.id).concat(unteamed.filter(id => !alive.some(ap => ap.id === id)))
+                } catch (e) { return (playersArr || []).filter(p => p && !p.eliminated).map(p => p.id) }
+              }
+
+              // If room is in lastTeamStanding mode, rebuild the full alternating order
+              // (this ensures re-entering ghosts are added to their team list correctly).
+              if (state && state.gameMode === 'lastTeamStanding') {
+                try {
+                  const newOrder = buildLastTeamStandingOrder(state.players || [], myId)
+                  if (Array.isArray(newOrder) && newOrder.length > 0) updates[`turnOrder`] = newOrder
+                } catch (e) {}
+              } else {
+                const curOrder = Array.isArray(state && state.turnOrder) ? (state.turnOrder || []).slice() : []
+                if (!curOrder.includes(myId)) {
+                  // Insert before the player whose current turn it is so the re-entered
+                  // player will act just before the current turn (i.e. they'll go "last"
+                  // relative to new entrants).
+                  const insertIndex = (typeof state?.currentTurnIndex === 'number') ? state.currentTurnIndex : curOrder.length
+                  const idx = Math.max(0, Math.min(curOrder.length, insertIndex))
+                  const next = curOrder.slice()
+                  next.splice(idx, 0, myId)
+                  updates[`turnOrder`] = next
+                }
               }
             } catch (e) {}
             updates[`ghostChallenge`] = { key: `ghost_${nowTs}`, word: newWord, ts: nowTs }
@@ -1859,6 +2279,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 disabled={secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0}
               /> Ghost Re-Entry enabled
             </label>
+            <label htmlFor="freeBubblesEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={"Spawn random underworld-themed free wordmoney bubbles during play (at least 2 minutes apart)."}>
+              <input id="freeBubblesEnabled" name="freeBubblesEnabled" type="checkbox" checked={freeBubblesEnabled} onChange={e => { const nv = e.target.checked; setFreeBubblesEnabled(nv); updateRoomSettings({ freeBubblesEnabled: !!nv }) }} /> Random free wordmoney bubbles (underworld themed)
+            </label>
+            <label htmlFor="submitTimerEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }} title={"When enabled, players have a limited time to submit a word during the submit phase; unsubmitted players are auto-assigned a word and receive -2 wordmoney."}>
+              <input id="submitTimerEnabled" name="submitTimerEnabled" type="checkbox" checked={submitTimerEnabled} onChange={e => { const nv = e.target.checked; setSubmitTimerEnabled(nv); updateRoomSettings({ submitTimerEnabled: !!nv }) }} /> Enable submit-phase timer
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <label style={{ fontSize: 13, color: '#ccc' }}>Submit seconds:</label>
+              <input type="number" min={5} max={600} value={submitTimerSeconds} onChange={e => { const v = Number(e.target.value) || 60; setSubmitTimerSeconds(v); updateRoomSettings({ submitTimerSeconds: v }) }} style={{ width: 96 }} />
+            </div>
             {(secretThemeType === 'custom' && state && state.secretWordTheme && state.secretWordTheme.custom && Array.isArray(state.secretWordTheme.custom.words) && state.secretWordTheme.custom.words.length === 0) && (
               <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>Ghost Re-Entry is disabled when the host's custom set allows any word (empty list).</div>
             )}
@@ -4157,6 +4587,8 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // clear winner state when restarting so the victory screen doesn't persist
   updates['winnerId'] = null
+  // clear room chat on restart
+  updates['chat'] = null
   // clear team winner marker
   updates['winnerTeam'] = null
   // clear any team reveal state so teammates don't keep revealed words across rematch
@@ -4218,13 +4650,19 @@ try {
 
   // clear the entire teams branch so team wallets/metadata don't persist across restarts
   try { updates['teams'] = null } catch (e) {}
-  const ok = await attemptReset(updates)
+  const ok = await attemptReset(sanitizeUpdatesForFirebase(updates))
         if (ok) {
           const idOk = `rematch_host_ok_${Date.now()}`
           setToasts(t => [...t, { id: idOk, text: 'Room restarted : waiting for players to rejoin.' }])
           // auto-dismiss: fade then remove after short delay
           setTimeout(() => { setToasts(t => t.map(x => x.id === idOk ? { ...x, removing: true } : x)) }, 3200)
           setTimeout(() => { setToasts(t => t.filter(x => x.id !== idOk)) }, 4200)
+          // Inform players that chat was cleared for the new game
+          try {
+            const idChat = `chat_cleared_${Date.now()}`
+            setToasts(t => [...t, { id: idChat, text: 'Chat cleared for new game', fade: true }])
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChat)), 4200)
+          } catch (e) {}
         } else {
           const idErr = `rematch_host_err_${Date.now()}`
           setToasts(t => [...t, { id: idErr, text: 'Could not restart room for all players. Check console for details.' }])
@@ -4293,6 +4731,8 @@ try {
   const updates = { phase: 'lobby', open: true, turnOrder: [], currentTurnIndex: null, currentTurnStartedAt: null }
   // ensure winnerId is cleared when performing an automatic rematch reset
   updates['winnerId'] = null
+  // clear room chat on automatic rematch
+  updates['chat'] = null
   // clear any persisted team-winner marker
   updates['winnerTeam'] = null
   // clear persisted teammate reveals on automatic rematch so everyone starts fresh
@@ -4339,8 +4779,16 @@ try {
         })
   // clear the entire teams branch so team wallets/metadata don't persist across automatic rematches
   try { updates['teams'] = null } catch (e) {}
-  const ok = await attemptReset(updates)
+  const ok = await attemptReset(sanitizeUpdatesForFirebase(updates))
         if (!ok) console.warn('Host reset attempted but failed; players may still be opted in')
+        else {
+          // Announce chat cleared on automatic rematch reset for players
+          try {
+            const idChatAuto = `chat_cleared_auto_${Date.now()}`
+            setToasts(t => [...t, { id: idChatAuto, text: 'Chat cleared for new game', fade: true }])
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChatAuto)), 4200)
+          } catch (e) {}
+        }
       } catch (e) {
         console.error('Host attempted rematch reset failed', e)
       } finally {
@@ -4595,6 +5043,84 @@ try {
     return null
   }
 
+  // Track local submit-phase start time so clients can show a countdown
+  const submitPhaseStartRef = useRef(null)
+  useEffect(() => {
+    try {
+      if (phase === 'submit') {
+        submitPhaseStartRef.current = Date.now()
+      } else {
+        submitPhaseStartRef.current = null
+      }
+    } catch (e) {}
+  }, [phase])
+
+  // Auto-assign a random word for the local player if they fail to submit in time
+  useEffect(() => {
+    let timer = null
+    try {
+      if (!submitTimerEnabled) return () => {}
+      if (phase !== 'submit') return () => {}
+      if (!myId) return () => {}
+      const me = (state?.players || []).find(p => p.id === myId) || {}
+      if (me.hasWord) return () => {}
+      const start = submitPhaseStartRef.current || Date.now()
+      const secs = Math.max(1, Math.min(600, Number(submitTimerSeconds) || 60))
+      const msLeft = (start + (secs*1000)) - Date.now()
+      if (msLeft <= 0) {
+        // already expired: do immediate assignment
+        (async () => {
+          try {
+            const randomWord = pickRandomWordForGhost()
+            // submit word via existing helper
+            const ok = await submitWord(randomWord)
+            // apply penalty of -2 wordmoney (transactional)
+            try {
+              const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${myId}/wordmoney`)
+              await runTransaction(playerMoneyRef, curr => Math.max(0, (Number(curr)||0) - 2))
+            } catch (e) {
+              try { const roomRef = dbRef(db, `rooms/${roomId}`); await dbUpdate(roomRef, { [`players/${myId}/wordmoney`]: Math.max(0, Number(me.wordmoney || 0) - 2) }) } catch (ee) {}
+            }
+            // announce to room so others can show toast
+            try {
+              const roomRef = dbRef(db, `rooms/${roomId}`)
+              const key = `sa_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+              const ann = { player: myId, name: me.name || myId, word: randomWord, penalty: 2, ts: Date.now() }
+              const ups = {}
+              ups[`submitAutoAssigned/${key}`] = ann
+              await dbUpdate(roomRef, ups)
+              // schedule removal
+              setTimeout(() => { try { dbUpdate(roomRef, { [`submitAutoAssigned/${key}`]: null }) } catch (e) {} }, 7000)
+            } catch (e) {}
+          } catch (e) { console.warn('auto-assign submit failed', e) }
+        })()
+        return () => {}
+      }
+      timer = setTimeout(async () => {
+        try {
+          const randomWord = pickRandomWordForGhost()
+          const ok = await submitWord(randomWord)
+          try {
+            const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${myId}/wordmoney`)
+            await runTransaction(playerMoneyRef, curr => Math.max(0, (Number(curr)||0) - 2))
+          } catch (e) {
+            try { const roomRef = dbRef(db, `rooms/${roomId}`); await dbUpdate(roomRef, { [`players/${myId}/wordmoney`]: Math.max(0, Number(me.wordmoney || 0) - 2) }) } catch (ee) {}
+          }
+          try {
+            const roomRef = dbRef(db, `rooms/${roomId}`)
+            const key = `sa_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+            const ann = { player: myId, name: me.name || myId, word: randomWord, penalty: 2, ts: Date.now() }
+            const ups = {}
+            ups[`submitAutoAssigned/${key}`] = ann
+            await dbUpdate(roomRef, ups)
+            setTimeout(() => { try { dbUpdate(roomRef, { [`submitAutoAssigned/${key}`]: null }) } catch (e) {} }, 7000)
+          } catch (e) {}
+        } catch (e) { console.warn('submit auto-assign timer action failed', e) }
+      }, msLeft)
+    } catch (e) { console.warn('submit auto-assign watcher failed', e) }
+    return () => { try { if (timer) clearTimeout(timer) } catch (e) {} }
+  }, [phase, submitTimerEnabled, submitTimerSeconds, myId, state && state.players])
+
   // Allow the current player to voluntarily end their turn and advance to the next player.
   async function skipTurn() {
     try {
@@ -4840,15 +5366,16 @@ try {
             setWordError('Could not validate C++ term : try again')
             return
           }
-        } else if (secretThemeType === 'fruits') {
+        } else if (secretThemeType === 'fruits' || secretThemeType === 'vegetables') {
           try {
-            const arr = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS : (FRUITS_VEGS && FRUITS_VEGS.default ? FRUITS_VEGS.default : [])
+            const arr = (secretThemeType === 'fruits') ? (Array.isArray(FRUITS) ? FRUITS : (FRUITS && FRUITS.default ? FRUITS.default : [])) : (Array.isArray(VEGETABLES) ? VEGETABLES : (VEGETABLES && VEGETABLES.default ? VEGETABLES.default : []))
             if (!arr.includes(candidate.toLowerCase())) {
-              suggestAndSetError('Word must be a fruit or vegetable from the selected theme (single word).', arr, candidate)
+              const label = secretThemeType === 'fruits' ? 'fruit' : 'vegetable'
+              suggestAndSetError(`Word must be a ${label} from the selected theme (single word).`, arr, candidate)
               return
             }
           } catch (e) {
-            setWordError('Could not validate fruit/vegetable : try again')
+            setWordError('Could not validate themed word : try again')
             return
           }
         } else if (secretThemeType === 'occupations') {
@@ -5016,6 +5543,21 @@ try {
                       const msg = reasons.join(' · ')
                       setStartGameHint(msg)
                       setTimeout(() => { try { setStartGameHint(null) } catch (e) {} }, 4000)
+                      // Notify other clients briefly that the host attempted to start but couldn't.
+                      try {
+                        const nowTs = Date.now()
+                        const annKey = `sb_${nowTs}`
+                        const roomRef = dbRef(db, `rooms/${roomId}`)
+                        const ann = { by: state?.hostId || null, name: playerIdToName[state?.hostId] || null, message: msg, ts: nowTs }
+                        const updates = {}
+                        updates[`startBlockedAnnouncements/${annKey}`] = ann
+                        // attempt to write announcement to DB (best-effort)
+                        try { dbUpdate(roomRef, updates).catch(() => {}) } catch (e) {}
+                        // schedule a cleanup of the announcement after a short delay so it doesn't linger
+                        setTimeout(() => {
+                          try { const rm = {}; rm[`startBlockedAnnouncements/${annKey}`] = null; dbUpdate(roomRef, rm).catch(() => {}) } catch (e) {}
+                        }, 7000)
+                      } catch (e) {}
                       return
                     }
                   } catch (e) {}
@@ -5416,18 +5958,36 @@ try {
               try {
                 const base = { ...(viewerNode.privatePowerReveals || {}) }
                 const myTeam = viewerNode && viewerNode.team ? viewerNode.team : null
-                const targetTeam = p && p.team ? p.team : null
-                if (myTeam && targetTeam && myTeam === targetTeam && p && p.privatePowerReveals) {
-                  // merge target's buckets into base (do not overwrite existing buckets)
-                  Object.keys(p.privatePowerReveals || {}).forEach(bucketId => {
-                    if (!base[bucketId]) base[bucketId] = p.privatePowerReveals[bucketId]
-                    else {
-                      // merge entries within the bucket
+                // When in lastTeamStanding, reveal-buyers' privatePowerReveals that target this player
+                // should be visible to all members of the buyer's team. Iterate teammates and merge
+                // only entries that target the current player `p.id` into the viewer's bucket map.
+                if (myTeam && p && p.id) {
+                  try {
+                    ;(players || []).forEach(pp => {
                       try {
-                        base[bucketId] = { ...base[bucketId], ...(p.privatePowerReveals[bucketId] || {}) }
+                        if (!pp || !pp.id) return
+                        // only consider teammates (including the viewer themself)
+                        if (pp.team !== myTeam) return
+                        const tpr = pp.privatePowerReveals || {}
+                        Object.keys(tpr || {}).forEach(bucketId => {
+                          try {
+                            const bucket = tpr[bucketId] || {}
+                            Object.keys(bucket || {}).forEach(eid => {
+                              try {
+                                const entry = bucket[eid]
+                                if (!entry) return
+                                // only merge entries that target this player
+                                if (entry.to && entry.to === p.id) {
+                                  if (!base[bucketId]) base[bucketId] = {}
+                                  base[bucketId][eid] = entry
+                                }
+                              } catch (e) {}
+                            })
+                          } catch (e) {}
+                        })
                       } catch (e) {}
-                    }
-                  })
+                    })
+                  } catch (e) {}
                 }
                 return base
               } catch (e) { return viewerPrivatePowerReveals }
@@ -5571,12 +6131,11 @@ try {
                   powerUpDisabledReason={pupReason}
                   revealPreserveOrder={revealPreserveOrder}
                   revealShowBlanks={revealShowBlanks}
+                  showGhostReenter={Boolean(p.eliminated && ghostReEntryEnabled && p.id === myId && (state?.players || []).filter(x => x && !x.eliminated).length >= 2 && !(p.ghostState && p.ghostState.reentered))}
+                  ghostReenterDisabled={!!ghostCooldownSec}
+                  onGhostReenter={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}
                 />
-                {p.eliminated && ghostReEntryEnabled && p.id === myId && (state?.players || []).filter(x => x && !x.eliminated).length >= 2 && !(p.ghostState && p.ghostState.reentered) && (
-                  <div style={{ position: 'absolute', right: 6, bottom: 6 }}>
-                    <button onClick={() => { setGhostModalOpen(true); setGhostChallengeKeyLocal((state && state.ghostChallenge && state.ghostChallenge.key) || null) }}>Re-enter as Ghost</button>
-                  </div>
-                )}
+                
               </div>
             )
           }
@@ -5651,7 +6210,7 @@ try {
           <div style={{ gridColumn: '2 / 3', padding: 12, boxSizing: 'border-box' }}>
             <div style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-end' }}>
               {/* authoritative mode badge rendered in the right gutter so it doesn't overlap centered content */}
-              <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}><ModeBadge fixed={true} /></div>
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>{/* ModeBadge moved to render after victory screen so it appears above it */}</div>
 
               {/* Host PlayAgain controls shown in the gutter (only when ended/team winner present) */}
               {phase === 'ended' && state?.winnerTeam && (
@@ -5693,6 +6252,10 @@ try {
   {
     ddCoins && ddCoins.length > 0 && (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)))
   }
+  {/* Render authoritative ModeBadge after major overlays (including victory screen) so it appears above them visually */}
+  <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
+    <ModeBadge fixed={true} />
+  </div>
   {
     // build overlay node and portal it to body-level root when available to avoid stacking-context clipping
     (() => {
@@ -5711,6 +6274,44 @@ try {
       return overlayNode
     })()
   }
+
+  {/* Free bubble overlay (underworld themed) */}
+  {
+    (state && state.freeBubble && state.gameMode !== 'wordSeeker') && (() => {
+      try {
+        const fb = state.freeBubble
+        if (!fb) return null
+        const overlayNode = (
+          <div style={{ position: 'fixed', bottom: 120, right: 24, zIndex: 12015, pointerEvents: 'auto' }} aria-hidden={false}>
+            <button
+              onClick={async () => {
+                try {
+                  // prevent clicks if already claimed or a local claim is in progress
+                  if (!fb || fb.claimedBy || claimingBubbleId) return
+                  setClaimingBubbleId(fb.id)
+                  await claimFreeBubble(fb)
+                } catch (e) {} finally { setClaimingBubbleId(null) }
+              }}
+              disabled={Boolean(fb && fb.claimedBy) || Boolean(claimingBubbleId)}
+              title={fb && fb.amount ? `Claim +${fb.amount} wordmoney` : 'Claim free wordmoney'}
+              style={{ background: 'linear-gradient(180deg,#2b2b2b,#111)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 14, cursor: (fb && fb.claimedBy) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)', opacity: (fb && fb.claimedBy) ? 0.7 : 1 }}>
+              <span style={{ fontSize: 22 }}>🪦</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <strong style={{ fontSize: 14, lineHeight: 1 }}>{fb && fb.amount ? `+${fb.amount} wordmoney` : 'Free!'}</strong>
+                <small style={{ color: '#ccc', fontSize: 11 }}>{(fb && fb.claimedBy) ? 'Claimed' : 'Underworld bubble'}</small>
+              </div>
+            </button>
+          </div>
+        )
+        if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {
+          try { return ReactDOM.createPortal(overlayNode, ddOverlayRoot) } catch (e) { return overlayNode }
+        }
+        return overlayNode
+      } catch (e) { return null }
+    })()
+  }
+
+  
   {/* Big overlays: Waiting for player or Your Turn */}
   {(() => {
     try {
@@ -5876,15 +6477,26 @@ try {
                     }
                     if (typeof res.correct !== 'undefined') {
                       if (res.correct) {
-                        setToasts(t => [...t, { id: `ghost_reenter_ok_${Date.now()}`, text: 'Correct! You re-entered the game.' }])
+                        const okId = `ghost_reenter_ok_${Date.now()}`
+                        setToasts(t => [...t, { id: okId, text: 'Correct! You re-entered the game.' }])
+                        // auto-dismiss after short interval with a fade
+                        setTimeout(() => { try { setToasts(t => t.map(x => x.id === okId ? { ...x, removing: true } : x)) } catch (e) {} }, 2200)
+                        setTimeout(() => { try { setToasts(t => t.filter(x => x.id !== okId)) } catch (e) {} }, 2600)
                         setGhostModalOpen(false)
                       } else {
-                        setToasts(t => [...t, { id: `ghost_wrong_${Date.now()}`, text: 'Incorrect guess.' }])
+                        const errId = `ghost_wrong_${Date.now()}`
+                        setToasts(t => [...t, { id: errId, text: 'Incorrect guess.' }])
+                        setTimeout(() => { try { setToasts(t => t.map(x => x.id === errId ? { ...x, removing: true } : x)) } catch (e) {} }, 2200)
+                        setTimeout(() => { try { setToasts(t => t.filter(x => x.id !== errId)) } catch (e) {} }, 2600)
                       }
                     } else if (res.positions) {
                       // Avoid exposing exact positions in toasts; modal shows the letters below the challenge.
-                      setToasts(t => [...t, { id: `ghost_letter_${Date.now()}`, text: 'Letter found.' }])
+                      const letterId = `ghost_letter_${Date.now()}`
+                      setToasts(t => [...t, { id: letterId, text: 'Letter found.' }])
                       try { if (el) el.value = '' } catch (e) {}
+                      // auto-dismiss/fade
+                      setTimeout(() => { try { setToasts(t => t.map(x => x.id === letterId ? { ...x, removing: true } : x)) } catch (e) {} }, 2200)
+                      setTimeout(() => { try { setToasts(t => t.filter(x => x.id !== letterId)) } catch (e) {} }, 2600)
                     }
                   } catch (e) { console.warn(e) }
                 }}>{disabled ? `Wait ${remainingSec}s` : 'Submit'}</button>
@@ -5980,6 +6592,18 @@ try {
                 <>
                   <input id="submit_word" name="submit_word" placeholder="your word" value={word} onChange={e => { setWord(e.target.value); setWordError('') }} />
                   <button onClick={handleSubmitWord} disabled={isCheckingDictionary || localInvalid}>{isCheckingDictionary ? 'Checking…' : 'Submit'}</button>
+                        {/* Submit-phase timer UI for current player: shows remaining time when enabled */}
+                        {submitTimerEnabled && (
+                          <div style={{ marginLeft: 12, fontSize: 13, color: '#cfcfcf' }}>
+                            {(() => {
+                              const start = submitPhaseStartRef.current || Date.now()
+                              const secs = Number(submitTimerSeconds) || 60
+                              const msLeft = Math.max(0, (start + (secs*1000)) - Date.now())
+                              const sLeft = Math.ceil(msLeft/1000)
+                              return (<div>Time to submit: <strong>{sLeft}s</strong></div>)
+                            })()}
+                          </div>
+                        )}
                   {/* inline helper / error */}
                   {(wordError || (!isCheckingDictionary && localInvalid && candidateInput)) && (
                     <div className="small-error" style={{ marginLeft: 12 }}>
@@ -6030,7 +6654,7 @@ try {
                     const losers = sanitizedStandings.filter(p => p && p.team !== winnerTeam)
                     return (
                       <div style={{ display: 'flex', gap: 12, flexDirection: 'column' }}>
-                        <div style={{ padding: 8, borderRadius: 8, background: '#0b6623', color: '#fff' }}>
+                        <div style={{ padding: 8, borderRadius: 8, background: (winnerTeam == "blue") ? '#1c81adff' : 'rgba(228, 63, 63, 1)', color: '#fff' }}>
                           <strong style={{ fontSize: 16 }}>Winners {winnerTeam ? `(Team ${winnerTeam})` : ''}</strong>
                           <div style={{ marginTop: 8 }}>
                             {winners.length === 0 && <div style={{ color: '#ddd' }}>No winners listed</div>}
@@ -6043,7 +6667,7 @@ try {
                                       <span style={{ marginLeft: 8, background: '#eef5ee', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
                                     )}
                                   </div>
-                                  <div style={{ fontWeight: 800 }}>${p.wordmoney || 0}</div>
+                                  <div style={{ fontWeight: 800 }}>${state?.gameMode == "lastTeamStanding" ? (state?.teams[p.team]?.wordmoney || 0):  (p.wordmoney || 0) }</div>
                                 </li>
                               ))}
                             </ol>

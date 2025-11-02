@@ -18,7 +18,8 @@ import BALLSPORTS from '../data/ballsports'
 import OLYMPICSPORTS from '../data/olympicsports'
 import GEMSTONES from '../data/gemstones'
 import COUNTRIES from '../data/countries'
-import FRUITS_VEGS from '../data/fruits_vegetables'
+import FRUITS from '../data/fruits'
+import VEGETABLES from '../data/vegetables'
 import OCCUPATIONS from '../data/occupations'
 
 export default function useGameRoom(roomId, playerName) {
@@ -320,7 +321,8 @@ export default function useGameRoom(roomId, playerName) {
     const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
     let pool = null
     if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
-    else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
+  else if (theme === 'fruits') pool = Array.isArray(FRUITS) ? FRUITS.slice() : null
+  else if (theme === 'vegetables') pool = Array.isArray(VEGETABLES) ? VEGETABLES.slice() : null
     else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
     else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
     else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
@@ -694,7 +696,8 @@ export default function useGameRoom(roomId, playerName) {
           const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
           let pool = null
           if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
-          else if (theme === 'fruits') pool = Array.isArray(FRUITS_VEGS) ? FRUITS_VEGS.slice() : null
+          else if (theme === 'fruits') pool = Array.isArray(FRUITS) ? FRUITS.slice() : null
+          else if (theme === 'vegetables') pool = Array.isArray(VEGETABLES) ? VEGETABLES.slice() : null
           else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
           else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
           else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
@@ -1459,15 +1462,15 @@ export default function useGameRoom(roomId, playerName) {
           return false
         }
       }
-      else if (type === 'fruits') {
+      else if (type === 'fruits' || type === 'vegetables') {
         try {
-          const list = (FRUITS_VEGS && FRUITS_VEGS.default) ? FRUITS_VEGS.default : FRUITS_VEGS
+          const list = (type === 'fruits') ? ((FRUITS && FRUITS.default) ? FRUITS.default : FRUITS) : ((VEGETABLES && VEGETABLES.default) ? VEGETABLES.default : VEGETABLES)
           if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
-            console.warn('submitWord rejected: not in fruits/vegs list', stored)
+            console.warn('submitWord rejected: not in themed list', type, stored)
             return false
           }
         } catch (e) {
-          console.warn('submitWord fruits validation failed', e)
+          console.warn('submitWord themed validation failed', e)
           return false
         }
       }
@@ -1635,7 +1638,7 @@ export default function useGameRoom(roomId, playerName) {
       if (allSubmitted) {
         // Build a turn order. For team mode (lastTeamStanding) prefer an alternating
         // sequence across teams so consecutive turns belong to different teams where possible.
-  const buildAlternatingOrder = (playersObj, prevLastTeam = null) => {
+        const buildAlternatingOrder = (playersObj, prevLastTeam = null) => {
           try {
             const keys = Object.keys(playersObj || {})
             // group players by team preserving original join order
@@ -1654,8 +1657,41 @@ export default function useGameRoom(roomId, playerName) {
               } catch (e) {}
             })
             const teamNames = Object.keys(teams)
-            // If there are no or only one team, fall back to keys (but attempt to interleave
-            // unteamed players with the single team if present so we avoid bunching where possible).
+
+            // If exactly two teams (lastTeamStanding) use deterministic two-list alternation:
+            // produce sequence by taking red[0], blue[0], red[1], blue[1], ... and skipping
+            // any duplicates until every player has been included. This preserves alternation
+            // and wraps shorter lists so both teams remain interleaved fairly.
+            if (teamNames.length === 2) {
+              const a = teams[teamNames[0]].slice()
+              const b = teams[teamNames[1]].slice()
+              const total = a.length + b.length
+              const res = []
+              const seen = new Set()
+              let j = 0
+              while (res.length < total) {
+                if (a.length > 0) {
+                  const cand = a[j % a.length]
+                  if (!seen.has(cand)) {
+                    res.push(cand)
+                    seen.add(cand)
+                  }
+                }
+                if (res.length >= total) break
+                if (b.length > 0) {
+                  const cand2 = b[j % b.length]
+                  if (!seen.has(cand2)) {
+                    res.push(cand2)
+                    seen.add(cand2)
+                  }
+                }
+                j++
+              }
+              // append any unteamed players at end
+              return res.concat(unteamed.filter(p => !seen.has(p)))
+            }
+
+            // Fallback: for other team counts, use previous round-robin strategy
             if (teamNames.length <= 1) {
               if (teamNames.length === 1 && unteamed.length > 0) {
                 const teamQueue = teams[teamNames[0]].slice()
@@ -1674,13 +1710,10 @@ export default function useGameRoom(roomId, playerName) {
               return keys // nothing to alternate meaningfully
             }
 
-            // pick starting team: prefer the team opposite the previous round's last-turn team
-            // so the next team's turn is different across rounds. If prevLastTeam is not
-            // available, fall back to the team of the first player or the first team name.
+            // preserve prior behavior for 3+ teams: round-robin across teams preferring alternation
             const firstPid = keys[0]
             let firstTeam = null
             if (prevLastTeam) {
-              // choose any team that is not prevLastTeam if possible
               firstTeam = teamNames.find(t => t !== prevLastTeam) || teamNames[0]
             } else {
               firstTeam = (playersObj[firstPid] && playersObj[firstPid].team) ? playersObj[firstPid].team : teamNames[0]
@@ -1689,12 +1722,8 @@ export default function useGameRoom(roomId, playerName) {
             const queues = {}
             orderedTeams.forEach(t => { queues[t] = teams[t] ? teams[t].slice() : [] })
             const result = []
-
-            // Round-robin across teams but always prefer the next non-empty team so
-            // we maximize alternation even when sizes are uneven.
             let idx = 0
             while (Object.keys(queues).some(k => queues[k].length > 0)) {
-              // find next non-empty team starting from current idx
               let found = null
               for (let offset = 0; offset < orderedTeams.length; offset++) {
                 const cand = orderedTeams[(idx + offset) % orderedTeams.length]
@@ -1708,7 +1737,6 @@ export default function useGameRoom(roomId, playerName) {
               result.push(queues[found].shift())
               idx++
             }
-            // append any unteamed players at end
             return result.concat(unteamed)
           } catch (e) {
             return Object.keys(playersObj || {})
@@ -1748,7 +1776,8 @@ export default function useGameRoom(roomId, playerName) {
                 const theme = roomRoot && roomRoot.secretWordTheme && roomRoot.secretWordTheme.enabled ? (roomRoot.secretWordTheme.type || null) : null
                 let pool = null
                 if (theme === 'animals') pool = (ANIMALS && ANIMALS.default) ? ANIMALS.default : ANIMALS
-                else if (theme === 'fruits') pool = (FRUITS_VEGS && FRUITS_VEGS.default) ? FRUITS_VEGS.default : FRUITS_VEGS
+                else if (theme === 'fruits') pool = (FRUITS && FRUITS.default) ? FRUITS.default : FRUITS
+                else if (theme === 'vegetables') pool = (VEGETABLES && VEGETABLES.default) ? VEGETABLES.default : VEGETABLES
                 else if (theme === 'occupations') pool = (OCCUPATIONS && OCCUPATIONS.default) ? OCCUPATIONS.default : OCCUPATIONS
                 else if (theme === 'countries') pool = (COUNTRIES && COUNTRIES.default) ? COUNTRIES.default : COUNTRIES
                 else if (theme === 'instruments') pool = (INSTRUMENTS && INSTRUMENTS.default) ? INSTRUMENTS.default : INSTRUMENTS

@@ -333,7 +333,62 @@ exports.processGuess = functions.database
         updates[`players/${from}/privateHits/${targetId}`] = prevHits
 
         // remove from turnOrder and adjust currentTurnIndex
-        const newTurnOrder = (room.turnOrder || []).filter(id => id !== targetId)
+        // For lastTeamStanding, rebuild a fair alternating turnOrder from two team lists
+        const buildLTSOrder = (playersMap) => {
+          try {
+            const keys = Object.keys(playersMap || {})
+            const teams = {}
+            const unteamed = []
+            keys.forEach(k => {
+              try {
+                const p = playersMap[k] || {}
+                if (p.eliminated) return
+                const t = p.team || null
+                if (t) {
+                  teams[t] = teams[t] || []
+                  teams[t].push(k)
+                } else {
+                  unteamed.push(k)
+                }
+              } catch (e) {}
+            })
+            const teamNames = Object.keys(teams)
+            if (teamNames.length === 2) {
+              const a = teams[teamNames[0]] || []
+              const b = teams[teamNames[1]] || []
+              const total = a.length + b.length
+              const res = []
+              const seen = new Set()
+              let j = 0
+              while (res.length < total) {
+                if (a.length > 0) {
+                  const cand = a[j % a.length]
+                  if (!seen.has(cand)) { res.push(cand); seen.add(cand) }
+                }
+                if (res.length >= total) break
+                if (b.length > 0) {
+                  const cand2 = b[j % b.length]
+                  if (!seen.has(cand2)) { res.push(cand2); seen.add(cand2) }
+                }
+                j++
+              }
+              return res.concat(unteamed.filter(p => !seen.has(p)))
+            }
+            return keys.filter(k => !(playersMap[k] && playersMap[k].eliminated))
+          } catch (e) {
+            return Object.keys(playersMap || {}).filter(k => !(playersMap[k] && playersMap[k].eliminated))
+          }
+        }
+
+        let newTurnOrder = (room.turnOrder || []).filter(id => id !== targetId)
+        try {
+          if ((room && room.gameMode) === 'lastTeamStanding') {
+            const playersAfter = Object.assign({}, players)
+            if (!playersAfter[targetId]) playersAfter[targetId] = Object.assign({}, { id: targetId, eliminated: true })
+            else playersAfter[targetId] = Object.assign({}, playersAfter[targetId], { eliminated: true })
+            newTurnOrder = buildLTSOrder(playersAfter)
+          }
+        } catch (e) {}
         updates[`turnOrder`] = newTurnOrder
         // adjust currentTurnIndex to safe value
         let adjustedIndex = currentIndex

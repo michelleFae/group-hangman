@@ -198,6 +198,29 @@ button[disabled] {
 .modal-dialog { width: 520px; max-width: 92%; padding: 18px; border-radius: 12px; color: var(--text); background: linear-gradient(180deg, rgba(26,24,26,0.98), rgba(18,16,20,0.96)); max-height: 90vh; overflow: auto }
 .modal-dialog button { color: inherit; }
 
+/* Ghost modal specific backdrop: place toward top and make sure it overlays other UI */
+.modal-backdrop {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 6vh; /* near the top of the viewport */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: auto; /* allow interacting with modal contents */
+  z-index: 13000; /* sit above other overlays (toasts, coin overlays, etc.) */
+}
+.modal-backdrop .modal.card {
+  pointer-events: auto;
+  margin: 0 auto;
+  transform: none !important; /* avoid card hover transforms moving the modal */
+  box-shadow: 0 12px 36px rgba(0,0,0,0.7) !important;
+  max-width: 680px; /* slightly wider for readability */
+}
+
+/* Ensure the ghost modal content itself sits visually toward the top (not vertically centered) */
+.modal-backdrop .modal.card > h3 { margin-top: 6px }
+
 /* subtle entrance animation for modal dialogs: fade in and slight lift (not on hover) */
 @keyframes modal-entrance {
   0% { opacity: 0; transform: translateY(8px) scale(0.995); box-shadow: 0 4px 10px rgba(0,0,0,0.6) }
@@ -347,6 +370,17 @@ button[disabled] {
 .player.player-stale { filter: grayscale(80%) contrast(.9) brightness(.9); opacity: 0.72 }
 .player.player-stale .avatar { box-shadow: none; opacity: 0.8 }
 .player.player-stale .revealed, .player.player-stale .wordmoney { opacity: 0.6 }
+
+/* Eliminated / ghosted player appearance: make tiles look faded and ghostly for all viewers.
+   When a player returns (player.eliminated === false), the normal styles are restored. */
+.player.player-eliminated {
+  opacity: 0.48;
+  filter: grayscale(80%) contrast(0.9) saturate(0.6) drop-shadow(0 8px 20px rgba(0,0,0,0.6));
+  transition: opacity 280ms ease, filter 280ms ease, transform 200ms ease;
+}
+.player.player-eliminated .avatar { opacity: 0.6; box-shadow: none }
+.player.player-eliminated .revealed, .player.player-eliminated .wordmoney { opacity: 0.56 }
+
 
 /* small colored dot used in waiting lists */
 .waiting-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; box-shadow: 0 2px 6px rgba(0,0,0,0.6) }
