@@ -14,6 +14,9 @@ import ELEMENTS from '../data/elements'
 import CPPTERMS from '../data/cppterms'
 import ANIMALS from '../data/animals'
 import INSTRUMENTS from '../data/instruments'
+import BALLSPORTS from '../data/ballsports'
+import OLYMPICSPORTS from '../data/olympicsports'
+import GEMSTONES from '../data/gemstones'
 import COUNTRIES from '../data/countries'
 import FRUITS_VEGS from '../data/fruits_vegetables'
 import OCCUPATIONS from '../data/occupations'
@@ -76,6 +79,29 @@ export default function useGameRoom(roomId, playerName) {
       } catch (e) {
         console.warn('lobby stale-clear check failed', e)
       }
+
+      // If the room currently has only one player left while a game is active,
+      // end the game and persist the final state. Only the host performs the
+      // authoritative transition to avoid racey writes from multiple clients.
+      try {
+        const phaseNow = raw.phase || 'lobby'
+        const activePhases = ['playing', 'submit', 'wordseeker_play', 'wordseeker_playing', 'wordseeker_play']
+        const presentCount = Array.isArray(players) ? players.length : Object.keys(raw.players || {}).length
+        if (presentCount <= 1 && phaseNow && phaseNow !== 'ended' && activePhases.includes(phaseNow)) {
+          const myUid = (auth && auth.currentUser) ? auth.currentUser.uid : null
+          if (raw.hostId && myUid && raw.hostId === myUid) {
+            try {
+              const roomRef = dbRef(db, `rooms/${roomId}`)
+              const updates = { phase: 'ended' }
+              if (presentCount === 1 && players && players[0] && players[0].id) updates['winnerId'] = players[0].id
+              await update(roomRef, updates)
+              console.log('Auto-ended room due to single remaining player', { roomId, winner: updates['winnerId'] })
+            } catch (e) {
+              console.warn('Could not auto-end room when only one player left', e)
+            }
+          }
+        }
+      } catch (e) { console.warn('single-player end check failed', e) }
 
       // Auto-start Word Seeker: if we're in the waiting phase and all players are marked ready,
       // let the host automatically begin the playing phase. Use a ref to avoid duplicate calls.
@@ -1480,6 +1506,42 @@ export default function useGameRoom(roomId, playerName) {
           }
         } catch (e) {
           console.warn('submitWord cpp validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'ballsports') {
+        try {
+          const list = (BALLSPORTS && BALLSPORTS.default) ? BALLSPORTS.default : BALLSPORTS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in ballsports list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord ballsports validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'olympicsports') {
+        try {
+          const list = (OLYMPICSPORTS && OLYMPICSPORTS.default) ? OLYMPICSPORTS.default : OLYMPICSPORTS
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in olympicsports list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord olympicsports validation failed', e)
+          return false
+        }
+      }
+      else if (type === 'gemstones') {
+        try {
+          const list = (GEMSTONES && GEMSTONES.default) ? GEMSTONES.default : GEMSTONES
+          if (!Array.isArray(list) || !list.includes(stored.toLowerCase())) {
+            console.warn('submitWord rejected: not in gemstones list', stored)
+            return false
+          }
+        } catch (e) {
+          console.warn('submitWord gemstones validation failed', e)
           return false
         }
       }

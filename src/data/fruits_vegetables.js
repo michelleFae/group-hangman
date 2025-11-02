@@ -18,7 +18,7 @@ const BASE = [
   // Vegetables
   'artichoke','arugula','asparagus','beet','beetroot', 'bean','bokchoy','broccoli','brussels','brusselsprout','cabbage','carrot','soybean', 'edamame',
   'basil','bellpepper','bittermelon','butternut','capsicum','caper','caraway','cauliflower','celeriac','chard','chayote','chicory','collard','cress','coriander','cardamom','celtuce','curlycress',
-  'dill','horseradish','mache','mizuna',
+  'dill','horseradish','mache','mizuna','xanthosoma','xoconostle','xigua',
   'salsify','sorrel','tatsoi',
   'lentil','lentils','chickpea','garbanzo','spinach','lettuce','watercress','microgreen','sprout','sprouts','scallion','springonion','chive','mustardgreen','snowpea','snappea',
   'cassava','taro','chayote','edamame',

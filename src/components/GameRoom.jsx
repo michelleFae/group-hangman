@@ -4836,6 +4836,39 @@ try {
             setWordError('Could not validate country : try again')
             return
           }
+        } else if (secretThemeType === 'ballsports') {
+          try {
+            const arr = Array.isArray(BALLSPORTS) ? BALLSPORTS : (BALLSPORTS && BALLSPORTS.default ? BALLSPORTS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be a ball-sport from the selected theme (single word).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate ball sport : try again')
+            return
+          }
+        } else if (secretThemeType === 'olympicsports') {
+          try {
+            const arr = Array.isArray(OLYMPICSPORTS) ? OLYMPICSPORTS : (OLYMPICSPORTS && OLYMPICSPORTS.default ? OLYMPICSPORTS.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be an Olympic sport from the selected theme (single word).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate Olympic sport : try again')
+            return
+          }
+        } else if (secretThemeType === 'gemstones') {
+          try {
+            const arr = Array.isArray(GEMSTONES) ? GEMSTONES : (GEMSTONES && GEMSTONES.default ? GEMSTONES.default : [])
+            if (!arr.includes(candidate.toLowerCase())) {
+              suggestAndSetError('Word must be a gemstone from the selected theme (single word).', arr, candidate)
+              return
+            }
+          } catch (e) {
+            setWordError('Could not validate gemstone : try again')
+            return
+          }
         }
       } catch (e) {
         setWordError('Theme validation failed : try again')
