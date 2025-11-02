@@ -4151,6 +4151,8 @@ try {
   const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
     ;(players || []).forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
+      // Reset ready flag for everyone except the host so players must re-ready after a restart
+      try { if (p.id !== myId) updates[`players/${p.id}/ready`] = null } catch (e) {}
           updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
@@ -4279,6 +4281,8 @@ try {
   } catch (e) {}
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
+          // Reset ready flag for everyone except the host so players must re-ready after an automatic rematch
+          try { if (p.id !== hostId) updates[`players/${p.id}/ready`] = null } catch (e) {}
           updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []

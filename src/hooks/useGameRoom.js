@@ -1339,12 +1339,12 @@ export default function useGameRoom(roomId, playerName) {
 
       // If the room is configured to use the Last Theme Standing mode, assign
       // players to two teams (red/blue), initialize a shared team wallet and
-      // a single-active freeze slot per team. Require minimum 4 players.
+      // a single-active freeze slot per team. Require minimum 3 players.
   if ((room && room.gameMode ? room.gameMode : (options && options.gameMode)) === 'lastTeamStanding') {
         const playerIds = Object.keys(playersObj || {})
-        if ((playerIds || []).length < 4) {
+        if ((playerIds || []).length < 3) {
           // show a UI-visible warning instead of console log; clear it when mode changes or enough players join
-          setState(prev => ({ ...(prev || {}), ltsWarning: 'Last Team Standing requires at least 4 players' }))
+          setState(prev => ({ ...(prev || {}), ltsWarning: 'Last Team Standing requires at least 3 players' }))
           // watch the room root and clear the warning when conditions change
           let warnUnsub = null
           const warnCb = (snap) => {
@@ -1352,7 +1352,7 @@ export default function useGameRoom(roomId, playerName) {
               const rv = snap.val() || {}
               const countNow = Object.keys(rv.players || {}).length
               const gmNow = rv.gameMode
-              if (gmNow !== 'lastTeamStanding' || countNow >= 4) {
+              if (gmNow !== 'lastTeamStanding' || countNow >= 3) {
                 setState(prev => {
                   if (!prev) return prev
                   const copy = { ...prev }
