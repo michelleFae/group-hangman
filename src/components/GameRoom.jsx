@@ -1616,6 +1616,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               updates[`players/${myId}/privateHits`] = null
               updates[`players/${myId}/privateWrong`] = null
               updates[`players/${myId}/privateWrongWords`] = null
+              // Clear any prior guess-blocking records for the re-entering player
+              updates[`players/${myId}/guessedBy`] = null
             } catch (e) {}
             // Reset the public revealed letters on the re-entering player's tile so
             // other players no longer see previous revealed letters for this player.
@@ -4172,12 +4174,16 @@ try {
           updates[`players/${p.id}/ghostLastGuessAt`] = null
           // Clear viewer-specific guess tracking so old guesses don't persist
           updates[`players/${p.id}/privateHits`] = null
+          // Clear any prior guess-blocking records so players can be guessed again after a restart
+          updates[`players/${p.id}/guessedBy`] = null
           updates[`players/${p.id}/privateWrong`] = null
           updates[`players/${p.id}/privateWrongWords`] = null
           // Clear any power-up results and markers (private reveals, tracked powerups, and no-score flags)
           updates[`players/${p.id}/privatePowerReveals`] = null
           updates[`players/${p.id}/privatePowerUps`] = null
           updates[`players/${p.id}/noScoreReveals`] = null
+          // Clear any prior guess-blocking records so players can be guessed again on automatic rematch
+          updates[`players/${p.id}/guessedBy`] = null
         })
 
   const ok = await attemptReset(updates)
@@ -5245,7 +5251,7 @@ try {
         </div>
       )}
 
-  <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`}>
+  <div className={`circle ${isMyTurnNow ? 'my-turn' : ''}`} style={{ display: phase === 'ended' ? 'none' : undefined }}>
     {players.length === 0 && <div>No players yet : wait for others to join.</div>}
     {/* Place the prominent "Your turn" card at the top of the players circle when it's your turn.
         This renders inside the flow of the circle so it stays visually attached to the player list
@@ -5566,9 +5572,9 @@ try {
               )}
 
               {/* Turn indicator (flowed into the gutter instead of fixed) */}
-              <div className="turn-indicator" style={{ fontSize: 13, color: '#ddd', textAlign: 'right' }}>
+              {/* <div className="turn-indicator" style={{ fontSize: 13, color: '#ddd', textAlign: 'right' }}>
                 {phase === 'playing' ? `Current turn: ${players.find(p => p.id === currentTurnId)?.name || '-'}` : null}
-              </div>
+              </div> */}
 
               {/* Reveal indicator (kept visible during playing) */}
               {/* {(phase === 'playing') && (

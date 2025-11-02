@@ -1921,11 +1921,7 @@ export default function useGameRoom(roomId, playerName) {
             return { blocked: true, message: `You already correctly guessed that word for ${targetNode.name || 'this player'}.` }
           }
         } catch (e) {}
-        try {
-          if (targetNode.guessedBy && targetNode.guessedBy['__word'] && Array.isArray(targetNode.guessedBy['__word']) && targetNode.guessedBy['__word'].map(x => (x||'').toString()).includes(playerIdRef.current)) {
-            return { blocked: true, message: `You already guessed the full word for ${targetNode.name || 'this player'}.` }
-          }
-        } catch (e) {}
+
       }
     } catch (e) {
       // best-effort only; ignore errors and continue to submit the guess
