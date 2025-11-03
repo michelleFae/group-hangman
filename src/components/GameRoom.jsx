@@ -366,6 +366,71 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       prevPlayersRef.current = newMap
     } catch (e) {}
   }, [state?.players, ghostReEntryEnabled])
+
+  // Ensure host maintains a clean alternating turnOrder in lastTeamStanding when players change
+  useEffect(() => {
+    try {
+      if (!state) return
+      if (state.gameMode !== 'lastTeamStanding') return
+      // only the host should persist authoritative turnOrder reshuffles to avoid races
+      if (!hostId || hostId !== myId) return
+      const playersArr = Array.isArray(state.players) ? state.players.slice() : []
+
+      const buildLastTeamStandingOrder = (playersArr = []) => {
+        try {
+          const alive = (playersArr || []).filter(p => p && !p.eliminated)
+          const teams = {}
+          const unteamed = []
+          alive.forEach(p => {
+            if (p && p.team) {
+              teams[p.team] = teams[p.team] || []
+              teams[p.team].push(p.id)
+            } else if (p && p.id) {
+              unteamed.push(p.id)
+            }
+          })
+          const teamNames = Object.keys(teams)
+          if (teamNames.length === 2) {
+            const a = teams[teamNames[0]] || []
+            const b = teams[teamNames[1]] || []
+            const maxLen = Math.max(a.length, b.length)
+            const res = []
+            for (let i = 0; i < maxLen; i++) {
+              if (a.length > 0) {
+                const cand = a[i % a.length]
+                if (cand && !res.includes(cand)) res.push(cand)
+              }
+              if (b.length > 0) {
+                const cand2 = b[i % b.length]
+                if (cand2 && !res.includes(cand2)) res.push(cand2)
+              }
+            }
+            return res.concat(unteamed)
+          }
+          // fallback: preserve players order skipping eliminated ones
+          return alive.map(p => p.id).concat(unteamed.filter(id => !alive.some(ap => ap.id === id)))
+        } catch (e) {
+          return (playersArr || []).filter(p => p && !p.eliminated).map(p => p.id)
+        }
+      }
+
+      const newOrder = buildLastTeamStandingOrder(playersArr)
+      if (!Array.isArray(newOrder) || newOrder.length === 0) return
+      const curOrder = Array.isArray(state.turnOrder) ? state.turnOrder.slice() : []
+      // If identical, nothing to do
+      const same = JSON.stringify(newOrder) === JSON.stringify(curOrder.filter(pid => newOrder.includes(pid)))
+      if (same) return
+      // compute new currentTurnIndex: try to preserve current player if possible
+      const currentPid = (Array.isArray(state.turnOrder) && typeof state.currentTurnIndex === 'number') ? state.turnOrder[state.currentTurnIndex] : null
+      const newIndex = newOrder.indexOf(currentPid)
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const ups = { turnOrder: newOrder }
+      if (newIndex >= 0) ups.currentTurnIndex = newIndex
+      else ups.currentTurnIndex = 0
+      // Persist authoritative reshuffle
+      safeDbUpdate(roomRef, ups).catch(() => {})
+    } catch (e) {}
+  }, [JSON.stringify(state?.players || []), state?.gameMode, hostId, myId])
   // coin pieces shown when a double-down is won
   const [ddCoins, setDdCoins] = useState([])
   // transient overlay events when ghosts re-enter so we can show animated UI for everyone
