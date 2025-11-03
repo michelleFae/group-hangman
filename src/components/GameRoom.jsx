@@ -135,7 +135,9 @@ const ThemeSelect = React.memo(function ThemeSelect({ id, value, onChange, style
 })
 
 export default function GameRoom({ roomId, playerName, password }) { // Added password as a prop
-  const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId,
+  const { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, addBot, playerId,
+    // Bot helpers
+    botMakeMove, removeBot,
     // Word Seeker hooks
     startWordSeeker, markWordSeekerReady, beginWordSeekerPlaying, endWordSeekerPlaying, voteForPlayer, tallyWordSeekerVotes, submitSpyGuess, playNextWordSeekerRound
   } = useGameRoom(roomId, playerName)
@@ -973,6 +975,31 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
   // whether the viewer is the current turn player
   const isMyTurnNow = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myId
+
+  // Host-runner: when it's a bot player's turn, the host schedules the bot to act
+  useEffect(() => {
+    try {
+      if (!isHost) return
+      if (!state || state.phase !== 'playing') return
+      const order = state.turnOrder || []
+      const idx = typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex : null
+      if (idx === null) return
+      const pid = order[idx]
+      if (!pid) return
+      const playerNode = (state.players || []).find(p => p.id === pid) || {}
+      if (!playerNode || !playerNode.isBot) return
+      // determine delay per-bot then schedule
+      const bs = playerNode.botSettings || state.botSettings || {}
+      const delayMs = Number(bs.delayMs) || 4000
+      const jitter = Math.floor(Math.random() * 800) - 400
+      const timer = setTimeout(() => {
+        try {
+          if (typeof botMakeMove === 'function') botMakeMove(pid).catch(() => {})
+        } catch (e) {}
+      }, Math.max(250, delayMs + jitter))
+      return () => clearTimeout(timer)
+    } catch (e) {}
+  }, [state?.currentTurnIndex, JSON.stringify(state?.turnOrder || []), JSON.stringify(state?.players || []), isHost, state?.phase])
 
   // live per-second cooldown display for ghost guesses (seconds remaining)
   const [ghostCooldownSec, setGhostCooldownSec] = useState(0)
@@ -2496,6 +2523,41 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 }}
               /> Random free wordmoney bubbles (underworld themed)
             </label>
+            {/* Bot settings (host-only) */}
+            {isHost && (
+              <div style={{ marginTop: 8, padding: 8, border: '1px dashed rgba(255,255,255,0.04)', borderRadius: 8 }}>
+                <strong style={{ fontSize: 13 }}>Bots</strong>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Delay (ms):
+                    <input type="number" value={state?.botSettings?.delayMs || 4000} onChange={e => { try { updateRoomSettings({ botSettings: { ...(state?.botSettings || {}), delayMs: Number(e.target.value) || 4000 } }) } catch (er) {} }} style={{ width: 110, marginLeft: 6 }} />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Difficulty:
+                    <select value={state?.botSettings?.difficulty || 'medium'} onChange={e => { try { updateRoomSettings({ botSettings: { ...(state?.botSettings || {}), difficulty: e.target.value } }) } catch (er) {} }} style={{ marginLeft: 6 }}>
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                    </select>
+                  </label>
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <button onClick={async () => {
+                    try {
+                      const bs = state?.botSettings || {}
+                      const id = await addBot({ difficulty: bs.difficulty || 'medium', delayMs: Number(bs.delayMs) || 4000 })
+                      if (id) {
+                        const tid = `bot_added_${Date.now()}`
+                        setToasts(t => [...t, { id: tid, text: 'Bot added to room' }])
+                        setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 4000)
+                      } else {
+                        const tid = `bot_err_${Date.now()}`
+                        setToasts(t => [...t, { id: tid, text: 'Could not add bot (check host status)', error: true }])
+                        setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 4000)
+                      }
+                    } catch (e) { console.warn('Add bot failed', e) }
+                  }}>Add bot</button>
+                </div>
+              </div>
+            )}
             <label htmlFor="submitTimerEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }} title={"When enabled, players have a limited time to submit a word during the submit phase; unsubmitted players are auto-assigned a word and receive -2 wordmoney."}>
               <input id="submitTimerEnabled" name="submitTimerEnabled" type="checkbox" checked={submitTimerEnabled} onChange={e => { const nv = e.target.checked; setSubmitTimerEnabled(nv); updateRoomSettings({ submitTimerEnabled: !!nv }) }} /> Enable submit-phase timer
             </label>
@@ -5337,6 +5399,58 @@ try {
     } catch (e) { console.warn('submit auto-assign watcher failed', e) }
     return () => { try { if (timer) clearTimeout(timer) } catch (e) {} }
   }, [phase, submitTimerEnabled, submitTimerSeconds, myId, state && state.players])
+
+  // Host-side bot runner: when it's a bot's turn, host client will schedule
+  // a bot action (guess a letter or occasionally guess the full word) using
+  // the configured botSettings.delayMs and difficulty.
+  useEffect(() => {
+    if (!isHost) return
+    if (!state) return
+    if (phase !== 'playing') return
+    const order = state.turnOrder || []
+    const idx = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : null
+    const currentPid = (idx !== null && Array.isArray(order) && order.length > idx) ? order[idx] : null
+    if (!currentPid) return
+    const botNode = (state.players || []).find(p => p && p.id === currentPid && p.isBot)
+    if (!botNode) return
+
+    const roomBotSettings = state?.botSettings || {}
+    const delay = (botNode.botSettings && Number(botNode.botSettings.delayMs)) || Number(roomBotSettings.delayMs) || 4000
+    const difficulty = (botNode.botSettings && botNode.botSettings.difficulty) || roomBotSettings.difficulty || 'medium'
+
+    const timer = setTimeout(async () => {
+      try {
+        // pick a target: alive, not eliminated, not a bot
+        const alive = (state.players || []).filter(p => p && !p.eliminated && p.id !== botNode.id && !p.isBot)
+        if (!alive || alive.length === 0) return
+        const target = alive[Math.floor(Math.random() * alive.length)]
+        if (!target) return
+
+        // decide action probability
+        const probWord = (difficulty === 'hard') ? 0.30 : (difficulty === 'easy') ? 0.05 : 0.12
+        if (Math.random() < probWord) {
+          // attempt full-word guess
+          try { await sendGuess(target.id, { value: (target.word || '') }) } catch (e) { console.warn('bot full-word guess failed', e) }
+          return
+        }
+
+        // otherwise guess a letter: prefer unrevealed letters
+        const word = (target.word || '').toString().toLowerCase()
+        const revealed = Array.isArray(target.revealed) ? target.revealed.map(x => (x||'').toString().toLowerCase()) : []
+        const uniques = Array.from(new Set((word || '').split('').filter(Boolean)))
+        const unrevealed = uniques.filter(ch => !revealed.includes(ch))
+        let letter = null
+        if (unrevealed.length > 0) letter = unrevealed[Math.floor(Math.random() * unrevealed.length)]
+        else if (word && word.length > 0) letter = word[Math.floor(Math.random() * word.length)]
+        else letter = String.fromCharCode(97 + Math.floor(Math.random() * 26))
+        try { await sendGuess(target.id, { value: letter }) } catch (e) { console.warn('bot letter guess failed', e) }
+      } catch (e) {
+        console.warn('bot runner unexpected error', e)
+      }
+    }, Math.max(250, delay || 4000))
+
+    return () => { try { clearTimeout(timer) } catch (e) {} }
+  }, [state?.currentTurnIndex, state?.turnOrder, state?.phase, state?.players, isHost])
 
   // Allow the current player to voluntarily end their turn and advance to the next player.
   async function skipTurn() {

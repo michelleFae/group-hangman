@@ -22,6 +22,11 @@ import FRUITS from '../data/fruits'
 import VEGETABLES from '../data/vegetables'
 import OCCUPATIONS from '../data/occupations'
 
+// Palette shared for bot avatars
+const BOT_PALETTE = [
+  '#FFDC70','#64B5F6','#81C784','#F48FB1','#fff9e4ff','#BA68C8','#ffae35ff','#E57373','#d5ce81ff','#36f240ff','#cd75a1ff','#FF8A65','#7986CB','#DCE775','#4DB6AC','#F06292','#81D4FA','#A1887F','#90CAF9'
+]
+
 export default function useGameRoom(roomId, playerName) {
   const [state, setState] = useState(null)
   const playerIdRef = useRef(null)
@@ -1407,6 +1412,291 @@ export default function useGameRoom(roomId, playerName) {
     await update(roomRef, updates)
   }
 
+  // Create a bot player in the room. Only host should call this (UI enforces),
+  // but we perform best-effort checks here as well.
+  async function addBot({ difficulty = 'medium', delayMs = 4000 } = {}) {
+    if (!db) return null
+    const uid = playerIdRef.current
+    if (!uid) return null
+    const roomRef = dbRef(db, `rooms/${roomId}`)
+    const snap = await get(roomRef)
+    const room = snap.val() || {}
+    if (room.hostId !== uid) return null
+
+    // build a unique bot id
+    const botId = `bot_${Math.random().toString(36).slice(2,8)}_${Date.now()}`
+    // choose a color not already used (best-effort)
+    const used = new Set(Object.keys(room.players || {}).map(k => (room.players[k] && room.players[k].color) ? room.players[k].color : null).filter(Boolean))
+    let chosen = BOT_PALETTE.find(c => !used.has(c))
+    if (!chosen) {
+      const hash = Array.from(botId).reduce((acc,ch)=>acc + ch.charCodeAt(0), 0)
+      chosen = BOT_PALETTE[hash % BOT_PALETTE.length]
+    }
+
+    const startMoney = getStartMoneyFromRoom(room)
+    const botName = `Bot (${(difficulty||'med').charAt(0).toUpperCase() + (difficulty||'med').slice(1)})`
+    const botNode = {
+      id: botId,
+      name: botName,
+      wordmoney: startMoney,
+      revealed: [],
+      hasWord: false,
+      color: chosen,
+      isBot: true,
+      botSettings: { difficulty: (''+difficulty).toString(), delayMs: Number(delayMs) || 4000 },
+      lastSeen: Date.now(),
+    }
+    try {
+      const updates = {}
+      updates[`players/${botId}`] = botNode
+      await update(roomRef, updates)
+      return botId
+    } catch (e) {
+      console.warn('addBot failed', e)
+      return null
+    }
+  }
+
+  // Remove a bot player created previously. Only the host should perform this.
+  async function removeBot(botId) {
+    if (!db) return false
+    const uid = playerIdRef.current
+    if (!uid) return false
+    const roomRef = dbRef(db, `rooms/${roomId}`)
+    const snap = await get(roomRef)
+    const room = snap.val() || {}
+    if (room.hostId !== uid) return false
+    try {
+      const updates = {}
+      updates[`players/${botId}`] = null
+      await update(roomRef, updates)
+      return true
+    } catch (e) {
+      console.warn('removeBot failed', e)
+      return false
+    }
+  }
+
+  // Helper: pick a letter to guess using a frequency-biased distribution
+  const LETTER_FREQ = 'etaoinshrdlcumwfgypbvkjxqz'
+  function weightedRandomLetter() {
+    // bias towards earlier letters by randomly sampling an index with squared weight
+    const r = Math.random()
+    const idx = Math.floor(Math.pow(r, 0.7) * LETTER_FREQ.length)
+    return LETTER_FREQ[Math.max(0, Math.min(LETTER_FREQ.length - 1, idx))]
+  }
+
+  // Push a guess into the room queue as if the bot made it (from botId)
+  async function botPushGuess(botId, botName, targetId, payload) {
+    if (!db) return
+    try {
+      const qRef = dbRef(db, `rooms/${roomId}/queue`)
+      await dbPush(qRef, {
+        from: botId,
+        fromName: botName || (`Bot`),
+        target: targetId,
+        payload,
+        ts: Date.now(),
+      })
+    } catch (e) {
+      console.warn('botPushGuess failed', e)
+    }
+  }
+
+  // High-level bot move: choose target, choose action (letter or word) and submit.
+  // Difficulty influences how often a bot attempts full-word guesses and whether
+  // it prefers target-specific unrevealed letters.
+  async function botMakeMove(botId) {
+    if (!db) return
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const snap = await get(roomRef)
+      const room = snap.val() || {}
+      const playersObj = room.players || {}
+      const botNode = playersObj[botId]
+      if (!botNode) return
+      if (room.phase !== 'playing') return
+
+      // choose an alive non-bot target
+      const alive = Object.keys(playersObj).filter(k => {
+        try { const p = playersObj[k] || {}; return p && !p.eliminated && p.id !== botId && !p.isBot } catch (e) { return false }
+      })
+      if (!alive || alive.length === 0) return
+      const targetId = alive[Math.floor(Math.random() * alive.length)]
+      const targetNode = playersObj[targetId] || {}
+
+      const bs = (botNode.botSettings || {})
+      const difficulty = (bs.difficulty || (room.botSettings && room.botSettings.difficulty) || 'medium')
+
+      // Small chance to buy a safe power-up before making a guess when on harder difficulties
+      try {
+        const affordable = (botNode && typeof botNode.wordmoney === 'number') ? Number(botNode.wordmoney) : getStartMoneyFromRoom(room)
+        // only attempt purchases when bot is 'hard' or 'medium' with some probability
+        const buyRoll = Math.random()
+        if ((difficulty === 'hard' && buyRoll < 0.18) || (difficulty === 'medium' && buyRoll < 0.08)) {
+          // prefer revealing an unrevealed letter ('the_unseen') when available
+          try {
+            const targetWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
+            const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+            if (targetWord) {
+              const unrevealed = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
+              if (unrevealed.length > 0) {
+                // cost check (the_unseen price = 6)
+                if (affordable >= 6) {
+                  // attempt to buy the_unseen for this target
+                  try { await botPurchasePowerUp(botId, 'the_unseen', targetId) } catch (e) {}
+                  // after buying, return early so the buy action consumes the bot's turn (safer)
+                  return
+                }
+              }
+            }
+          } catch (e) {}
+
+          // small chance to play a price surge to annoy others when affordable
+          if (affordable >= 2 && ((difficulty === 'hard' && Math.random() < 0.06) || (difficulty === 'medium' && Math.random() < 0.02))) {
+            try { await botPurchasePowerUp(botId, 'price_surge', null) } catch (e) {}
+            return
+          }
+        }
+      } catch (e) {}
+
+      // difficulty -> chance of full-word guess
+      const wordGuessChance = difficulty === 'hard' ? 0.22 : (difficulty === 'medium' ? 0.12 : 0.05)
+      const tryWord = Math.random() < wordGuessChance
+
+      if (tryWord) {
+        // attempt a full-word guess: prefer a direct known target word if available
+        const candidate = (targetNode && targetNode.word) ? targetNode.word : null
+        if (candidate) {
+          await botPushGuess(botId, botNode.name, targetId, { value: String(candidate) })
+          return
+        }
+        // otherwise fall back to a high-confidence assembled guess by revealing common letters
+      }
+
+      // Letter guess strategy: prefer unrevealed letters from the target word when possible (hard/medium)
+      let letter = null
+      try {
+        const targetWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
+        const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+        if (targetWord && (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.6))) {
+          const candidates = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
+          if (candidates.length > 0) letter = candidates[Math.floor(Math.random() * candidates.length)]
+        }
+      } catch (e) { letter = null }
+
+      if (!letter) letter = weightedRandomLetter()
+      await botPushGuess(botId, botNode.name, targetId, { value: letter })
+    } catch (e) {
+      console.warn('botMakeMove failed', e)
+    }
+  }
+
+  // Allow bots to purchase a small, safe set of power-ups programmatically.
+  // Supported (safe) power-ups: 'the_unseen' (reveal one unrevealed letter),
+  // 'word_freeze' (freeze a player's word for one round), 'price_surge' (raise prices).
+  async function botPurchasePowerUp(botId, powerId, targetId = null, opts = {}) {
+    if (!db) return false
+    try {
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      const snap = await get(roomRef)
+      const room = snap.val() || {}
+      const playersObj = room.players || {}
+      const botNode = playersObj[botId]
+      if (!botNode) return false
+      // Ensure it's playing phase (safe guard)
+      if (room.phase !== 'playing') return false
+
+      // Minimal price map for supported power-ups (kept small & safe)
+      const PRICE_MAP = { the_unseen: 6, word_freeze: 3, price_surge: 2 }
+      const baseCost = PRICE_MAP[powerId]
+      if (typeof baseCost === 'undefined') return false
+
+      // compute active price surge amount (sum entries not authored by buyer nor buyer's teammates)
+      let totalSurgeAmount = 0
+      const ps = room.priceSurge || {}
+      try {
+        Object.keys(ps || {}).forEach(k => {
+          try {
+            const entry = ps[k]
+            if (!entry || !entry.amount) return
+            if (entry.by === botId) return
+            // ignore teammate authored surges in lastTeamStanding
+            if (room.gameMode === 'lastTeamStanding' && botNode.team && entry.by) {
+              const auth = playersObj[entry.by] || {}
+              if (auth.team && auth.team === botNode.team) return
+            }
+            const expires = typeof entry.expiresAtTurnIndex === 'number' ? entry.expiresAtTurnIndex : null
+            const active = expires === null || (typeof room.currentTurnIndex === 'number' ? room.currentTurnIndex < expires : true)
+            if (active) totalSurgeAmount += Number(entry.amount || 0)
+          } catch (e) {}
+        })
+      } catch (e) {}
+
+      const cost = baseCost + (totalSurgeAmount || 0)
+
+      // Determine buyer balance (team-aware)
+      let buyerBalance = typeof botNode.wordmoney === 'number' ? Number(botNode.wordmoney) : getStartMoneyFromRoom(room)
+      if (room.gameMode === 'lastTeamStanding' && botNode.team) {
+        buyerBalance = Number(room.teams && room.teams[botNode.team] && room.teams[botNode.team].wordmoney) || buyerBalance
+      }
+      if (buyerBalance < cost) return false
+
+      const updates = {}
+      // Deduct cost via helper so team-mode is respected
+      applyAwardToUpdates(updates, room, botId, -cost, { reason: 'purchase', by: targetId })
+
+      const key = `pu_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+
+      // Helper payload constructors
+      const buyerBase = { powerId, ts: Date.now(), from: botId, to: targetId }
+      try {
+        if (powerId === 'the_unseen') {
+          if (!targetId) return false
+          const targetNode = playersObj[targetId] || {}
+          const word = (targetNode.word || '').toString().toLowerCase()
+          if (!word) return false
+          const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+          const candidates = Array.from(new Set(word.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
+          if (candidates.length === 0) return false
+          const letter = candidates[Math.floor(Math.random() * candidates.length)]
+          // add letter to target's revealed set
+          const existing = Array.isArray(targetNode.revealed) ? targetNode.revealed.slice() : []
+          const next = Array.from(new Set([...(existing || []), letter]))
+          updates[`players/${targetId}/revealed`] = next
+          const buyerMsg = { message: `Revealed '${letter.toUpperCase()}' from ${targetNode.name || targetId}`, messageHtml: `<strong class="power-name">The Unseen</strong>: revealed <strong class="revealed-letter">'${letter.toUpperCase()}'</strong>` }
+          updates[`players/${botId}/privatePowerReveals/${targetId}/${key}`] = { ...buyerBase, result: buyerMsg }
+          updates[`players/${targetId}/privatePowerReveals/${botId}/${key}`] = { ...buyerBase, result: { message: `${botNode.name || botId} used The Unseen on you`, messageHtml: `<strong class="power-name">The Unseen</strong>: ${botNode.name || botId} revealed one of your letters` } }
+        } else if (powerId === 'word_freeze') {
+          if (!targetId) return false
+          const expires = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex + 1 : null
+          updates[`players/${targetId}/frozen`] = true
+          updates[`players/${targetId}/frozenUntilTurnIndex`] = expires
+          updates[`players/${botId}/privatePowerReveals/${targetId}/${key}`] = { ...buyerBase, result: { message: `Word Freeze applied to ${targetId}`, messageHtml: `<strong class="power-name">Word Freeze</strong>: frozen for one round` } }
+          updates[`players/${targetId}/privatePowerReveals/${botId}/${key}`] = { ...buyerBase, result: { message: `${botNode.name || botId} used Word Freeze on you`, messageHtml: `<strong class="power-name">Word Freeze</strong>: your word is frozen` } }
+        } else if (powerId === 'price_surge') {
+          // Represent surge as a keyed entry so it affects others. Expires will be cleared in turn-advance logic.
+          updates[`priceSurge/${botId}`] = { amount: 2, by: botId, expiresAtTurnIndex: null }
+          updates[`players/${botId}/privatePowerReveals/${botId}/${key}`] = { ...buyerBase, result: { message: `Price Surge: others' shop prices increased by +2 until your next turn`, messageHtml: `<strong class="power-name">Price Surge</strong>: +2 prices until your next turn` } }
+        }
+      } catch (e) {
+        console.warn('botPurchasePowerUp: payload construction failed', e)
+      }
+
+      // perform update
+      try {
+        await update(roomRef, updates)
+        return true
+      } catch (e) {
+        console.warn('botPurchasePowerUp update failed', e)
+        return false
+      }
+    } catch (e) {
+      console.warn('botPurchasePowerUp failed', e)
+      return false
+    }
+  }
+
   async function submitWord(word) {
     if (!db) return
     const uid = playerIdRef.current
@@ -2064,6 +2354,9 @@ export default function useGameRoom(roomId, playerName) {
   }
 
   return { state, joinRoom, leaveRoom, sendGuess, startGame, submitWord, playerId: () => playerIdRef.current,
+    // Bot helper
+    addBot, removeBot, botMakeMove, botPurchasePowerUp,
     // Word Seeker helpers
     startWordSeeker, markWordSeekerReady, beginWordSeekerPlaying, endWordSeekerPlaying, voteForPlayer, tallyWordSeekerVotes, submitSpyGuess, playNextWordSeekerRound }
 }
+

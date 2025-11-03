@@ -12,6 +12,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   const [createdRoom, setCreatedRoom] = useState(null)
   const [toasts, setToasts] = useState([])
   const [storedAnonForRoom, setStoredAnonForRoom] = useState(null)
+  const [roomData, setRoomData] = useState(null)
   const nameRef = useRef(null)
   const ariaLiveRef = useRef(null)
 
@@ -162,6 +163,48 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3000)
     } catch (e) {
       prompt('Copy this link', url)
+    }
+  }
+
+  // Fetch lightweight room metadata (used to show bots list in the lobby)
+  useEffect(() => {
+    let mounted = true
+    if (!room || !db) {
+      setRoomData(null)
+      return () => { mounted = false }
+    }
+    const ref = dbRef(db, `rooms/${room}`)
+    dbGet(ref).then(snap => {
+      if (!mounted) return
+      setRoomData(snap.val() || null)
+    }).catch(() => { if (mounted) setRoomData(null) })
+    return () => { mounted = false }
+  }, [room])
+
+  async function removeBot(botId) {
+    if (!room) return
+    if (!db) return
+    try {
+      const roomRef = dbRef(db, `rooms/${room}`)
+      const snap = await dbGet(roomRef)
+      const rv = snap.val() || {}
+      const uid = auth && auth.currentUser ? auth.currentUser.uid : null
+      if (!uid || !rv.hostId || rv.hostId !== uid) {
+        const tid = `bot_rm_denied_${Date.now()}`
+        setToasts(t => [...t, { id: tid, text: 'Only the host can remove bots.' }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 4000)
+        return
+      }
+      const updates = {}
+      updates[`players/${botId}`] = null
+      await update(roomRef, updates)
+      const tid = `bot_rm_${Date.now()}`
+      setToasts(t => [...t, { id: tid, text: 'Bot removed' }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 4000)
+    } catch (e) {
+      const tid = `bot_rm_err_${Date.now()}`
+      setToasts(t => [...t, { id: tid, text: 'Could not remove bot', error: true }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== tid)), 4000)
     }
   }
 
@@ -343,7 +386,34 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
     <input id="join_room_password" name="join_room_password" placeholder="password (if required)" value={password} onChange={e => { setPassword(e.target.value); setJoinError('') }} />
     <button onClick={handleJoin} className={`join-btn ${room && room.toString().trim() ? 'join-glow' : ''}`} disabled={!(room && room.toString().trim() && (storedAnonForRoom || (name && name.toString().trim()))) }>Join</button>
   {joinError && <div className="small-error">{joinError}</div>}
+        </div>
+
+        <div className="card">
+          <h3>Bots in room</h3>
+          {!room && <div className="small-muted">Enter a room id to inspect bots</div>}
+          {room && !roomData && <div className="small-muted">Loading...</div>}
+          {roomData && roomData.players && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {Object.keys(roomData.players).filter(k => roomData.players[k] && roomData.players[k].isBot).length === 0 && (
+                <div className="small-muted">No bots in this room</div>
+              )}
+              {Object.keys(roomData.players).filter(k => roomData.players[k] && roomData.players[k].isBot).map(k => {
+                const b = roomData.players[k]
+                return (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 7, background: (b && b.color) ? b.color : '#666' }} />
+                      <div>{b && b.name ? b.name : k}</div>
+                    </div>
+                    <div>
+                      <button onClick={() => removeBot(k)} disabled={!(auth && auth.currentUser && roomData.hostId && auth.currentUser.uid === roomData.hostId)}>Remove</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
   )
 }
