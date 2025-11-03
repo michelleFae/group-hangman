@@ -127,6 +127,36 @@ button[disabled] {
   min-height: 36px;
 }
 
+/* Action type variants: core (Guess), curse, and utility (subdued) */
+.player .action-button.core {
+  background: linear-gradient(90deg,#3b4650,#2b3238); /* neutral steel gray */
+  color: #eef3f6;
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  font-weight: 700;
+}
+.player .action-button.core:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.03) }
+.player .action-button.core:disabled { opacity: 0.54; filter: grayscale(30%); cursor: not-allowed }
+
+.player .action-button.curse {
+  background: linear-gradient(90deg,#ff7a18,#ff3b00); /* glowing lava accent */
+  color: #1b0a00;
+  border: 1px solid rgba(255,90,0,0.12);
+  box-shadow: 0 8px 28px rgba(255,90,0,0.18), 0 0 18px rgba(255,90,0,0.08) inset;
+  font-weight: 800;
+}
+.player .action-button.curse:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(255,90,0,0.28), 0 0 28px rgba(255,120,40,0.12) }
+.player .action-button.curse:disabled { opacity: 0.6; filter: grayscale(30%); cursor: not-allowed }
+
+.player .action-button.utility {
+  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  color: #cfcfcf;
+  border: 1px solid rgba(255,255,255,0.03);
+  box-shadow: none;
+}
+.player .action-button.utility:hover { transform: none; box-shadow: 0 6px 12px rgba(0,0,0,0.4) }
+.player .action-button.utility:disabled { opacity: 0.6; cursor: not-allowed }
+
 /* For very narrow tiles ensure buttons scale down a bit */
 @media (max-width: 420px) {
   .player .action-button { padding: 8px 10px; font-size: 13px }
@@ -346,6 +376,100 @@ button[disabled] {
 .turn-timer .bar { height: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; flex:1; overflow:hidden }
 .turn-timer .fill { height:100%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); transition: width .2s linear }
 .turn-timer .time { min-width:56px; text-align:right; font-weight:700; position:fixed; top: 90px; color: #ffef7e }
+
+/* Lava-style top timer bar */
+.lava-timer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 18px;
+  z-index: 13060;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  box-sizing: border-box;
+}
+.lava-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #0b0b0b;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: inset 0 -6px 12px rgba(0,0,0,0.6);
+}
+.lava-track::before {
+  /* subtle cracked-rock overlay using repeating linear gradients */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(135deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 6px),
+                    repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 8px);
+  mix-blend-mode: overlay;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.lava-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #ff7a18 0%, #ff3b00 40%, #ff9b34 60%);
+  background-size: 200% 100%;
+  box-shadow: 0 0 28px rgba(255,90,0,0.45), inset 0 2px 8px rgba(255,150,80,0.08);
+  transform-origin: left center;
+  transition: width 0.25s linear;
+  animation: lava-flow 2.6s linear infinite;
+}
+.lava-fill::after {
+  /* molten surface sheen */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0));
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.lava-ember {
+  position: absolute;
+  bottom: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffd08a 0%, #ff3b00 60%);
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 0 8px rgba(255,100,40,0.8);
+  animation: ember-up 1.6s linear infinite;
+}
+
+@keyframes lava-flow {
+  0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+  50% { background-position: 50% 50%; filter: hue-rotate(6deg) brightness(1.02); }
+  100% { background-position: 100% 50%; filter: hue-rotate(0deg); }
+}
+
+@keyframes ember-up {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  10% { opacity: 1; }
+  60% { transform: translateY(-18px) scale(1); opacity: 0.9; }
+  100% { transform: translateY(-40px) scale(1.2); opacity: 0; }
+}
+
+/* Responsive sizing: slightly taller on larger screens */
+@media (min-width: 900px) {
+  .lava-timer { height: 22px; padding: 8px 18px }
+  .lava-ember { width: 7px; height: 7px }
+}
+
+/* Small screens: reduce visual noise */
+@media (max-width: 520px) {
+  .lava-timer { height: 14px; padding: 4px 8px }
+  .lava-ember { width: 5px; height: 5px }
+}
 
 /* Toasts */
 .toast-container { position: fixed; right: 18px; top: 18px; z-index: 9999; display:flex; flex-direction:column; gap:8px }
@@ -673,3 +797,108 @@ body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background
 .confetti-piece { box-shadow: 0 6px 12px rgba(0,0,0,0.6); }
 
 /* ensure cash-piece color remains green for money mode celebrations */
+
+/* ---------------------------------------------------------------------------
+   Underworld theme (enable by adding `underworld-body` to <body>)
+   - subtle ember glow on card edges
+   - drifting, low-opacity smoke layers for depth
+   - faint runic-symbol pattern across the background (very low opacity)
+   Keep everything low-opacity and GPU-friendly (blur + translate animations).
+-----------------------------------------------------------------------------*/
+
+body.underworld-body {
+  /* slightly warm tint to the overall background while preserving contrast */
+  background: linear-gradient(180deg, #0b0b0b, #0f0c0c 80%);
+}
+
+/* Ember edge: faint, warm inset glow on cards to suggest embers beneath the surface */
+body.underworld-body .card {
+  /* preserve existing shadows but add a subtle warm inset glow */
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6), inset 0 0 36px rgba(255,110,60,0.03);
+  border: 1px solid rgba(255,110,60,0.02);
+  position: relative; /* ensure pseudo layers align */
+  overflow: visible;
+}
+
+/* A soft ember vignette sits at the edges using a pseudo-element to avoid changing markup */
+body.underworld-body .card::before {
+  content: '';
+  position: absolute;
+  inset: -2px; /* slightly larger than card to catch edges */
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 10% 10%, rgba(255,140,60,0.035), transparent 12%),
+              radial-gradient(120% 80% at 90% 90%, rgba(255,80,30,0.02), transparent 12%);
+  mix-blend-mode: screen;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+/* Put card contents above the ember layer */
+body.underworld-body .card > * { position: relative; z-index: 1 }
+
+/* Drifting smoke decoration placed above background but under UI cards */
+body.underworld-body .underworld-smoke {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20; /* under most UI (cards and modals are z-index > 100) */
+  overflow: hidden;
+}
+
+/* two layered smoke passes for parallax feel */
+body.underworld-body .underworld-smoke::before,
+body.underworld-body .underworld-smoke::after {
+  content: '';
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  bottom: -20%;
+  height: 60%;
+  background: radial-gradient(closest-side, rgba(20,18,20,0.6), rgba(20,18,20,0.32) 30%, rgba(20,18,20,0) 70%);
+  filter: blur(40px);
+  opacity: 0.12;
+  transform: translateY(0) scale(1.02);
+  will-change: transform, opacity;
+}
+body.underworld-body .underworld-smoke::after { bottom: -40%; opacity: 0.08; filter: blur(56px); }
+
+@keyframes smoke-drift-slow {
+  0% { transform: translateY(0) scale(1); opacity: 0.08 }
+  50% { transform: translateY(-6%) scale(1.02); opacity: 0.12 }
+  100% { transform: translateY(-12%) scale(1.04); opacity: 0.06 }
+}
+@keyframes smoke-drift-fast {
+  0% { transform: translateY(0) scale(1); opacity: 0.06 }
+  50% { transform: translateY(-10%) scale(1.03); opacity: 0.10 }
+  100% { transform: translateY(-22%) scale(1.06); opacity: 0.04 }
+}
+body.underworld-body .underworld-smoke::before { animation: smoke-drift-slow 16s linear infinite }
+body.underworld-body .underworld-smoke::after { animation: smoke-drift-fast 26s linear infinite }
+
+/* Ember flicker: subtle moving warm highlights across the page (GPU friendly) */
+body.underworld-body .ember-flicker {
+  position: fixed; inset: 0; pointer-events: none; z-index: 22;
+  background-image: radial-gradient(circle at 20% 10%, rgba(255,140,60,0.02), transparent 6%),
+                    radial-gradient(circle at 80% 90%, rgba(255,90,30,0.02), transparent 6%);
+  mix-blend-mode: screen; opacity: 0.9; will-change: opacity, transform;
+  animation: ember-flicker 6s ease-in-out infinite;
+}
+@keyframes ember-flicker { 0% { opacity: 0.9 } 50% { opacity: 1 } 100% { opacity: 0.9 } }
+
+/* Faint runic-symbol pattern across the viewport. Very low opacity so it's decorative only. */
+body.underworld-body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><text x='8' y='32' font-family='serif' font-size='22' fill='rgba(255,255,255,0.12)'>ᚠᚢᚦᚨᚱᚲ</text><text x='8' y='96' font-family='serif' font-size='22' fill='rgba(255,255,255,0.12)'>ᚷᚹᚺᚻᚾᛁ</text><text x='8' y='160' font-family='serif' font-size='22' fill='rgba(255,255,255,0.12)'>ᛃᛇᛈᛉᛋᛏ</text></svg>");
+  opacity: 0.04; background-repeat: repeat; background-position: center; mix-blend-mode: overlay;
+}
+
+/* Reduce decoration on small screens to avoid visual noise */
+@media (max-width: 520px) {
+  body.underworld-body .underworld-smoke::before,
+  body.underworld-body .underworld-smoke::after,
+  body.underworld-body .ember-flicker { display: none }
+  body.underworld-body::before { opacity: 0.02 }
+}
+
+/* Keep these decorations very light so they never obscure UI or reduce accessibility. */

@@ -680,7 +680,7 @@ export default function PlayerCircle({
                 // Consider frozen state: when a player is frozen by a power-up, others should not be able to guess them
                 const isFrozen = !!(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)))
                 const titleText = isEliminated ? 'Player eliminated' : (isFrozen ? 'Player is frozen : guesses disabled' : (ddLocked ? `Double Down active : only ${targetName} may be guessed` : 'Guess this word'))
-                const className = `action-button ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
+                const className = `action-button core ${ddLocked ? 'dd-locked' : ''} ${isFrozen && !isSelf ? 'frozen-locked' : ''}`
                 // compute disabled reason for easier debugging
                 const guessDisabled = (!canGuess || isEliminated || ddLocked || (isFrozen && !isSelf))
                 const disabledReasons = []
@@ -718,7 +718,7 @@ export default function PlayerCircle({
               )}
 
               {!isSelf && !viewerSameTeam && onOpenPowerUps && !player.eliminated && !hideInteractiveForWordSeeker && (phase !== 'lobby' && phase !== 'submit') && (
-                <button className="action-button" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'🕯️Curse'}</button>
+                <button className="action-button curse" title={powerUpDisabledReason || 'Use power-up'} onClick={(e) => { e.stopPropagation(); if (powerUpDisabledReason) return; if (isEliminated) return; onOpenPowerUps(player.id) }} disabled={!!powerUpDisabledReason || isEliminated}>{'🕯️Curse'}</button>
               )}
               {/* show who eliminated this player when applicable */}
               {isEliminated && eliminatedByName && (
@@ -736,7 +736,7 @@ export default function PlayerCircle({
             {!hideInteractiveForWordSeeker && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
                 {/* Show teammate's word button: only when in lastTeamStanding and viewer is on same team */}
-                {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam && phase !== 'lobby') && (
+                  {(!isSelf && gameMode === 'lastTeamStanding' && teamName && viewerTeam && teamName === viewerTeam && phase !== 'lobby') && (
                   <button
                     onClick={async () => {
                       // If parent provided handler, use it to persist reveal to DB; otherwise fall back to local toggle
@@ -755,6 +755,7 @@ export default function PlayerCircle({
                         setShowTeammateWord(s => !s)
                       }
                     }}
+                    className="action-button utility"
                     disabled={!(player && player.hasWord)}
                     title={player && player.hasWord ? `Show ${player.name}'s word to your team` : `${player.name} has not submitted a word`}
                     style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8, background: (teamRevealForPlayer || showTeammateWord) ? '#222' : undefined, color: (teamRevealForPlayer || showTeammateWord) ? '#fff' : undefined }}

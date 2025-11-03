@@ -6450,6 +6450,24 @@ try {
       <ModeBadge fixed={true} />
     </div>
   )}
+  {/* Lava-style top timer bar: visible during playing when timed */}
+  {phase === 'playing' && state?.timed && state?.turnTimeoutSeconds && state?.currentTurnStartedAt && (() => {
+    try {
+      const durationMs = Number(state.turnTimeoutSeconds || 0) * 1000
+      const elapsed = Math.max(0, Date.now() - (state.currentTurnStartedAt || 0))
+      const pct = Math.max(0, Math.min(100, (elapsed / Math.max(1, durationMs)) * 100))
+      const embers = new Array(10).fill(0).map(() => ({ left: (Math.random() * 100), delay: (Math.random() * 1.6) }))
+      const node = (
+        <div className="lava-timer" aria-hidden="true">
+          <div className="lava-track">
+            <div className="lava-fill" style={{ width: `${pct}%` }} />
+            {embers.map((e, i) => <span key={i} className="lava-ember" style={{ left: `${e.left}%`, animationDelay: `${e.delay}s` }} />)}
+          </div>
+        </div>
+      )
+      return node
+    } catch (e) { return null }
+  })()}
   {
     // build overlay node and portal it to body-level root when available to avoid stacking-context clipping
     (() => {
