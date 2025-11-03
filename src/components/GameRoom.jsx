@@ -312,6 +312,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
     } catch (e) {}
   }, [phase])
+
+  // When the room ends, remove any unclaimed underworld free-bubble so it
+  // doesn't linger on the end screen. Only the host should perform this
+  // authoritative cleanup to avoid races.
+  useEffect(() => {
+    try {
+      if (phase !== 'ended') return
+      if (!state || !state.freeBubble) return
+      const fb = state.freeBubble
+      // if already claimed, let the claim flow handle announcements
+      if (fb && fb.claimedBy) return
+      // only host should clear the authoritative freeBubble node
+      if (!isHost) return
+      const roomRef = dbRef(db, `rooms/${roomId}`)
+      // best-effort removal; ignore failures
+      dbUpdate(roomRef, { freeBubble: null }).catch(() => {})
+    } catch (e) {}
+  }, [phase, state && state.freeBubble, isHost, roomId])
   const [firstWordWins, setFirstWordWins] = useState(true)
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
@@ -6436,7 +6454,7 @@ try {
               }}
               disabled={Boolean(fb && fb.claimedBy) || Boolean(claimingBubbleId)}
               title={fb && fb.amount ? `Claim +${fb.amount} wordmoney` : 'Claim free wordmoney'}
-              style={{ background: 'linear-gradient(180deg,#2b2b2b,#111)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 14, cursor: (fb && fb.claimedBy) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)', opacity: (fb && fb.claimedBy) ? 0.7 : 1 }}>
+              style={{ background: 'linear-gradient(180deg,#3a3081,#111)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 14, cursor: (fb && fb.claimedBy) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)', opacity: (fb && fb.claimedBy) ? 0.7 : 1 }}>
               <span style={{ fontSize: 22 }}>🪦</span>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                 <strong style={{ fontSize: 14, lineHeight: 1 }}>{fb && fb.amount ? `+${fb.amount} wordmoney` : 'Free!'}</strong>
