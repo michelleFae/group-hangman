@@ -14,7 +14,8 @@ const BASE = [
   'calabash','caigua','crosne','cilantro','camote','cowpea','choko','calabrese',
   'delicata','dulse','dock','daylily','drumstick',
   'escarole','enoki','seaweed','sugarbeet','elecampane',
-  'fenugreek','flageolet','fieldpea','flatbean'
+  'fenugreek','flageolet','fieldpea','flatbean',
+  'gourd','gobo','gongura','greens'
 ]
 
 const IRREGULARS = {
