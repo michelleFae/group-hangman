@@ -388,32 +388,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   {joinError && <div className="small-error">{joinError}</div>}
         </div>
 
-        <div className="card">
-          <h3>Bots in room</h3>
-          {!room && <div className="small-muted">Enter a room id to inspect bots</div>}
-          {room && !roomData && <div className="small-muted">Loading...</div>}
-          {roomData && roomData.players && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Object.keys(roomData.players).filter(k => roomData.players[k] && roomData.players[k].isBot).length === 0 && (
-                <div className="small-muted">No bots in this room</div>
-              )}
-              {Object.keys(roomData.players).filter(k => roomData.players[k] && roomData.players[k].isBot).map(k => {
-                const b = roomData.players[k]
-                return (
-                  <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ width: 14, height: 14, borderRadius: 7, background: (b && b.color) ? b.color : '#666' }} />
-                      <div>{b && b.name ? b.name : k}</div>
-                    </div>
-                    <div>
-                      <button onClick={() => removeBot(k)} disabled={!(auth && auth.currentUser && roomData.hostId && auth.currentUser.uid === roomData.hostId)}>Remove</button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        {/* Bots list removed from lobby UI per request. Bots remain manageable in-room by hosts. */}
       </div>
   )
 }

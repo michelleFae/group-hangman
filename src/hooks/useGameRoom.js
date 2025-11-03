@@ -1442,12 +1442,117 @@ export default function useGameRoom(roomId, playerName) {
       revealed: [],
       hasWord: false,
       color: chosen,
+      // Ensure bots are considered ready in lobby/word-seeker waiting so hosts
+      // can start games that require all players to be 'ready'.
+      wordSeekerReady: true,
+      // Mark bot as ready in the general lobby ready indicator as well.
+      ready: true,
       isBot: true,
       botSettings: { difficulty: (''+difficulty).toString(), delayMs: Number(delayMs) || 4000 },
       lastSeen: Date.now(),
     }
     try {
       const updates = {}
+      // If the room is currently in the submit phase, have the bot pick a word
+      // immediately and mark hasWord=true so it doesn't block game start.
+      try {
+        if (room && room.phase === 'submit') {
+          // Decide candidate pool based on secretWordTheme when enabled
+          let pool = null
+          try {
+            const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
+            if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+            else if (theme === 'fruits') pool = Array.isArray(FRUITS) ? FRUITS.slice() : null
+            else if (theme === 'vegetables') pool = Array.isArray(VEGETABLES) ? VEGETABLES.slice() : null
+            else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
+            else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
+            else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
+            else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
+            else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
+            else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null
+          } catch (e) { pool = null }
+
+          // fallback to generic NOUNS when no theme pool is available
+          if (!pool || !Array.isArray(pool) || pool.length === 0) {
+            const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+            pool = Array.isArray(nounsList) ? nounsList.slice() : []
+          }
+
+          // sanitize pool: alphabetic-only, lowercased, length >= 2
+          const sanitizedPool = (pool || []).map(p => (p||'').toString().trim().toLowerCase()).filter(p => /^[a-zA-Z]+$/.test(p) && p.length >= 2)
+
+          // determine sample size X by difficulty (easy/medium/hard)
+          const diff = ('' + difficulty).toLowerCase()
+          let sampleCount = 6
+          if (diff === 'easy') sampleCount = 3
+          else if (diff === 'medium') sampleCount = 8
+          else if (diff === 'hard') sampleCount = 24
+
+          // helper: get N random unique samples from array
+          const sample = (arr, n) => {
+            const set = new Set()
+            const max = Math.min(arr.length, n || arr.length)
+            let attempts = 0
+            while (set.size < max && attempts < 1000) {
+              const i = Math.floor(Math.random() * arr.length)
+              set.add(arr[i])
+              attempts++
+            }
+            return Array.from(set)
+          }
+
+          const candidates = sample(sanitizedPool, sampleCount)
+
+          // If starter bonus is enabled and expects a containing letter, prefer a candidate that contains it
+          let chosenWord = null
+          try {
+            const sb = room && room.starterBonus ? room.starterBonus : null
+            const letterReq = (sb && sb.enabled && sb.type === 'contains' && sb.value) ? String(sb.value).toLowerCase() : null
+            if (letterReq) {
+              const found = candidates.find(c => c && c.indexOf(letterReq) !== -1)
+              if (found) chosenWord = found
+            }
+          } catch (e) {}
+
+          // fallback: pick any candidate
+          if (!chosenWord) {
+            if (candidates.length > 0) chosenWord = candidates[Math.floor(Math.random() * candidates.length)]
+            else chosenWord = sanitizedPool.length > 0 ? sanitizedPool[Math.floor(Math.random() * sanitizedPool.length)] : null
+          }
+
+          if (chosenWord) {
+            // prepare updates for bot's submitted word and hasWord marker
+            updates[`players/${botId}/word`] = chosenWord
+            updates[`players/${botId}/hasWord`] = true
+            // if starter bonus applies, award it using helper (team-aware)
+            try {
+              const sb = room && room.starterBonus ? room.starterBonus : null
+              const letterReq = (sb && sb.enabled && sb.type === 'contains' && sb.value) ? String(sb.value).toLowerCase() : null
+              if (letterReq && chosenWord.indexOf(letterReq) !== -1) {
+                // mark starterBonusAwarded so other logic doesn't double-award
+                updates[`players/${botId}/starterBonusAwarded`] = true
+                // award +10 (match submitWord logic)
+                try { applyAwardToUpdates(updates, room, botId, 10, { reason: 'starterBonus', by: null }) } catch (e) {}
+                // reveal the starter letter on the bot's tile (merge with existing revealed)
+                try {
+                  const existing = Array.isArray(botNode.revealed) ? botNode.revealed.slice() : []
+                  if (!existing.map(x => (x||'').toString().toLowerCase()).includes(letterReq)) {
+                    const next = Array.from(new Set([...(existing || []), letterReq]))
+                    updates[`players/${botId}/revealed`] = next
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+            // also set the botNode locally so the full node write below includes these fields
+            botNode.word = chosenWord
+            botNode.hasWord = true
+            if (!botNode.revealed) botNode.revealed = []
+          }
+        }
+      } catch (e) {
+        console.warn('addBot: bot submit-phase word selection failed', e)
+      }
+
       updates[`players/${botId}`] = botNode
       await update(roomRef, updates)
       return botId
@@ -1455,6 +1560,133 @@ export default function useGameRoom(roomId, playerName) {
       console.warn('addBot failed', e)
       return null
     }
+  }
+
+  // When a submit phase starts, the host should auto-assign words to any bots
+  // that haven't submitted yet so they don't block game start. We run this
+  // once per submit-phase transition (host-only) to avoid duplicate writes.
+  const lastAssignedSubmitRef = useRef(false)
+  useEffect(() => {
+    if (!db) return
+    try {
+      const phase = state && state.phase
+      if (phase !== 'submit') {
+        lastAssignedSubmitRef.current = false
+        return
+      }
+      if (lastAssignedSubmitRef.current) return
+      // Only the host should perform assignments
+      const myId = playerIdRef.current
+      if (!myId) return
+      if (!state || state.hostId !== myId) return
+      // perform assignment asynchronously, don't block render
+      (async () => {
+        try {
+          await assignWordsToBots()
+          lastAssignedSubmitRef.current = true
+        } catch (e) {
+          console.warn('assignWordsToBots failed', e)
+        }
+      })()
+    } catch (e) { console.warn('submit-phase assign effect failed', e) }
+  }, [state && state.phase])
+
+  async function assignWordsToBots() {
+    if (!db) return
+    const uid = playerIdRef.current
+    if (!uid) return
+    const roomRef = dbRef(db, `rooms/${roomId}`)
+    const snap = await get(roomRef)
+    const room = snap.val() || {}
+    if (room.phase !== 'submit') return
+    if (room.hostId !== uid) return
+    const playersObj = room.players || {}
+    const updates = {}
+    try {
+      for (const pid of Object.keys(playersObj || {})) {
+        try {
+          const p = playersObj[pid] || {}
+          if (!p || !p.isBot) continue
+          if (p.hasWord) continue
+          // build pool based on theme
+          let pool = null
+          try {
+            const theme = room && room.secretWordTheme && room.secretWordTheme.enabled ? (room.secretWordTheme.type || null) : null
+            if (theme === 'animals') pool = Array.isArray(ANIMALS) ? ANIMALS.slice() : null
+            else if (theme === 'fruits') pool = Array.isArray(FRUITS) ? FRUITS.slice() : null
+            else if (theme === 'vegetables') pool = Array.isArray(VEGETABLES) ? VEGETABLES.slice() : null
+            else if (theme === 'occupations') pool = Array.isArray(OCCUPATIONS) ? OCCUPATIONS.slice() : null
+            else if (theme === 'countries') pool = Array.isArray(COUNTRIES) ? COUNTRIES.slice() : null
+            else if (theme === 'instruments') pool = Array.isArray(INSTRUMENTS) ? INSTRUMENTS.slice() : null
+            else if (theme === 'colours') pool = Array.isArray(COLOURS) ? COLOURS.slice() : null
+            else if (theme === 'elements') pool = Array.isArray(ELEMENTS) ? ELEMENTS.slice() : null
+            else if (theme === 'cpp') pool = Array.isArray(CPPTERMS) ? CPPTERMS.slice() : null
+          } catch (e) { pool = null }
+          if (!pool || !Array.isArray(pool) || pool.length === 0) {
+            const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+            pool = Array.isArray(nounsList) ? nounsList.slice() : []
+          }
+          const sanitizedPool = (pool || []).map(x => (x||'').toString().trim().toLowerCase()).filter(x => /^[a-zA-Z]+$/.test(x) && x.length >= 2)
+
+          // difficulty-based sampling
+          const diff = (p.botSettings && p.botSettings.difficulty) ? (''+p.botSettings.difficulty).toLowerCase() : 'medium'
+          let sampleCount = 6
+          if (diff === 'easy') sampleCount = 3
+          else if (diff === 'medium') sampleCount = 8
+          else if (diff === 'hard') sampleCount = 24
+
+          const sample = (arr, n) => {
+            const set = new Set()
+            const max = Math.min(arr.length, n || arr.length)
+            let attempts = 0
+            while (set.size < max && attempts < 2000) {
+              const i = Math.floor(Math.random() * arr.length)
+              set.add(arr[i])
+              attempts++
+            }
+            return Array.from(set)
+          }
+
+          const candidates = sample(sanitizedPool, sampleCount)
+          let chosenWord = null
+          try {
+            const sb = room && room.starterBonus ? room.starterBonus : null
+            const letterReq = (sb && sb.enabled && sb.type === 'contains' && sb.value) ? String(sb.value).toLowerCase() : null
+            if (letterReq) {
+              const found = candidates.find(c => c && c.indexOf(letterReq) !== -1)
+              if (found) chosenWord = found
+            }
+          } catch (e) {}
+          if (!chosenWord) {
+            if (candidates.length > 0) chosenWord = candidates[Math.floor(Math.random() * candidates.length)]
+            else chosenWord = sanitizedPool.length > 0 ? sanitizedPool[Math.floor(Math.random() * sanitizedPool.length)] : null
+          }
+          if (chosenWord) {
+            updates[`players/${pid}/word`] = chosenWord
+            updates[`players/${pid}/hasWord`] = true
+            // apply starter bonus if needed
+            try {
+              const sb = room && room.starterBonus ? room.starterBonus : null
+              const letterReq = (sb && sb.enabled && sb.type === 'contains' && sb.value) ? String(sb.value).toLowerCase() : null
+              if (letterReq && chosenWord.indexOf(letterReq) !== -1) {
+                updates[`players/${pid}/starterBonusAwarded`] = true
+                try { applyAwardToUpdates(updates, room, pid, 10, { reason: 'starterBonus', by: null }) } catch (e) {}
+                try {
+                  const existing = Array.isArray(playersObj[pid].revealed) ? playersObj[pid].revealed.slice() : []
+                  if (!existing.map(x => (x||'').toString().toLowerCase()).includes(letterReq)) {
+                    const next = Array.from(new Set([...(existing || []), letterReq]))
+                    updates[`players/${pid}/revealed`] = next
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      if (Object.keys(updates).length > 0) {
+        try { await update(roomRef, updates) } catch (e) { console.warn('assignWordsToBots update failed', e) }
+      }
+    } catch (e) { console.warn('assignWordsToBots failed', e) }
   }
 
   // Remove a bot player created previously. Only the host should perform this.
@@ -1517,46 +1749,76 @@ export default function useGameRoom(roomId, playerName) {
       if (!botNode) return
       if (room.phase !== 'playing') return
 
-      // choose an alive non-bot target
-      const alive = Object.keys(playersObj).filter(k => {
+      // choose an alive non-bot target: prefer the player with the most wordmoney
+      const aliveKeys = Object.keys(playersObj).filter(k => {
         try { const p = playersObj[k] || {}; return p && !p.eliminated && p.id !== botId && !p.isBot } catch (e) { return false }
       })
-      if (!alive || alive.length === 0) return
-      const targetId = alive[Math.floor(Math.random() * alive.length)]
+      if (!aliveKeys || aliveKeys.length === 0) return
+      // compute numeric wordmoney (fallback to 0)
+      const scored = aliveKeys.map(k => {
+        try { const p = playersObj[k] || {}; return { id: k, score: Number(p.wordmoney) || 0 } } catch (e) { return { id: k, score: 0 } }
+      })
+      // find max score
+      let maxScore = -Infinity
+      scored.forEach(s => { if (typeof s.score === 'number' && s.score > maxScore) maxScore = s.score })
+      // pick among ties at random
+      const topCandidates = scored.filter(s => s.score === maxScore).map(s => s.id)
+  const targetId = topCandidates.length > 0 ? topCandidates[Math.floor(Math.random() * topCandidates.length)] : (scored.length > 0 ? scored[Math.floor(Math.random() * scored.length)].id : aliveKeys[0])
       const targetNode = playersObj[targetId] || {}
 
       const bs = (botNode.botSettings || {})
       const difficulty = (bs.difficulty || (room.botSettings && room.botSettings.difficulty) || 'medium')
 
-      // Small chance to buy a safe power-up before making a guess when on harder difficulties
+      // Strategic power-up usage before guessing. Bots prefer to
+      // - reveal an unrevealed letter from the richest player's word
+      // - freeze a richer rival to slow them down
+      // - occasionally trigger a price surge
       try {
         const affordable = (botNode && typeof botNode.wordmoney === 'number') ? Number(botNode.wordmoney) : getStartMoneyFromRoom(room)
-        // only attempt purchases when bot is 'hard' or 'medium' with some probability
         const buyRoll = Math.random()
-        if ((difficulty === 'hard' && buyRoll < 0.18) || (difficulty === 'medium' && buyRoll < 0.08)) {
-          // prefer revealing an unrevealed letter ('the_unseen') when available
+        // prefer purchases on medium+ difficulty (probabilistic)
+        if ((difficulty === 'hard' && buyRoll < 0.22) || (difficulty === 'medium' && buyRoll < 0.12)) {
+          // 1) If target has a word and unrevealed letters, prefer The Unseen when affordable
           try {
             const targetWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
             const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
             if (targetWord) {
               const unrevealed = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
-              if (unrevealed.length > 0) {
-                // cost check (the_unseen price = 6)
-                if (affordable >= 6) {
-                  // attempt to buy the_unseen for this target
+              if (unrevealed.length > 0 && affordable >= 6) {
+                // Hard bots strongly prefer revealing; medium bots sometimes do
+                if (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.7)) {
+                  // debug log
+                  try { console.log('botMakeMove: attempting the_unseen', { botId, targetId, affordable, unrevealedCount: unrevealed.length }) } catch (e) {}
                   try { await botPurchasePowerUp(botId, 'the_unseen', targetId) } catch (e) {}
-                  // after buying, return early so the buy action consumes the bot's turn (safer)
                   return
                 }
               }
             }
           } catch (e) {}
 
-          // small chance to play a price surge to annoy others when affordable
-          if (affordable >= 2 && ((difficulty === 'hard' && Math.random() < 0.06) || (difficulty === 'medium' && Math.random() < 0.02))) {
-            try { await botPurchasePowerUp(botId, 'price_surge', null) } catch (e) {}
-            return
-          }
+          // 2) If the target is richer than the bot by a margin, consider Word Freeze to stop them
+          try {
+            const targetMoney = Number(targetNode.wordmoney) || 0
+            const myMoney = Number(botNode.wordmoney) || 0
+            const targetFrozen = !!targetNode.frozen
+            if (!targetFrozen && affordable >= 3 && targetMoney > myMoney + 2) {
+              // Hard bots will freeze more aggressively; medium bots with some probability
+              if (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.5)) {
+                try { console.log('botMakeMove: attempting word_freeze', { botId, targetId, affordable, targetMoney, myMoney }) } catch (e) {}
+                try { await botPurchasePowerUp(botId, 'word_freeze', targetId) } catch (e) {}
+                return
+              }
+            }
+          } catch (e) {}
+
+          // 3) Occasional price surge to annoy others
+          try {
+            if (affordable >= 2 && ((difficulty === 'hard' && Math.random() < 0.08) || (difficulty === 'medium' && Math.random() < 0.03))) {
+              try { console.log('botMakeMove: attempting price_surge', { botId, affordable }) } catch (e) {}
+              try { await botPurchasePowerUp(botId, 'price_surge', null) } catch (e) {}
+              return
+            }
+          } catch (e) {}
         }
       } catch (e) {}
 
@@ -1574,14 +1836,17 @@ export default function useGameRoom(roomId, playerName) {
         // otherwise fall back to a high-confidence assembled guess by revealing common letters
       }
 
-      // Letter guess strategy: prefer unrevealed letters from the target word when possible (hard/medium)
+      // Letter guess strategy: prefer unrevealed letters from the target word when possible
       let letter = null
       try {
         const targetWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
         const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
-        if (targetWord && (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.6))) {
+        if (targetWord) {
           const candidates = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
-          if (candidates.length > 0) letter = candidates[Math.floor(Math.random() * candidates.length)]
+          if (candidates.length > 0) {
+            // choose an unrevealed letter from the target (bots always prefer target letters)
+            letter = candidates[Math.floor(Math.random() * candidates.length)]
+          }
         }
       } catch (e) { letter = null }
 
