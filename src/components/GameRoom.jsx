@@ -233,6 +233,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [timeLeft, setTimeLeft] = useState(null)
   const [tick, setTick] = useState(0)
   const [toasts, setToasts] = useState([])
+  // processed keys for free-bubble toasts (dedupe duplicate effect runs)
+  const processedFreeBubbleRef = useRef({})
   const [powerUpOpen, setPowerUpOpen] = useState(false)
   const [powerUpTarget, setPowerUpTarget] = useState(null)
 
@@ -1256,6 +1258,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const fb = state?.freeBubble || null
       if (!fb) return
       const id = fb.id || `fb_${fb.spawnedAt || Date.now()}`
+      // dedupe: if we've already processed this bubble id, skip creating another toast
+      if (processedFreeBubbleRef.current[id]) return
+      processedFreeBubbleRef.current[id] = true
       // show a toast when bubble appears
       try {
         const text = fb && fb.amount ? `Underworld bubble: +${fb.amount} wordmoney (first click claims)` : 'A free bubble appeared!'
