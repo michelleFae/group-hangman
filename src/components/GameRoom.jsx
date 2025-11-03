@@ -6829,7 +6829,7 @@ try {
                                       <span style={{ marginLeft: 8, background: '#eef5ee', padding: '4px 8px', borderRadius: 8, fontSize: 12, color: '#234' }}>{p.word}</span>
                                     )}
                                   </div>
-                                  <div style={{ fontWeight: 800 }}>${p.wordmoney || 0}</div>
+                                  <div style={{ fontWeight: 800 }}>${state?.gameMode == "lastTeamStanding" ? (state?.teams[p.team]?.wordmoney || 0):  (p.wordmoney || 0) }</div>
                                 </li>
                               ))}
                             </ol>
