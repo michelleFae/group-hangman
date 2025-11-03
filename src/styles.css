@@ -235,6 +235,21 @@ button[disabled] {
 /* Prevent settings modal card from moving on hover (override the generic .card:hover) */
 .settings-modal .card, .settings-modal .card:hover { transform: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
 
+/* Prevent the mode info popover (Game info) from 'lifting' on hover which causes
+   the info box to shift and makes clicking the small buttons fiddly. Keep a
+   stable box-shadow and disable transform on hover. */
+.mode-info-card.card, .mode-info-card.card:hover {
+  transform: none !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important;
+}
+
+/* Ensure the small settings/close buttons used inside headers don't change size
+   or add outline/shift on hover: keep fixed dimensions and no transform. */
+.settings-modal .card > div > button, .mode-badge .card > button {
+  transition: none !important;
+  transform: none !important;
+}
+
 /* make settings modal inputs easier to click: avoid floating transform on focus within settings modal */
 .settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(100,90,80,0.06) !important }
 
