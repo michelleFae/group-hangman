@@ -200,6 +200,15 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   useEffect(() => {
     try { setFreeBubblesEnabled(state?.freeBubblesEnabled ?? true) } catch (e) {}
   }, [state?.freeBubblesEnabled])
+
+  // Debug: log when authoritative room flags for free bubbles or ghost re-entry change
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.console && typeof window.console.log === 'function') {
+        console.log('Room flags changed: freeBubblesEnabled=', state?.freeBubblesEnabled, 'ghostReEntryEnabled=', state?.ghostReEntryEnabled, 'hostId=', state?.hostId)
+      }
+    } catch (e) {}
+  }, [state?.freeBubblesEnabled, state?.ghostReEntryEnabled, state?.hostId])
   // Auto-enable submit-timer when the room is configured as a timed game
   useEffect(() => {
     try {
@@ -1348,7 +1357,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             // still attempt to remove the announcement from DB
           } else {
             setToasts(t => [...t, { id, text, fade: true }])
-            setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
           }
         } catch (e) {}
         // attempt to remove announcement from DB
@@ -1736,7 +1745,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }, 7000)
       } catch (e) {}
 
-      await safeDbUpdate(roomRef, updates)
+      // Instrumentation: log what we're about to write so we can debug unexpected toggles
+      try { console.log('updateRoomSettings: writing updates', updates) } catch (e) {}
+      try {
+        await safeDbUpdate(roomRef, updates)
+        try { console.log('updateRoomSettings: write succeeded') } catch (e) {}
+      } catch (writeErr) {
+        console.warn('updateRoomSettings: write failed', writeErr)
+        // Surface a toast to the host so they see the failure immediately
+        try {
+          const id = `settings_write_error_${Date.now()}`
+          setToasts(t => [...t, { id, text: 'Could not persist room settings — check permissions or network.' }])
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+        } catch (e) {}
+        throw writeErr
+      }
     } catch (e) {
       console.warn('Could not update room settings', e)
     }
@@ -2299,7 +2322,29 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               /> Ghost Re-Entry enabled
             </label>
             <label htmlFor="freeBubblesEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={"Spawn random underworld-themed free wordmoney bubbles during play (at least 2 minutes apart)."}>
-              <input id="freeBubblesEnabled" name="freeBubblesEnabled" type="checkbox" checked={freeBubblesEnabled} onChange={e => { const nv = e.target.checked; setFreeBubblesEnabled(nv); updateRoomSettings({ freeBubblesEnabled: !!nv }) }} /> Random free wordmoney bubbles (underworld themed)
+              <input
+                id="freeBubblesEnabled"
+                name="freeBubblesEnabled"
+                type="checkbox"
+                checked={freeBubblesEnabled}
+                disabled={!isHost}
+                onChange={e => {
+                  try {
+                    // Only hosts are allowed to persist room settings. If a non-host
+                    // somehow triggers this handler (e.g. via keyboard), show a quick
+                    // toast explaining why the toggle won't stick.
+                    if (!isHost) {
+                      const id = `settings_denied_${Date.now()}`
+                      setToasts(t => [...t, { id, text: 'Only the host can change room settings.' }])
+                      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000)
+                      return
+                    }
+                    const nv = e.target.checked
+                    setFreeBubblesEnabled(nv)
+                    updateRoomSettings({ freeBubblesEnabled: !!nv })
+                  } catch (err) {}
+                }}
+              /> Random free wordmoney bubbles (underworld themed)
             </label>
             <label htmlFor="submitTimerEnabled" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }} title={"When enabled, players have a limited time to submit a word during the submit phase; unsubmitted players are auto-assigned a word and receive -2 wordmoney."}>
               <input id="submitTimerEnabled" name="submitTimerEnabled" type="checkbox" checked={submitTimerEnabled} onChange={e => { const nv = e.target.checked; setSubmitTimerEnabled(nv); updateRoomSettings({ submitTimerEnabled: !!nv }) }} /> Enable submit-phase timer
@@ -2371,7 +2416,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {
       return <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     }
-  }, [showSettings, timedMode, turnSeconds, starterEnabled, secretThemeEnabled, secretThemeType, gameMode, firstWordWins, wordSeekerTimerSeconds, wordSeekerRounds, powerUpsEnabled, ghostReEntryEnabled, ghostGuessCooldownSeconds, minWordSize, startingWordmoney, revealPreserveOrder, revealShowBlanks])
+  // Include flags that SettingsModal consumes so it updates when authoritative
+  // room settings change (freeBubblesEnabled was previously omitted causing
+  // the checkbox to appear stale).
+  }, [showSettings, timedMode, turnSeconds, starterEnabled, secretThemeEnabled, secretThemeType, gameMode, firstWordWins, wordSeekerTimerSeconds, wordSeekerRounds, powerUpsEnabled, ghostReEntryEnabled, ghostGuessCooldownSeconds, minWordSize, startingWordmoney, revealPreserveOrder, revealShowBlanks, freeBubblesEnabled, submitTimerEnabled, submitTimerSeconds, showWordsOnEnd])
   const POWER_UPS = [
     { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word, only to each other. Both players get points unless the letter has already been revealed before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
     { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Privately tells just you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },
@@ -4680,7 +4728,7 @@ try {
           try {
             const idChat = `chat_cleared_${Date.now()}`
             setToasts(t => [...t, { id: idChat, text: 'Chat cleared for new game', fade: true }])
-            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChat)), 4200)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChat)), 8000)
           } catch (e) {}
         } else {
           const idErr = `rematch_host_err_${Date.now()}`
@@ -4805,7 +4853,7 @@ try {
           try {
             const idChatAuto = `chat_cleared_auto_${Date.now()}`
             setToasts(t => [...t, { id: idChatAuto, text: 'Chat cleared for new game', fade: true }])
-            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChatAuto)), 4200)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== idChatAuto)), 8000)
           } catch (e) {}
         }
       } catch (e) {
