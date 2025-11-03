@@ -8,6 +8,7 @@ const RAW = [
   'bagpipe','bagpipes','uilleann','uilleannpipes','greatpipes','musette','sleighbells','sleighbell','bugle','bugles','shaker','shakers',
   // requested additions (common names; duplicates will be normalized away)
   'alghoza','tenoroon','berimbau','bongo','chimta','cornet','cymbal','dhime','didgeridoo','dizi','dombra','eigenharp','ektara','erhu','esraj','euphonium','fiddle','flute','ghatam','glockenspiel','gong','guitar','guqin','guzheng','hang','harmonica','harmonium','harp','harpsichord','hulusi','kalimba','kantele','kettledrum', 'lute','lyre','mandolin','marimba','melodica','nyckelharpa','oboe','ocarina','octobass','organ','otamatone','oud','panduri','pennywhistle','piano','pianola','piccolo','pipa','pungi','rebab','rebec','recorder','sarangi','sarinda','suroz','sursingar','santoor','sarod','saxophone','sopranino','soprillo','tubax','venova','xaphoon','shehnai','sheng','sitar','steelpan','stylophone','suona','synthesizer','tabla','tambourine','timpani','triangle','trombone','trumpet','theremin','tuba','ukulele','veena','vibraphone','violin','viola','whamola','whistle','xylophone','zither','koto'
+  ,'qin','yangqin','saz','baglama','kamanche','pakhawaj'
 ];
 
 // canonicalize: lowercase + dedupe while preserving plural/singular as separate tokens

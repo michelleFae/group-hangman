@@ -10,17 +10,17 @@ const BASE = [
   'plantain','rambutan','jackfruit','soursop','tamarillo','tamarind','mangosteen','ladyfinger','longkong',
   'longan','loquat','jujube','mulberry','gooseberry','breadfruit','salak','ackee',
   'ube','honeydew','galia','brinjal','aubergine',
-  'jambu','mangaba','jabuticaba','lucuma','sapodilla','pulasan','marang','lanzones','wolfberry','cloudberry','wampee','crabapple',
+  'jambu','mangaba','jabuticaba','jocote','jamun','jambolan','jenipapo','jatoba','jackalberry','jicaro','lucuma','sapodilla','pulasan','marang','lanzones','wolfberry','cloudberry','wampee','crabapple',
   // additional fruits containing the letter 'a' to expand theme pools
   'acerola','ambarella','amla','canistel','feijoa','kiwano','medlar','nance','langsat','muscadine','santol','saskatoon','tangelo','starapple',
   // additional fruits containing the letter 'b' (single-word entries only)
   'babaco','barberry','bilimbi','breadnut','babassu','sapote','carambola','calamansi','calamondin','cacao','cashew','cupuacu','cocona','capulin','calabash','carob',
   // additional fruits containing the letter 'c' (single-word only)
-  'citron','cucumber','chayote','chokeberry','cempedak','camucamu','crowberry','cocoplum','cudrania',
+  'citron','cucumber','chayote','chokeberry','cempedak','camucamu','crowberry','cocoplum','cudrania','caqui','caimito','camu','chicle','chikoo','cereza','ciruela','camachile','cascara','curuba','uchuva','pitayo','tuna',
   // additional user-requested fruits
   'hawthorn','hazelnut','sloe','olive','pomelo','medjool',
   // more H-entries requested by user (pruned non-botanical entries like 'honeybee'/'honeysuckle')
-  'hackberry','huckleberry','hyuganatsu','emblica',
+  'hackberry','huckleberry','hyuganatsu','emblica','honeyberry','haskap','hurma',
   // fruits containing the letter 'x' (single-word)
   'xigua','ximenia','xoconostle','waxapple',
   // fruits containing the letter 'y' (single-word only)
@@ -31,7 +31,7 @@ const BASE = [
   // fruits containing the letter 'w' (single-word only)
   'waxberry','wineberry','whitecurrant','whitebeam','wintermelon','waterapple','waxjambu','waxmyrtle','wampi','whortleberry','whiteberry','wonderberry','wildplum',
   // nuts (single-word entries only)
-  'almond','walnut','pecan','pistachio','macadamia','brazilnut','peanut','pinenut','filbert','acorn','candlenut','pili','argan','kolanut','betelnut','chestnut',
+  'almond','walnut','pecan','pistachio','macadamia','brazilnut','peanut','pinenut','filbert','acorn','candlenut','pili','argan','kolanut','betelnut','chestnut','ginkgo',
   // edible single-word fruits containing 'u' and other culinary names (no spaces)
   'prune','rhubarb','sultana','maracuja','ugni','pitaya','blackcurrant','custardapple','sugarapple','pummelo','nashi',
   // additional single-word culinary fruits containing 't'
@@ -50,10 +50,31 @@ const BASE = [
   'loganberry','rambai','matoa','duku','kepel'
   ,
   // additional single-word culinary / edible fruits containing 'n' (no spaces)
-  'granadilla','muntingia','ortanique','aronia','araza'
+  'granadilla','muntingia','ortanique','aronia','araza','sharon','satsuma','soncoya','latok','nageia'
+  ,
+  // additional single-word culinary / edible fruits containing 'd' (no spaces)
+  'damson','dewberry','dalandan','durazno','dovyalis'
   ,
   // additional single-word culinary / edible fruits containing 'm' (no spaces)
   'mamoncillo','maqui','marionberry','marula','miracleberry','mombin'
+  ,
+  // additional single-word culinary / edible fruits containing 'l' (no spaces)
+  'lulo','lilikoi','salal','litchi'
+  ,
+  // additional single-word culinary / edible fruits containing 'f' (no spaces)
+  'fingerlime','fuyu','fairchild','flacourtia','farkleberry'
+  ,
+  // additional single-word culinary / edible fruits containing 'g' (no spaces)
+  'guavaberry','genip','goumi','gabiroba'
+  ,
+  // additional single-word culinary / edible fruits containing 'e' (no spaces)
+  'pepino','bergamot','jostaberry','elaeagnus'
+  ,
+  // additional single-word culinary / edible fruits containing 'k' (no spaces)
+  'kakadu','kabosu','kinkan','karonda','kokum','keitt'
+  ,
+  // additional single-word culinary / edible fruits containing 'i' (no spaces)
+  'ilama','graviola','iceapple','jicama','kaki'
 ]
 
 

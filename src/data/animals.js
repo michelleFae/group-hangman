@@ -15,6 +15,7 @@ const BASE_ANIMALS = [
 
   // additional single-word animals (birds, fish, exotic mammals, reptiles, etc.)
   'albatross','auk','anemone','angelfish','anglerfish','axolotl','barnacle','barracuda','beluga','bilby','binturong','booby','bonobo','caracal','cassowary','coati','condor','cormorant','curlew','echidna','gannet','gibbon','gnu','jackal','jerboa','kiwi','koi','lamprey','lemming','manatee','mink','murrelet','numbat','pangolin','perch','ptarmigan','quokka','quoll','remora','saki','shrew','skua','solenodon','starling','tern','uakari','vicuna','wallaby','weevil','wrasse','zorilla',
+  'kingfisher','katydid','kookaburra','kestrel','cuckoo','kudu','kea',
   // seabirds / gull relatives
   'seagull','kittiwake','shearwater','petrel','auklet','kinkajou',
   // added extra common animals

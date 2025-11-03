@@ -562,7 +562,7 @@ export default function PlayerCircle({
         <button title={`Remove ${player.name}`} onClick={(e) => { e.stopPropagation(); if (!confirm(`Remove player ${player.name} from the room?`)) return; try { onRemove(player.id) } catch (err) { console.error('onRemove failed', err) } }} style={{ position: 'absolute', left: 6, top: 6, border: 'none', background: '#4c1717bf', color: '#ff4d4f', fontWeight: 800, cursor: 'pointer', fontSize: 16, padding: '4px 6px', zIndex: 40 }}>×</button>
       )}
       <div style={{ alignItems: 'center', gap: 12, justifyContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 72, gap: '2vw'}}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 72, gap: '1vw'}}>
           {/* Ex-ghost badge: visible when a player has re-entered after winning ghost challenge */}
             {(player && player.ghostState && player.ghostState.reentered) && (
               <div className="ex-ghost-badge" title={"Back from the dead because the afterlife wasn't fun"}>👻 Ex-ghost</div>
@@ -577,10 +577,10 @@ export default function PlayerCircle({
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
             
-          </div>
+          
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div>{player.name}</div>
-             
+             </div>
             {teamName && (
               <div style={{ fontSize: 11, padding: '2px 6px', borderRadius: 8, background: teamName === 'red' ? '#ff5c5c' : '#5c9bff', color: '#fff', fontWeight: 800 }}>{teamName.toUpperCase()}</div>
             )}
