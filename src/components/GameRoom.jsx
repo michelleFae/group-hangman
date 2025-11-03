@@ -5706,6 +5706,48 @@ try {
     }
     return settingsNode
   })()}
+  {/* Decorative embers and faint smoke while waiting in-room (matches Lobby visual) */}
+  {phase === 'lobby' && (
+    <>
+      <div className="ambient-embers" aria-hidden="true">
+        {/* Increased ember count for better visibility; decorative only */}
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+      </div>
+      <div className="lobby-smoke" aria-hidden="true">
+        <span className="smoke smoke-left" />
+        <span className="smoke smoke-right" />
+      </div>
+    </>
+  )}
   {phase === 'lobby' && (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -232,6 +232,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
     <div className="lobby">
       {/* ambient ember decoration (purely decorative, non-interactive) */}
       <div className="ambient-embers" aria-hidden="true">
+        {/* Increased ember count for better visibility; all decorative */}
         <span className="ember" />
         <span className="ember" />
         <span className="ember" />
@@ -240,6 +241,33 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         <span className="ember" />
         <span className="ember" />
         <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+      </div>
+      {/* faint side smoke (decorative) */}
+      <div className="lobby-smoke" aria-hidden="true">
+        <span className="smoke smoke-left" />
+        <span className="smoke smoke-right" />
       </div>
       <div className="toast-container" style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
         {toasts.map(t => (
@@ -247,7 +275,14 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         ))}
       </div>
       <div className={`underword-header ${tagLoaded ? 'loaded' : ''}`}>
-        <h1 className="underword-title">Underword <span className="bubble">🕯️</span></h1>
+        <h1 className="underword-title">Underword <span className="bubble" aria-hidden="true">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+            <g fill="none" fillRule="evenodd">
+              <path d="M12 2c1.1 1.5 1 3 0 4-1 1-1 2-1 3 0 1.7 1 3 1 3s1-1.3 1-3c0-1 .0-2-1-3-1-1-1.1-2.5 0-4z" fill="#ffcc66"/>
+              <rect x="9" y="8" width="6" height="12" rx="2" fill="currentColor" />
+            </g>
+          </svg>
+        </span></h1>
         <p className="underword-tag">Hold your word in shadow. Drag theirs to light.</p>
       </div>
   <div style={{display:'flex',flexDirection:'column',gap:6}}>

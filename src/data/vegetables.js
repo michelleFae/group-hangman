@@ -15,6 +15,7 @@ const BASE = [
   'delicata','dulse','dock','daylily','drumstick',
   'escarole','enoki','seaweed','sugarbeet','elecampane',
   'fenugreek','flageolet','fieldpea','flatbean',
+  'fingerroot','fingerling','frijol','fieldbean',
   'gourd','gobo','gongura','greens'
   , 'safflower','fireweed','fuki'
     , 'habanero','haricot','hubbard','huitlacoche','horsegram','ashgourd'
