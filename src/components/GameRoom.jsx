@@ -139,6 +139,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // Word Seeker hooks
     startWordSeeker, markWordSeekerReady, beginWordSeekerPlaying, endWordSeekerPlaying, voteForPlayer, tallyWordSeekerVotes, submitSpyGuess, playNextWordSeekerRound
   } = useGameRoom(roomId, playerName)
+  // viewer id (derived from hook or firebase auth) : declare early so effects can reference it without TDZ
+  const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+  // Derive frequently-used room-level values early so effects can reference them without TDZ
+  const phase = state?.phase || 'lobby'
   const [word, setWord] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [wordError, setWordError] = useState('')
@@ -179,9 +183,19 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Persist secret theme settings whenever either the enabled flag or selected type changes.
   React.useEffect(() => {
     try {
+      // Only the host should persist authoritative room settings. Avoid having
+      // every client write defaults which can cause DB churn and re-trigger
+      // effects when players join/leave.
+      const amHost = state && state.hostId && myId && state.hostId === myId
+      if (!amHost) return
+      // Avoid writing if the authoritative value already matches local UI state.
+      const remote = (state && state.secretWordTheme) ? state.secretWordTheme : {}
+      const remoteType = remote.type || 'animals'
+      const remoteEnabled = !!remote.enabled
+      if (remoteEnabled === !!secretThemeEnabled && remoteType === (secretThemeType || 'animals')) return
       updateRoomSettings({ secretWordTheme: { enabled: !!secretThemeEnabled, type: secretThemeType } })
     } catch (e) {}
-  }, [secretThemeEnabled, secretThemeType])
+  }, [secretThemeEnabled, secretThemeType, state?.hostId, myId, state?.secretWordTheme])
   // keep local freeBubblesEnabled in sync with room state (default true)
   useEffect(() => {
     try { setFreeBubblesEnabled(state?.freeBubblesEnabled ?? true) } catch (e) {}
@@ -843,7 +857,24 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const prevHostRef = useRef(null)
 
   // viewer id (derived from hook or firebase auth) : declare early to avoid TDZ in effects
-  const myId = playerId() || (window.__firebaseAuth && window.__firebaseAuth.currentUser ? window.__firebaseAuth.currentUser.uid : null)
+  
+
+  // Derived room values: declare early so effects can reference them without TDZ
+  const hostId = state?.hostId
+  const players = state?.players || []
+  // whether all non-host players have signaled ready in the lobby
+  const allNonHostPlayersReady = (Array.isArray(players) ? players.filter(p => p && p.id !== hostId) : []).every(p => !!p.ready)
+  const playerIdToName = {}
+  players.forEach(p => { if (p && p.id) playerIdToName[p.id] = p.name })
+  const waitingForSubmission = (players || []).filter(p => !p.hasWord)
+  const firstWaiting = waitingForSubmission && waitingForSubmission.length > 0 ? waitingForSubmission[0] : null
+  const submittedCount = players.filter(p => p.hasWord).length
+
+  const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
+  const currentTurnIndex = state?.currentTurnIndex || 0
+  const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
+  // whether the viewer is the current turn player
+  const isMyTurnNow = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myId
 
   // live per-second cooldown display for ghost guesses (seconds remaining)
   const [ghostCooldownSec, setGhostCooldownSec] = useState(0)
@@ -1029,8 +1060,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 setTimeout(() => setDdCoins([]), 4000)
               }
             } catch (e) { /* swallow debug spawn error */ }
-            setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
-            setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
+            // start fade at ~7s, remove at 8s for fading toasts
+            setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
           }
         }
       })
@@ -1046,8 +1078,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const delta = nowVal - prev
           const toastId = `gain_${pid}_${Date.now()}`
           setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
-          setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 2500)
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3500)
+          // start fade at ~7s, remove at 8s for fading toasts
+          setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
         }
         prevHangRef.current[pid] = nowVal
       })
@@ -1218,8 +1251,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         const text = fb && fb.amount ? `Underworld bubble: +${fb.amount} wordmoney (first click claims)` : 'A free bubble appeared!'
         const toastId = `free_bubble_${id}`
-        setToasts(t => [...t, { id: toastId, text, fade: true }])
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 5000)
+  setToasts(t => [...t, { id: toastId, text, fade: true }])
+  // keep fading toasts visible for 8s
+  setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
       } catch (e) {}
       // claiming is handled via a short-lived announcement node (`freeBubbleClaims`) so
       // the bubble itself can be cleared immediately for everyone while clients show who claimed it.
@@ -1240,7 +1274,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const text = `${name} didn't choose a word on time, was assigned a random word and lost ${a.penalty || 2} wordmoney.`
           const id = `auto_assign_${k}`
           setToasts(t => [...t, { id, text, fade: true }])
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+          // keep fading toasts visible for 8s
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
         } catch (e) {}
         // attempt to remove announcement from DB
         try { const roomRef = dbRef(db, `rooms/${roomId}`); dbUpdate(roomRef, { [`submitAutoAssigned/${k}`]: null }).catch(() => {}) } catch (e) {}
@@ -1263,7 +1298,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const text = `${name} claimed the underworld bubble (+${c.amount || 0})`
           const id = `free_bubble_claim_${k}`
           setToasts(t => [...t, { id, text, fade: true }])
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000)
+          // keep fading toasts visible for 8s
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
         } catch (e) {}
         // attempt to remove the announcement so it doesn't persist in DB
         try {
@@ -1287,8 +1323,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const text = a && a.message ? (a.name ? `${a.name}: ${a.message}` : a.message) : 'Host attempted to start but could not.'
           const id = `start_block_${k}`
           setToasts(t => [...t, { id, text, fade: true }])
-          // remove toast locally after 5s
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000)
+          // keep fading toasts visible for 8s
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
         } catch (e) {}
       })
     } catch (e) {}
@@ -1343,12 +1379,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             setTimeout(() => { try { dbUpdate(roomRef, { [`chatMinimizedAnnouncements/${key}`]: null }).catch(() => {}) } catch (e) {} }, 7000)
           }
         } catch (e) {}
-        // also show a local toast for immediate feedback
-        try {
-          const id = `chat_min_${Date.now()}`
-          setToasts(t => [...t, { id, text: 'Underworld hush: chat minimized so you can enter a word 👻', fade: true }])
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
-        } catch (e) {}
+        // NOTE: host writes the announcement to DB above; clients (including host)
+        // will process the DB-written announcement and show a single toast. Do not
+        // also create an immediate local toast here to avoid duplicate toasts.
       }
       prevPhaseRef.current = phase
     } catch (e) {}
@@ -1367,7 +1400,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           const text = a && a.text ? a.text : 'Chat minimized for submission phase'
           const id = `chat_min_${k}`
           setToasts(t => [...t, { id, text, fade: true }])
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
         } catch (e) {}
         // attempt to remove the announcement from DB
         try { const roomRef = dbRef(db, `rooms/${roomId}`); dbUpdate(roomRef, { [`chatMinimizedAnnouncements/${k}`]: null }).catch(() => {}) } catch (e) {}
@@ -1448,22 +1481,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     if (changed) setPendingDeducts(updated)
   }, [state?.players])
 
-  const phase = state?.phase || 'lobby'
-  const hostId = state?.hostId
-  const players = state?.players || []
-  // whether all non-host players have signaled ready in the lobby
-  const allNonHostPlayersReady = (Array.isArray(players) ? players.filter(p => p && p.id !== hostId) : []).every(p => !!p.ready)
-  const playerIdToName = {}
-  players.forEach(p => { playerIdToName[p.id] = p.name })
-  const waitingForSubmission = (players || []).filter(p => !p.hasWord)
-  const firstWaiting = waitingForSubmission && waitingForSubmission.length > 0 ? waitingForSubmission[0] : null
-  const submittedCount = players.filter(p => p.hasWord).length
-
-  const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
-  const currentTurnIndex = state?.currentTurnIndex || 0
-  const currentTurnId = (state?.turnOrder || [])[currentTurnIndex]
-  // whether the viewer is the current turn player
-  const isMyTurnNow = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myId
+  
   // derive some end-of-game values and visual pieces at top-level so hooks are not called conditionally
   // derive viewer name from server state if available (covers refresh cases)
   const myNode = (state?.players || []).find(p => p.id === myId) || {}
@@ -1561,8 +1579,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   
 
   function ModeBadge({ fixed = true }) {
+    // Hide the ModeBadge entirely on the end screen
+    if (phase === 'ended') return null
+
     // outer container uses fixed positioning on wide screens, static flow when inline
-    const outerStyle = fixed ? { position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' } : { position: 'static', right: 'auto', top: 'auto', zIndex: 'auto', pointerEvents: 'none' }
+    // use a normal zIndex so the badge doesn't block or overlay other UI unexpectedly
+    const outerStyle = fixed ? { position: 'fixed', right: 18, top: 18, zIndex: 'auto', pointerEvents: 'none' } : { position: 'static', right: 'auto', top: 'auto', zIndex: 'auto', pointerEvents: 'none' }
     return (
       <div style={outerStyle}>
         <div ref={modeInfoRef} className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
@@ -1928,11 +1950,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
       } catch (e) {}
       if (!challenge || !challenge.word) return { ok: false }
-      console.log("michelle 4",letterOrWord)
       const guess = (letterOrWord || '').toString().trim().toLowerCase()
-      console.log("michelle 5", guess)
       if (!guess) return { ok: false }
-      console.log("michelle 6", challenge)
       // simple letter feedback: return which letters are correct in position if full word, or whether letter exists
       const target = (challenge.word || '').toString().toLowerCase()
       if (guess.length === 1) {
@@ -5536,7 +5555,7 @@ try {
                     const reasons = []
                     const pcount = (players || []).length
                     if (pcount < 2) reasons.push('Need at least 2 players to start')
-                    if ((state && state.gameMode) === 'lastTeamStanding' && pcount < 4) reasons.push('Need at least 4 players to start Last Team Standing')
+                    if ((state && state.gameMode) === 'lastTeamStanding' && pcount < 3) reasons.push('Need at least 3 players to start Last Team Standing')
                     if ((state && state.gameMode) === 'wordSeeker' && pcount < 3) reasons.push('Need at least 3 players to start Word Seeker')
                     if (!allNonHostPlayersReady) reasons.push('Waiting for all players to mark Ready')
                     if (reasons.length > 0) {
@@ -5580,12 +5599,12 @@ try {
                     try { await startGame(opts) } catch (e) { console.warn('startGame failed', e) }
                   }
                 }}
-                title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 4)
-                  ? 'Need at least 4 players to start Last Team Standing'
+                title={((state && state.gameMode) === 'lastTeamStanding' && players.length < 3)
+                  ? 'Need at least 3 players to start Last Team Standing'
                   : ((state && state.gameMode) === 'wordSeeker' && players.length < 3)
                     ? 'Need at least 3 players to start Word Seeker'
                     : (players.length < 2 ? 'Need at least 2 players to start' : '')}
-                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 4) && !((state && state.gameMode) === 'wordSeeker' && players.length < 3) && allNonHostPlayersReady) ? 'start-ready' : ''}
+                className={(players.length >= 2 && !((state && state.gameMode) === 'lastTeamStanding' && players.length < 3) && !((state && state.gameMode) === 'wordSeeker' && players.length < 3) && allNonHostPlayersReady) ? 'start-ready' : ''}
               >Start game</button>
               {startGameHint && (
                 <div style={{ marginTop: 8, color: '#f3f3f3', background: '#8b2b2b', padding: '6px 10px', borderRadius: 8, fontSize: 13 }} role="status">{startGameHint}</div>
@@ -5597,7 +5616,7 @@ try {
               {/* When startGame detects Last Team Standing requires more players it sets state.ltsWarning; show it inline for host */}
               {isHost && state && state.ltsWarning && (
                 <div style={{ marginTop: 8, color: '#fff', background: '#c0392b', padding: '10px 12px', borderRadius: 8, fontWeight: 700 }}>
-                  {typeof state.ltsWarning === 'string' ? state.ltsWarning : 'At least 4 players are required to start Last Team Standing.'}
+                  {typeof state.ltsWarning === 'string' ? state.ltsWarning : 'At least 3 players are required to start Last Team Standing.'}
                 </div>
               )}
             </>
@@ -6252,10 +6271,14 @@ try {
   {
     ddCoins && ddCoins.length > 0 && (console.log && console.log('render: dd-coin-overlay count', ddCoins.length, ddCoins && ddCoins.slice(0,6)))
   }
-  {/* Render authoritative ModeBadge after major overlays (including victory screen) so it appears above them visually */}
-  <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999, pointerEvents: 'none' }}>
-    <ModeBadge fixed={true} />
-  </div>
+  {/* Render authoritative ModeBadge after major overlays (including victory screen) so it appears above them visually.
+      Only render the fixed overlay on wide layouts — when `isNarrow` is true we already render an inline compact ModeBadge
+      earlier. This prevents duplicate mode-badge elements on small viewports. */}
+  {!isNarrow && (
+    <div style={{ position: 'fixed', right: 18, top: 18, zIndex: 'auto', pointerEvents: 'none' }}>
+      <ModeBadge fixed={true} />
+    </div>
+  )}
   {
     // build overlay node and portal it to body-level root when available to avoid stacking-context clipping
     (() => {

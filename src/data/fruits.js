@@ -15,6 +15,8 @@ const BASE = [
   'acerola','ambarella','amla','canistel','feijoa','kiwano','medlar','nance','langsat','muscadine','santol','saskatoon','tangelo','starapple',
   // additional fruits containing the letter 'b' (single-word entries only)
   'babaco','barberry','bilimbi','breadnut','babassu','sapote','carambola','calamansi','calamondin','cacao','cashew','cupuacu','cocona','capulin','calabash','carob',
+  // additional fruits containing the letter 'c' (single-word only)
+  'citron','cucumber','chayote','chokeberry','cempedak','camucamu','crowberry','cocoplum','cudrania',
   // additional user-requested fruits
   'hawthorn','hazelnut','sloe','olive','pomelo','medjool',
   // more H-entries requested by user (pruned non-botanical entries like 'honeybee'/'honeysuckle')
@@ -25,6 +27,10 @@ const BASE = [
   'yuzu','physalis','tayberry','bayberry','yumberry','yangmei','mayhaw',
   // additional single-word botanical fruits (user requested 'gumbol' + others)
   'gumbol','gac','naranjilla','sweetsop','custardapple','grumichama','mamey','pawpaw','jambul','araca','bilberry','serviceberry','pineberry','huito',
+  // fruits containing the letter 'z' (single-word only)
+  'zucchini','zapote','ziziphus','zwetschge','zabergau','zante','zinfandel',
+  // fruits containing the letter 'w' (single-word only)
+  'waxberry','wineberry','whitecurrant','whitebeam','wintermelon','waterapple','waxjambu','waxmyrtle','wampi','whortleberry','whiteberry','wonderberry','wildplum',
   // nuts (single-word entries only)
   'almond','walnut','pecan','pistachio','macadamia','brazilnut','peanut','pinenut','filbert','acorn','candlenut','pili','argan','kolanut','betelnut','chestnut'
 ]

@@ -1663,32 +1663,26 @@ export default function useGameRoom(roomId, playerName) {
             // any duplicates until every player has been included. This preserves alternation
             // and wraps shorter lists so both teams remain interleaved fairly.
             if (teamNames.length === 2) {
+              // Prefer a stable interleaving that repeats members of the smaller
+              // team so teams alternate on every turn. This builds sequences like
+              // A,C,B,C (for red=[A,B], blue=[C]) so the lone blue player acts
+              // between every red player.
               const a = teams[teamNames[0]].slice()
               const b = teams[teamNames[1]].slice()
-              const total = a.length + b.length
+              const maxLen = Math.max(a.length, b.length)
               const res = []
-              const seen = new Set()
-              let j = 0
-              while (res.length < total) {
+              for (let i = 0; i < maxLen; i++) {
                 if (a.length > 0) {
-                  const cand = a[j % a.length]
-                  if (!seen.has(cand)) {
-                    res.push(cand)
-                    seen.add(cand)
-                  }
+                  const cand = a[i % a.length]
+                  if (cand) res.push(cand)
                 }
-                if (res.length >= total) break
                 if (b.length > 0) {
-                  const cand2 = b[j % b.length]
-                  if (!seen.has(cand2)) {
-                    res.push(cand2)
-                    seen.add(cand2)
-                  }
+                  const cand2 = b[i % b.length]
+                  if (cand2) res.push(cand2)
                 }
-                j++
               }
-              // append any unteamed players at end
-              return res.concat(unteamed.filter(p => !seen.has(p)))
+              // append any unteamed players at end (preserve their order)
+              return res.concat(unteamed)
             }
 
             // Fallback: for other team counts, use previous round-robin strategy
