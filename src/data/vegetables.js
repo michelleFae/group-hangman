@@ -16,6 +16,7 @@ const BASE = [
   'escarole','enoki','seaweed','sugarbeet','elecampane',
   'fenugreek','flageolet','fieldpea','flatbean',
   'gourd','gobo','gongura','greens'
+  , 'safflower','fireweed','fuki'
 ]
 
 const IRREGULARS = {

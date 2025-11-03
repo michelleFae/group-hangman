@@ -1174,11 +1174,27 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const nowVal = typeof p.wordmoney === 'number' ? p.wordmoney : 0
         if (prev !== null && nowVal > prev) {
           const delta = nowVal - prev
-          const toastId = `gain_${pid}_${Date.now()}`
-          setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
-          // start fade at ~7s, remove at 8s for fading toasts
-          setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
-          setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
+          // If we recently processed a free-bubble claim for this player, suppress
+          // the generic "gained +X" toast so only the claim toast is shown.
+          try {
+            const sup = processedFbGainSuppressRef.current[pid]
+            if (sup && Number(sup.amount) === Number(delta)) {
+              // consume suppression marker and skip the generic toast
+              delete processedFbGainSuppressRef.current[pid]
+            } else {
+              const toastId = `gain_${pid}_${Date.now()}`
+              setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
+              // start fade at ~7s, remove at 8s for fading toasts
+              setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
+              setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
+            }
+          } catch (e) {
+            // fallback: still show generic toast if suppression check fails
+            const toastId = `gain_${pid}_${Date.now()}`
+            setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
+            setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
+            setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
+          }
         }
         prevHangRef.current[pid] = nowVal
       })
@@ -1387,6 +1403,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
   // processed ref for free bubble claim announcements
   const processedFbClaimRef = useRef({})
+  // suppress the generic "gained +X" toast when we just showed a free-bubble claim toast
+  // keyed by player id -> { amount, ts }
+  const processedFbGainSuppressRef = useRef({})
   // Watch for freeBubbleClaims announcements and show a fading toast indicating who claimed it.
   useEffect(() => {
     try {
@@ -1397,9 +1416,17 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         const c = claims[k] || {}
         try {
           const name = c.name || c.by || 'Someone'
-          const text = `${name} claimed the underworld bubble (+${c.amount || 0})`
+          const text = `${name} claimed the underworld tombstone (+${c.amount || 0})`
           const id = `free_bubble_claim_${k}`
           setToasts(t => [...t, { id, text, fade: true }])
+          // Suppress the generic per-player "gained +X" toast that would come from
+          // the wordmoney delta caused by this claim. Store a short-lived marker
+          // keyed by the player id (c.by) with the claimed amount so the next
+          // generic gain toast can be skipped.
+          try {
+            const claimantId = c.by || null
+            if (claimantId) processedFbGainSuppressRef.current[claimantId] = { amount: Number(c.amount || 0), ts: Date.now() }
+          } catch (e) {}
           // keep fading toasts visible for 8s
           setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 8000)
         } catch (e) {}
