@@ -6844,7 +6844,23 @@ try {
             <div className="submit-controls">
               {!myHasSubmitted ? (
                 <>
-                  <input id="submit_word" name="submit_word" placeholder="your word" value={word} onChange={e => { setWord(e.target.value); setWordError('') }} />
+                  <input
+                    id="submit_word"
+                    name="submit_word"
+                    placeholder="your word"
+                    value={word}
+                    onChange={e => { setWord(e.target.value); setWordError('') }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        // Mirror the Submit button behavior when Enter is pressed
+                        try {
+                          // Prevent accidental form submission/defaults
+                          e.preventDefault()
+                        } catch (err) {}
+                        try { handleSubmitWord() } catch (err) {}
+                      }
+                    }}
+                  />
                   <button onClick={handleSubmitWord} disabled={isCheckingDictionary || localInvalid}>{isCheckingDictionary ? 'Checking…' : 'Submit'}</button>
                         {/* Submit-phase timer UI for current player: shows remaining time when enabled */}
                         {submitTimerEnabled && (

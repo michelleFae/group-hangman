@@ -59,6 +59,25 @@ input:focus { box-shadow: 0 6px 18px rgba(100,90,80,0.06); transform: translateY
 button { padding: 10px 12px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s }
 button:hover { transform: translateY(-3px) }
 
+/* Landing page primary action glow (Create / Join on the Lobby) */
+.lobby .card:first-of-type button,
+.lobby .join-btn {
+  transition: box-shadow 220ms ease, background 220ms ease, transform 160ms ease;
+}
+.lobby .card:first-of-type button:focus,
+.lobby .card:first-of-type button:hover,
+.lobby .join-btn:focus,
+.lobby .join-btn:hover {
+  box-shadow: 0 8px 30px rgba(255,88,34,0.20), 0 0 28px rgba(255,88,34,0.08) inset;
+  background: linear-gradient(135deg, #ff4b1f 0%, #ff9068 60%);
+  transform: translateY(-3px) scale(1.01);
+  outline: none;
+}
+.lobby .card:first-of-type button:focus-visible,
+.lobby .join-btn:focus-visible {
+  box-shadow: 0 0 0 4px rgba(255,88,34,0.14), 0 10px 36px rgba(255,88,34,0.14);
+}
+
 /* Disabled button styles: grey, no hover, show not-allowed cursor */
 button:disabled,
 button[disabled] {
@@ -326,7 +345,20 @@ button[disabled] {
 
 /* underword header */
 .underword-header { text-align: center; margin-bottom: 20px }
-.underword-title { font-size: 44px; letter-spacing: -1px; display:inline-block; background: linear-gradient(90deg,var(--accent),var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800 }
+.underword-title {
+  font-size: 44px;
+  letter-spacing: -1px;
+  display: inline-block;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+  background-size: 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; /* Safari */
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+  /* subtle molten motion */
+  animation: underword-lava 6s linear infinite;
+}
 .underword-title .bubble {
   display:inline-block;
   margin-left: 8px;
@@ -340,7 +372,21 @@ button[disabled] {
   /* subtle text shadow to help emoji stand out on gradients */
   text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
-.underword-tag { color: var(--muted); margin-top: 8px; font-size: 14px }
+.underword-tag {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 520ms cubic-bezier(.2,.9,.2,1), transform 520ms cubic-bezier(.2,.9,.2,1);
+  will-change: opacity, transform;
+}
+
+/* when header has loaded class, reveal the tag with a subtle raise */
+.underword-header.loaded .underword-tag {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 @keyframes bubble-bounce {
   0% { transform: translateY(0) rotate(0deg) }
@@ -348,6 +394,12 @@ button[disabled] {
   50% { transform: translateY(0) rotate(0deg) }
   75% { transform: translateY(-4px) rotate(6deg) }
   100% { transform: translateY(0) rotate(0deg) }
+}
+
+/* molten gradient animation for the landing title */
+@keyframes underword-lava {
+  0% { background-position: 0% 50%; }
+ 100% { background-position: 100% 50%; }
 }
 
 /* notice card */
@@ -902,3 +954,48 @@ body.underworld-body::before {
 }
 
 /* Keep these decorations very light so they never obscure UI or reduce accessibility. */
+
+/* Ambient floating embers specific to the lobby screen (very faint, decorative) */
+.lobby { position: relative; z-index: 1 }
+.lobby .ambient-embers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0; /* sit behind the lobby UI which is z-index:1 */
+  overflow: hidden;
+}
+.lobby .card { position: relative; z-index: 2 }
+.lobby .ambient-embers .ember {
+  position: absolute;
+  bottom: -8%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,210,138,0.95) 0%, rgba(255,90,20,0.9) 60%, rgba(255,60,10,0.6) 100%);
+  box-shadow: 0 0 8px rgba(255,120,40,0.14);
+  opacity: 0.06; /* extremely faint */
+  transform: translateY(0) scale(0.8);
+  will-change: transform, opacity;
+  animation-name: ember-float;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.lobby .ambient-embers .ember:nth-child(1) { left: 6%; animation-duration: 10s; animation-delay: 0s; width:5px; height:5px; opacity:0.05 }
+.lobby .ambient-embers .ember:nth-child(2) { left: 22%; animation-duration: 14s; animation-delay: 2s; width:6px; height:6px; opacity:0.06 }
+.lobby .ambient-embers .ember:nth-child(3) { left: 38%; animation-duration: 12s; animation-delay: 1.6s; width:7px; height:7px; opacity:0.045 }
+.lobby .ambient-embers .ember:nth-child(4) { left: 54%; animation-duration: 11s; animation-delay: 0.9s; width:5px; height:5px; opacity:0.05 }
+.lobby .ambient-embers .ember:nth-child(5) { left: 68%; animation-duration: 16s; animation-delay: 3.2s; width:6px; height:6px; opacity:0.04 }
+.lobby .ambient-embers .ember:nth-child(6) { left: 80%; animation-duration: 13s; animation-delay: 1.2s; width:5px; height:5px; opacity:0.05 }
+.lobby .ambient-embers .ember:nth-child(7) { left: 88%; animation-duration: 18s; animation-delay: 4s; width:6px; height:6px; opacity:0.03 }
+.lobby .ambient-embers .ember:nth-child(8) { left: 46%; animation-duration: 9s; animation-delay: 0.4s; width:4px; height:4px; opacity:0.04 }
+
+@keyframes ember-float {
+  0% { transform: translateY(0) translateX(0) scale(0.8); opacity: 0.06 }
+  20% { opacity: 0.07 }
+  60% { transform: translateY(-36vh) translateX(4vw) scale(1); opacity: 0.035 }
+  100% { transform: translateY(-72vh) translateX(-2vw) scale(1.1); opacity: 0 }
+}
+
+@media (max-width: 520px) {
+  .lobby .ambient-embers .ember { opacity: 0.04; transform: scale(0.7) }
+}

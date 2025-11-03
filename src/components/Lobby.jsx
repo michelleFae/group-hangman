@@ -7,6 +7,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   const [name, setName] = useState('')
   const [room, setRoom] = useState(initialRoom || '')
   const [password, setPassword] = useState('')
+  const [tagLoaded, setTagLoaded] = useState(false)
   const [joinError, setJoinError] = useState('')
   const [createdRoom, setCreatedRoom] = useState(null)
   const [toasts, setToasts] = useState([])
@@ -19,6 +20,8 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
     try { if (nameRef.current) nameRef.current.focus() } catch (e) {}
     // announce for screen readers
     try { if (ariaLiveRef.current) ariaLiveRef.current.textContent = 'Welcome. Enter a display name to join or create a room.' } catch (e) {}
+    // slight delay to trigger the underword-tag fade-in transition
+    try { setTimeout(() => setTagLoaded(true), 120) } catch (e) {}
   }, [])
 
   function handleCreate() {
@@ -227,18 +230,49 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
 
   return (
     <div className="lobby">
+      {/* ambient ember decoration (purely decorative, non-interactive) */}
+      <div className="ambient-embers" aria-hidden="true">
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+        <span className="ember" />
+      </div>
       <div className="toast-container" style={{ position: 'fixed', right: 18, top: 18, zIndex: 9999 }}>
         {toasts.map(t => (
           <div key={t.id} className="toast" style={{ background: 'rgba(0,0,0,0.8)', color: 'white', padding: '8px 12px', borderRadius: 8, marginBottom: 8 }}>{t.text}</div>
         ))}
       </div>
-      <div className="underword-header">
+      <div className={`underword-header ${tagLoaded ? 'loaded' : ''}`}>
         <h1 className="underword-title">Underword <span className="bubble">🕯️</span></h1>
         <p className="underword-tag">Hold your word in shadow. Drag theirs to light.</p>
       </div>
   <div style={{display:'flex',flexDirection:'column',gap:6}}>
     <div style={{display:'flex',gap:8,alignItems:'center'}}>
-      <input id="display_name" name="display_name" ref={nameRef} aria-label="Your display name" placeholder="Your name" className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`} value={name} onChange={e => { setName(e.target.value); setJoinError('') }} style={{flex:1}} />
+      <input
+        id="display_name"
+        name="display_name"
+        ref={nameRef}
+        aria-label="Your display name"
+        placeholder="Your name"
+        className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`}
+        value={name}
+        onChange={e => { setName(e.target.value); setJoinError('') }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            // If a room id is present in the join section, prefer joining that room.
+            if (room && room.toString().trim()) {
+              handleJoin()
+            } else {
+              handleCreate()
+            }
+          }
+        }}
+        style={{flex:1}}
+      />
       {/* Always render the helper to reserve layout space; hide visually when name is present */}
       <div className="small-error" style={{color:'#d9534f',marginLeft:8, visibility: (!name || !name.toString().trim()) ? 'visible' : 'hidden'}}>Please enter a name</div>
     </div>

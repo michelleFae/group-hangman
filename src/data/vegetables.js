@@ -17,6 +17,9 @@ const BASE = [
   'fenugreek','flageolet','fieldpea','flatbean',
   'gourd','gobo','gongura','greens'
   , 'safflower','fireweed','fuki'
+    , 'habanero','haricot','hubbard','huitlacoche','horsegram','ashgourd'
+    , 'chili','iceberg','shiso','swisschard','tindora','bilimbi','mooli'
+     , 'jalapeno','jute',
 ]
 
 const IRREGULARS = {
