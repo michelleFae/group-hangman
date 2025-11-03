@@ -1265,9 +1265,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       try {
         const text = fb && fb.amount ? `Underworld bubble: +${fb.amount} wordmoney (first click claims)` : 'A free bubble appeared!'
         const toastId = `free_bubble_${id}`
-  setToasts(t => [...t, { id: toastId, text, fade: true }])
-  // keep fading toasts visible for 8s
-  setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
+        setToasts(t => [...t, { id: toastId, text, fade: true }])
+        // start fade at ~7s, remove at 8s so the toast visibly fades out
+        setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
       } catch (e) {}
       // claiming is handled via a short-lived announcement node (`freeBubbleClaims`) so
       // the bubble itself can be cleared immediately for everyone while clients show who claimed it.
