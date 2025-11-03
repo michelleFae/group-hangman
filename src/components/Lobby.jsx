@@ -154,8 +154,9 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
     const url = buildRoomUrl(id)
     try {
       await navigator.clipboard.writeText(url)
-      setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }])
-      setTimeout(() => setToasts(t => t.slice(1)), 3000)
+        const toastId = `linkcopied_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+        setToasts(t => [...t, { id: toastId, text: 'Room link copied' }])
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3000)
     } catch (e) {
       prompt('Copy this link', url)
     }

@@ -7,7 +7,14 @@ const BASE = [
   'salsify','sorrel','tatsoi','lentil','lentils','chickpea','garbanzo','spinach','lettuce','watercress','microgreen','sprout','sprouts','scallion','springonion','chive','mustardgreen','snowpea','snappea',
   'cassava','taro','chayote','edamame','jicama','sunchoke','lotusroot','burdock','yucca','yuca','cauliflower','celery','chard','chicory','collard','corn','cucumber','daikon','eggplant','endive','fennel','garlic',
   'ginger','kale','leek','lettuce','mushroom','okra','onion','parsnip','pea','pepper','potato','pumpkin','radish','rhubarb','rutabaga','shallot','spinach','squash','sweetpotato','tomato','turnip','yam','zucchini',
-  'celeriac','kohlrabi','radicchio','wasabi','watercress','alfalfa','amaranth','bokchoy','broccolini','broccoflower','fiddlehead','frisee','mizuna','nopales','oregano','rapini','tatsoi'
+  'celeriac','kohlrabi','radicchio','wasabi','watercress','alfalfa','amaranth','bokchoy','broccolini','broccoflower','fiddlehead','frisee','mizuna','nopales','oregano','rapini','tatsoi',
+  'parsley','tarragon','rosemary','thyme','sage','dandelion','nettle','mustard','fava','chervil','lovage',
+  'cardoon','galangal','plantain','ramp','nopal','adzuki','arrowroot','savoy',
+  'borage','bamboo','butterbur','bittercress','babycorn',
+  'calabash','caigua','crosne','cilantro','camote','cowpea','choko','calabrese',
+  'delicata','dulse','dock','daylily','drumstick',
+  'escarole','enoki','seaweed','sugarbeet','elecampane',
+  'fenugreek','flageolet','fieldpea','flatbean'
 ]
 
 const IRREGULARS = {

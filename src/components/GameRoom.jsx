@@ -235,6 +235,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [toasts, setToasts] = useState([])
   // processed keys for free-bubble toasts (dedupe duplicate effect runs)
   const processedFreeBubbleRef = useRef({})
+  // store stable random positions per free-bubble id so they don't jitter on re-renders
+  const freeBubblePositionsRef = useRef({})
+
   const [powerUpOpen, setPowerUpOpen] = useState(false)
   const [powerUpTarget, setPowerUpTarget] = useState(null)
 
@@ -323,13 +326,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       const fb = state.freeBubble
       // if already claimed, let the claim flow handle announcements
       if (fb && fb.claimedBy) return
-      // only host should clear the authoritative freeBubble node
-      if (!isHost) return
+      // compute host status at runtime (avoid TDZ by not referencing `isHost` or `hostId` here)
+      const amHost = state && state.hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === state.hostId
+      if (!amHost) return
       const roomRef = dbRef(db, `rooms/${roomId}`)
       // best-effort removal; ignore failures
       dbUpdate(roomRef, { freeBubble: null }).catch(() => {})
     } catch (e) {}
-  }, [phase, state && state.freeBubble, isHost, roomId])
+  }, [phase, state && state.freeBubble, state && state.hostId, roomId])
   const [firstWordWins, setFirstWordWins] = useState(true)
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
@@ -448,7 +452,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       // Persist authoritative reshuffle
       safeDbUpdate(roomRef, ups).catch(() => {})
     } catch (e) {}
-  }, [JSON.stringify(state?.players || []), state?.gameMode, hostId, myId])
+  }, [JSON.stringify(state?.players || []), state?.gameMode, state?.hostId, myId])
   // coin pieces shown when a double-down is won
   const [ddCoins, setDdCoins] = useState([])
   // transient overlay events when ghosts re-enter so we can show animated UI for everyone
@@ -1557,6 +1561,30 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
   }, [])
 
+    // inject CSS for free-bubble tombstone visuals once
+    useEffect(() => {
+      try {
+        const id = 'gh-tombstone-style'
+        if (!document.getElementById(id)) {
+          const s = document.createElement('style')
+          s.id = id
+          s.innerHTML = `
+            .free-bubble-tombstone { display: inline-flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.6); color: #fff; background: linear-gradient(180deg,#7f7f7f,#333); border: 1px solid rgba(0,0,0,0.2); pointer-events: auto; }
+            /* Tombstone rounded top and flat base using extra element */
+            .free-bubble-tombstone.tombstone { border-radius: 18px 18px 8px 8px; background: linear-gradient(180deg,#8a8a8a,#3a3a3a); }
+            .free-bubble-tombstone .tomb-icon { font-size: 22px; display: inline-block; }
+            .free-bubble-tombstone .tomb-body { display:flex; flex-direction: column; align-items: flex-start }
+            .free-bubble-tombstone .tomb-amount { font-size: 14px; line-height: 1; font-weight: 800 }
+            .free-bubble-tombstone .tomb-sub { font-size: 11px; color: #d7d7d7 }
+            .free-bubble-tombstone.disabled { opacity: 0.65; cursor: not-allowed }
+            /* subtle beveled highlight */
+            .free-bubble-tombstone:after { content: ''; position: absolute; left: 0; right: 0; height: 6px; top: 0; border-top-left-radius: 18px; border-top-right-radius: 18px; pointer-events: none; mix-blend-mode: overlay; }
+          `
+          document.head.appendChild(s)
+        }
+      } catch (e) {}
+    }, [])
+
   // clear pending deductions when we observe the DB has applied the wordmoney change
   useEffect(() => {
     if (!state || !state.players) return
@@ -1722,6 +1750,12 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       <div style={{ fontSize: 13, marginBottom: 6 }}><strong>First word guessed wins:</strong> {(typeof state?.firstWordWins !== 'undefined') ? (state.firstWordWins ? 'Yes' : 'No') : (firstWordWins ? 'Yes' : 'No')}</div>
                     ) : null}
                     <div style={{ fontSize: 13, marginBottom: 6 }}><strong>Ghost re-entry enabled:</strong> {(typeof state?.ghostReEntryEnabled !== 'undefined') ? (state.ghostReEntryEnabled ? 'Yes' : 'No') : (ghostReEntryEnabled ? 'Yes' : 'No')}</div>
+                    <div style={{ fontSize: 13, marginBottom: 6 }}>
+                      <strong>Free wordmoney tombstones:</strong>
+                      {(typeof state?.freeBubblesEnabled !== 'undefined')
+                        ? (state.freeBubblesEnabled ? ' Enabled' : ' Disabled')
+                        : (typeof freeBubblesEnabled !== 'undefined' ? (freeBubblesEnabled ? ' Enabled' : ' Disabled') : ' Unknown')}
+                    </div>
                     <div style={{ fontSize: 13, marginBottom: 6 }}>
                       <strong>Secret-word theme:</strong>
                       {secretThemeEnabled ? (
@@ -6016,7 +6050,7 @@ try {
                   return (
                     <>
                       <input id="share_link" name="share_link" readOnly value={u.toString()} style={{ width: 360 }} />
-                  <button onClick={async () => { await navigator.clipboard.writeText(u.toString()); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy Link</button>
+                      <button onClick={async () => { await navigator.clipboard.writeText(u.toString()); const toastId = `linkcopied_${Date.now()}_${Math.random().toString(36).slice(2,6)}`; setToasts(t => [...t, { id: toastId, text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3000) }}>Copy Link</button>
                     </>
                   )
                 } catch (e) {
@@ -6024,7 +6058,7 @@ try {
                   return (
                     <>
                       <input id="share_link_fallback" name="share_link_fallback" readOnly value={fallback} style={{ width: 360 }} />
-                      <button onClick={async () => { await navigator.clipboard.writeText(fallback); setToasts(t => [...t, { id: Date.now(), text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.slice(1)), 3000) }}>Copy Link</button>
+                      <button onClick={async () => { await navigator.clipboard.writeText(fallback); const toastId = `linkcopied_${Date.now()}_${Math.random().toString(36).slice(2,6)}`; setToasts(t => [...t, { id: toastId, text: 'Room link copied' }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 3000) }}>Copy Link</button>
                     </>
                   )
                 }
@@ -6441,26 +6475,41 @@ try {
       try {
         const fb = state.freeBubble
         if (!fb) return null
+        // determine a per-bubble random position (persisted while the bubble id exists)
+        const key = fb.id || `fb_${fb.spawnedAt || Date.now()}`
+        let pos = freeBubblePositionsRef.current[key]
+        try {
+          if (!pos) {
+            // choose a viewport-relative percent position with safe margins
+            const left = 6 + Math.random() * 84 // 6%..90%
+            const top = 8 + Math.random() * 72 // 8%..80%
+            pos = { left, top }
+            freeBubblePositionsRef.current[key] = pos
+          }
+        } catch (e) { pos = pos || { left: 16, top: 60 } }
+
         const overlayNode = (
-          <div style={{ position: 'fixed', bottom: 120, right: 24, zIndex: 12015, pointerEvents: 'auto' }} aria-hidden={false}>
-            <button
+          <div style={{ position: 'fixed', left: `${pos.left}%`, top: `${pos.top}%`, zIndex: 13050, pointerEvents: 'auto' }} aria-hidden={false}>
+            <div
+              role="button"
               onClick={async () => {
                 try {
-                  // prevent clicks if already claimed or a local claim is in progress
                   if (!fb || fb.claimedBy || claimingBubbleId) return
                   setClaimingBubbleId(fb.id)
                   await claimFreeBubble(fb)
                 } catch (e) {} finally { setClaimingBubbleId(null) }
               }}
-              disabled={Boolean(fb && fb.claimedBy) || Boolean(claimingBubbleId)}
+              className={`free-bubble-tombstone tombstone ${fb && fb.claimedBy ? 'disabled' : ''}`}
               title={fb && fb.amount ? `Claim +${fb.amount} wordmoney` : 'Claim free wordmoney'}
-              style={{ background: 'linear-gradient(180deg,#3a3081,#111)', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 14, cursor: (fb && fb.claimedBy) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)', opacity: (fb && fb.claimedBy) ? 0.7 : 1 }}>
-              <span style={{ fontSize: 22 }}>🪦</span>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <strong style={{ fontSize: 14, lineHeight: 1 }}>{fb && fb.amount ? `+${fb.amount} wordmoney` : 'Free!'}</strong>
-                <small style={{ color: '#ccc', fontSize: 11 }}>{(fb && fb.claimedBy) ? 'Claimed' : 'Underworld bubble'}</small>
+              aria-disabled={Boolean(fb && fb.claimedBy) || Boolean(claimingBubbleId)}
+              style={{ position: 'relative' }}
+            >
+              <span className="tomb-icon">🪦</span>
+              <div className="tomb-body">
+                <div className="tomb-amount">{fb && fb.amount ? `+${fb.amount} wordmoney` : 'Free!'}</div>
+                <div className="tomb-sub">{(fb && fb.claimedBy) ? 'Claimed' : 'Underworld tombstone'}</div>
               </div>
-            </button>
+            </div>
           </div>
         )
         if (ddOverlayRoot && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal) {

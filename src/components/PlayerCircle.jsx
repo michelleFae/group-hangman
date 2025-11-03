@@ -576,9 +576,9 @@ export default function PlayerCircle({
             {(player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null))) && (
               <div className="frozen-badge" title="Player is frozen : guesses disabled">❄️ Frozen</div>
             )}
-            
-          
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
               <div>{player.name}</div>
              </div>
             {teamName && (
