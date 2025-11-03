@@ -250,6 +250,16 @@ button[disabled] {
   transform: none !important;
 }
 
+/* Stronger safeguard: disable any transitions/transforms for all elements inside
+   the settings modal and the game info popover to avoid unexpected layout shifts
+   caused by global styles (e.g., .card:hover or button:hover). This is intentionally
+   scoped narrowly to these overlays so other cards keep their subtle lift. */
+.settings-modal, .settings-modal *,
+.mode-info-card, .mode-info-card * {
+  transition: none !important;
+  transform: none !important;
+}
+
 /* make settings modal inputs easier to click: avoid floating transform on focus within settings modal */
 .settings-modal input:focus { transform: none !important; box-shadow: 0 6px 18px rgba(100,90,80,0.06) !important }
 

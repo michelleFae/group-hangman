@@ -667,7 +667,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   ballsports: { emoji: '🏀', label: 'Ball Sports', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
   olympicsports: { emoji: '🏅', label: 'Olympic Sports', bg: 'linear-gradient(90deg,#ffb86b,#ff6b6b)' },
   colours: { emoji: '🎨', label: 'Colours', bg: 'linear-gradient(90deg,#7c3aed,#ec4899)' },
-  fruits: { emoji: '🍎', label: 'Botanical Fruits', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
+  fruits: { emoji: '🍎', label: 'Edible Fruits (Culinary)', bg: 'linear-gradient(90deg,#f97316,#f43f5e)' },
   vegetables: { emoji: '🥬', label: 'Vegetables', bg: 'linear-gradient(90deg,#84cc16,#16a34a)' },
     occupations: { emoji: '🧑‍🔧', label: 'Occupations', bg: 'linear-gradient(90deg,#f59e0b,#a78bfa)' },
   countries: { emoji: '🌍', label: 'Countries', bg: 'linear-gradient(90deg,#06b6d4,#0ea5a1)' },
