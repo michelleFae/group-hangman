@@ -1784,6 +1784,8 @@ export default function useGameRoom(roomId, playerName) {
   const targetId = topCandidates.length > 0 ? topCandidates[Math.floor(Math.random() * topCandidates.length)] : (scored.length > 0 ? scored[Math.floor(Math.random() * scored.length)].id : aliveKeys[0])
       const targetNode = playersObj[targetId] || {}
 
+  try { console.log('botMakeMove: selected target', { botId, targetId, targetMoney: Number(targetNode.wordmoney) || 0, myMoney: Number(botNode.wordmoney) || 0 }) } catch (e) {}
+
       const bs = (botNode.botSettings || {})
       const difficulty = (bs.difficulty || (room.botSettings && room.botSettings.difficulty) || 'medium')
 
@@ -1794,6 +1796,7 @@ export default function useGameRoom(roomId, playerName) {
       try {
         const affordable = (botNode && typeof botNode.wordmoney === 'number') ? Number(botNode.wordmoney) : getStartMoneyFromRoom(room)
         const buyRoll = Math.random()
+        try { console.log('botMakeMove: affordability check', { botId, affordable, buyRoll, difficulty }) } catch (e) {}
         // prefer purchases on medium+ difficulty (probabilistic)
         if ((difficulty === 'hard' && buyRoll < 0.22) || (difficulty === 'medium' && buyRoll < 0.12)) {
           // 1) If target has a word and unrevealed letters, prefer The Unseen when affordable
@@ -1899,12 +1902,17 @@ export default function useGameRoom(roomId, playerName) {
       const wordGuessChance = difficulty === 'hard' ? 0.22 : (difficulty === 'medium' ? 0.12 : 0.05)
       const tryWord = Math.random() < wordGuessChance
 
-      if (tryWord) {
+        if (tryWord) {
+          try { console.log('botMakeMove: decided to attempt full-word guess', { botId, targetId, difficulty }) } catch (e) {}
         // attempt a full-word guess: prefer a direct known target word if available
         const candidate = (targetNode && targetNode.word) ? targetNode.word : null
         if (candidate) {
+          try { console.log('botMakeMove: attempting full-word push', { botId, candidate, targetId }) } catch (e) {}
           await botPushGuess(botId, botNode.name, targetId, { value: String(candidate) })
+          try { console.log('botMakeMove: pushed full-word guess', { botId, candidate, targetId }) } catch (e) {}
           return
+        } else {
+          try { console.log('botMakeMove: no candidate word known, will fall back to letter guess', { botId, targetId }) } catch (e) {}
         }
         // otherwise fall back to a high-confidence assembled guess by revealing common letters
       }
@@ -1923,8 +1931,15 @@ export default function useGameRoom(roomId, playerName) {
         }
       } catch (e) { letter = null }
 
-      if (!letter) letter = weightedRandomLetter()
+      if (!letter) {
+        letter = weightedRandomLetter()
+        try { console.log('botMakeMove: picked weighted random letter', { botId, letter }) } catch (e) {}
+      } else {
+        try { console.log('botMakeMove: picked target-specific letter', { botId, letter, targetId }) } catch (e) {}
+      }
+      try { console.log('botMakeMove: pushing letter guess to queue', { botId, targetId, letter }) } catch (e) {}
       await botPushGuess(botId, botNode.name, targetId, { value: letter })
+      try { console.log('botMakeMove: pushed letter guess', { botId, targetId, letter }) } catch (e) {}
     } catch (e) {
       console.warn('botMakeMove failed', e)
     }
