@@ -262,6 +262,118 @@ module.exports = async (req, res) => {
             }
             if (!merged) prevHits.push({ type: 'letter', letter, count: toAdd, ts: Date.now() })
             updates[`players/${from}/privateHits/${targetId}`] = prevHits
+            // If the room is configured to treat the last revealed blank as a full-word
+            // guess (revealShowBlanks), detect whether this newly revealed letter
+            // completed the set of unique letters for the target's word. If so,
+            // award the +5 full-word bonus (and double-down stake if applicable),
+            // mark the target eliminated, and perform the same bookkeeping as a
+            // correct full-word guess. We respect noScore logic above (so if
+            // noScore was true we do not award nor eliminate here).
+            try {
+              const revealShowBlanks = !!(room && room.revealShowBlanks)
+              if (revealShowBlanks && !noScore) {
+                // compute unique letters in the target word and in the updated revealed array
+                const wordUnique = Array.from(new Set((word || '').split(''))).map(x => (x || '').toString().toLowerCase())
+                const revealedUnique = Array.from(new Set((prevRevealed || []).map(x => (x || '').toString().toLowerCase())))
+                const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
+                if (allRevealed) {
+                  // award +5 for guessing the whole word
+                  hangDeltas[from] = (hangDeltas[from] || 0) + 5
+
+                  // If the guesser had an active Double Down, also award their stake back
+                  const dd2 = guesser.doubleDown
+                  if (dd2 && dd2.active) {
+                    const stake2 = Number(dd2.stake) || 0
+                    if (stake2 > 0) {
+                      hangDeltas[from] = (hangDeltas[from] || 0) + stake2
+                      // ensure visible lastGain reflects combined net gain
+                      const netGain = (hangDeltas[from] || 0)
+                      updates[`players/${from}/lastGain`] = { amount: netGain, by: targetId, reason: 'doubleDownWord', ts: Date.now() }
+                      updates[`players/${from}/doubleDown`] = null
+                    }
+                  }
+
+                  // mark eliminated and add guessedBy for word
+                  updates[`players/${targetId}/eliminated`] = true
+                  justEliminated = true
+                  updates[`players/${targetId}/eliminatedAt`] = Date.now()
+                  const prevWordGuessedBy2 = (target.guessedBy && target.guessedBy['__word']) ? target.guessedBy['__word'].slice() : []
+                  if (!prevWordGuessedBy2.includes(from)) prevWordGuessedBy2.push(from)
+                  updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy2
+
+                  // record private hit for guesser
+                  const prevHits2 = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []
+                  prevHits2.push({ type: 'word', word: word, ts: Date.now() })
+                  updates[`players/${from}/privateHits/${targetId}`] = prevHits2
+
+                  // normalize revealed to unique letters (same as full-word logic)
+                  const uniqueLetters = Array.from(new Set((word || '').split('')))
+                  updates[`players/${targetId}/revealed`] = uniqueLetters
+
+                  // remove from turnOrder and adjust currentTurnIndex like full-word branch
+                  const buildLTSOrder = (playersMap) => {
+                    try {
+                      const keys = Object.keys(playersMap || {})
+                      const teams = {}
+                      const unteamed = []
+                      keys.forEach(k => {
+                        try {
+                          const p = playersMap[k] || {}
+                          if (p.eliminated) return
+                          const t = p.team || null
+                          if (t) {
+                            teams[t] = teams[t] || []
+                            teams[t].push(k)
+                          } else {
+                            unteamed.push(k)
+                          }
+                        } catch (e) {}
+                      })
+                      const teamNames = Object.keys(teams)
+                      if (teamNames.length === 2) {
+                        const a = teams[teamNames[0]] || []
+                        const b = teams[teamNames[1]] || []
+                        const total = a.length + b.length
+                        const res = []
+                        const seen = new Set()
+                        let j = 0
+                        while (res.length < total) {
+                          if (a.length > 0) {
+                            const cand = a[j % a.length]
+                            if (!seen.has(cand)) { res.push(cand); seen.add(cand) }
+                          }
+                          if (res.length >= total) break
+                          if (b.length > 0) {
+                            const cand2 = b[j % b.length]
+                            if (!seen.has(cand2)) { res.push(cand2); seen.add(cand2) }
+                          }
+                          j++
+                        }
+                        return res.concat(unteamed.filter(p => !seen.has(p)))
+                      }
+                      return keys.filter(k => !(playersMap[k] && playersMap[k].eliminated))
+                    } catch (e) {
+                      return Object.keys(playersMap || {}).filter(k => !(playersMap[k] && playersMap[k].eliminated))
+                    }
+                  }
+
+                  let newTurnOrder = (room.turnOrder || []).filter(id => id !== targetId)
+                  try {
+                    if ((room && room.gameMode) === 'lastTeamStanding') {
+                      const playersAfter = Object.assign({}, players)
+                      if (!playersAfter[targetId]) playersAfter[targetId] = Object.assign({}, { id: targetId, eliminated: true })
+                      else playersAfter[targetId] = Object.assign({}, playersAfter[targetId], { eliminated: true })
+                      newTurnOrder = buildLTSOrder(playersAfter)
+                    }
+                  } catch (e) {}
+                  updates[`turnOrder`] = newTurnOrder
+                  let adjustedIndex = currentIndex
+                  const removedIndex = (room.turnOrder || []).indexOf(targetId)
+                  if (removedIndex !== -1 && removedIndex <= currentIndex) adjustedIndex = Math.max(0, adjustedIndex - 1)
+                  updates[`currentTurnIndex`] = adjustedIndex
+                }
+              }
+            } catch (e) {}
           } else {
             // still reveal publicly but don't award points; add a private note for the guesser
             const prevHits = (guesser.privateHits && guesser.privateHits[targetId]) ? guesser.privateHits[targetId].slice() : []

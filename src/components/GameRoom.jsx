@@ -4753,22 +4753,25 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const el = powerupListRef.current
     if (!el) return
     try {
-      const v = Number(powerupScrollRef.current) || 0
-      // apply immediately
-      try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-      // reapply across a couple animation frames and a short timeout to handle
-      // later style/transition-driven layout changes that may reset scrollTop.
-      try {
-        let raf1 = null, raf2 = null, to = null
-        raf1 = requestAnimationFrame(() => {
-          try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-          raf2 = requestAnimationFrame(() => {
+      // Only restore when we have a previously-stored numeric scroll position.
+      const v = (typeof powerupScrollRef.current === 'number') ? powerupScrollRef.current : null
+      if (v !== null) {
+        // apply immediately
+        try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+        // reapply across a couple animation frames and a short timeout to handle
+        // later style/transition-driven layout changes that may reset scrollTop.
+        try {
+          let raf1 = null, raf2 = null, to = null
+          raf1 = requestAnimationFrame(() => {
             try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-            to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+            raf2 = requestAnimationFrame(() => {
+              try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+              to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+            })
           })
-        })
-        return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
-      } catch (e) {}
+          return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
+        } catch (e) {}
+      }
     } catch (e) {}
   // Re-run restoration whenever room state that can affect the modal layout updates
   // (players, turn order, phase, price surge, teams, or game mode). This ensures
@@ -4810,19 +4813,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     const el = settingsListRef.current
     if (!el) return
     try {
-      const v = Number(settingsScrollRef.current) || 0
-      try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-      try {
-        let raf1 = null, raf2 = null, to = null
-        raf1 = requestAnimationFrame(() => {
-          try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-          raf2 = requestAnimationFrame(() => {
+      const v = (typeof settingsScrollRef.current === 'number') ? settingsScrollRef.current : null
+      if (v !== null) {
+        try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+        try {
+          let raf1 = null, raf2 = null, to = null
+          raf1 = requestAnimationFrame(() => {
             try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
-            to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+            raf2 = requestAnimationFrame(() => {
+              try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {}
+              to = setTimeout(() => { try { if (el.scrollTop !== v) el.scrollTop = v } catch (e) {} }, 50)
+            })
           })
-        })
-        return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
-      } catch (e) {}
+          return () => { try { if (raf1) cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); if (to) clearTimeout(to) } catch (e) {} }
+        } catch (e) {}
+      }
     } catch (e) {}
   }, [showSettings])
   function PowerUpModal({ open, targetId, onClose }) {

@@ -2110,8 +2110,42 @@ export default function useGameRoom(roomId, playerName) {
                     if (candidate && targetWord && candidate.toString().toLowerCase() === targetWord) {
                       const unique = Array.from(new Set((targetWord || '').split('')))
                       updates[`players/${targetId}/revealed`] = unique
+                      // Award +5 for full-word guess (client-side fallback mirrors serverless behavior)
+                      try {
+                        // base full-word award
+                        const award = 5
+                        // team-aware/apply helper
+                        try { applyAwardToUpdates(updates, freshRoom, botId, award, { reason: 'hang', by: targetId }) } catch (e) { updates[`players/${botId}/wordmoney`] = ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0) + award }
+                        // handle Double Down: return stake when active
+                        try {
+                          const dd = freshPlayers[botId] && freshPlayers[botId].doubleDown ? freshPlayers[botId].doubleDown : null
+                          if (dd && dd.active) {
+                            const stake = Number(dd.stake) || 0
+                            if (stake > 0) {
+                              try { applyAwardToUpdates(updates, freshRoom, botId, stake, { reason: 'doubleDownWord', by: targetId }) } catch (e) { updates[`players/${botId}/wordmoney`] = ((updates[`players/${botId}/wordmoney`] || ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0)) + stake) }
+                              updates[`players/${botId}/doubleDown`] = null
+                              // visible lastGain reflect net gain (approximate)
+                              const net = ((updates[`players/${botId}/wordmoney`] || 0) - ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0))
+                              try { updates[`players/${botId}/lastGain`] = { amount: net, by: targetId, reason: 'doubleDownWord', ts: Date.now() } } catch (e) {}
+                            }
+                          }
+                        } catch (e) {}
+                      } catch (e) {}
+                      // mark eliminated and timestamp
                       updates[`players/${targetId}/eliminated`] = true
                       updates[`players/${targetId}/eliminatedAt`] = Date.now()
+                      // record that this client-side fallback caused elimination by adding guessedBy.__word
+                      try {
+                        const prevWordGuessedBy = (freshTarget && freshTarget.guessedBy && freshTarget.guessedBy['__word']) ? freshTarget.guessedBy['__word'].slice() : []
+                        if (!prevWordGuessedBy.includes(botId)) prevWordGuessedBy.push(botId)
+                        updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy
+                      } catch (e) {}
+                      // record private hit for guesser
+                      try {
+                        const prevHits = (freshPlayers[botId] && freshPlayers[botId].privateHits && freshPlayers[botId].privateHits[targetId]) ? freshPlayers[botId].privateHits[targetId].slice() : []
+                        prevHits.push({ type: 'word', word: targetWord, ts: Date.now() })
+                        updates[`players/${botId}/privateHits/${targetId}`] = prevHits
+                      } catch (e) {}
                       // remove from turnOrder
                       const newOrder = (freshRoom.turnOrder || []).filter(id => id !== targetId)
                       updates['turnOrder'] = newOrder
@@ -2235,12 +2269,98 @@ export default function useGameRoom(roomId, playerName) {
               const nextRevealed = Array.isArray(freshTarget.revealed) ? freshTarget.revealed.slice() : []
               for (let i = 0; i < occurrences; i++) nextRevealed.push(letterLower)
               const updates = {}
-              updates[`players/${targetId}/revealed`] = nextRevealed
-              // award simple +2 per occurrence to guesser (best-effort)
-              const award = 2 * occurrences
-              const prev = (freshPlayers && freshPlayers[botId] && typeof freshPlayers[botId].wordmoney === 'number') ? freshPlayers[botId].wordmoney : 0
-              updates[`players/${botId}/wordmoney`] = prev + award
-              updates[`players/${botId}/lastGain`] = { amount: award, by: targetId, reason: 'hang', ts: Date.now() }
+              // Detect whether this newly revealed letter completed all unique letters
+              // and whether the room treats last-letter-as-word via revealShowBlanks.
+              let appliedFullWord = false
+              try {
+                const revealShowBlanks = !!(freshRoom && freshRoom.revealShowBlanks)
+                // Determine no-score state for this letter (e.g., crowd_hint/noScore reveals)
+                let noScore = !!(freshTarget && freshTarget.noScoreReveals && freshTarget.noScoreReveals[letterLower])
+                // Also consider whether the bot already had this letter privately (privateHits)
+                try {
+                  const prevHitsForTarget = (freshPlayers[botId] && freshPlayers[botId].privateHits && freshPlayers[botId].privateHits[targetId]) ? freshPlayers[botId].privateHits[targetId] : []
+                  if (Array.isArray(prevHitsForTarget) && prevHitsForTarget.some(h => h && h.type === 'letter' && ((h.letter || '').toString().toLowerCase() === letterLower))) noScore = true
+                } catch (e) {}
+                // Also check privatePowerReveals for this bot against target for evidence of the letter
+                try {
+                  const ppr = (freshPlayers[botId] && freshPlayers[botId].privatePowerReveals && freshPlayers[botId].privatePowerReveals[targetId]) ? Object.values(freshPlayers[botId].privatePowerReveals[targetId]) : []
+                  if (Array.isArray(ppr) && ppr.some(r => {
+                    try {
+                      if (!r || !r.result) return false
+                      const res = r.result
+                      const check = s => (s || '').toString().toLowerCase() === letterLower
+                      if (check(res.letterFromTarget)) return true
+                      if (check(res.letterFromBuyer)) return true
+                      if (check(res.letter)) return true
+                      if (res.last && check(res.last)) return true
+                      if (res.letters && Array.isArray(res.letters) && res.letters.map(x => (x||'').toString().toLowerCase()).includes(letterLower)) return true
+                      if (res.found && Array.isArray(res.found) && res.found.some(f => f && f.letter && (f.letter||'').toString().toLowerCase() === letterLower)) return true
+                      return false
+                    } catch (e) { return false }
+                  })) noScore = true
+                } catch (e) {}
+
+                if (revealShowBlanks && !noScore) {
+                  // compute unique letters in the word and in the updated revealed array
+                  const wordUnique = Array.from(new Set((targetWord || '').split(''))).map(x => (x || '').toString().toLowerCase())
+                  const revealedUnique = Array.from(new Set((nextRevealed || []).map(x => (x || '').toString().toLowerCase())))
+                  const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
+                  if (allRevealed) {
+                    appliedFullWord = true
+                    // treat as full-word: award +5 and handle double-down like full-word branch
+                    try {
+                      const award = 5
+                      try { applyAwardToUpdates(updates, freshRoom, botId, award, { reason: 'hang', by: targetId }) } catch (e) { updates[`players/${botId}/wordmoney`] = ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0) + award }
+                      // Double Down handling
+                      try {
+                        const dd = freshPlayers[botId] && freshPlayers[botId].doubleDown ? freshPlayers[botId].doubleDown : null
+                        if (dd && dd.active) {
+                          const stake = Number(dd.stake) || 0
+                          if (stake > 0) {
+                            try { applyAwardToUpdates(updates, freshRoom, botId, stake, { reason: 'doubleDownWord', by: targetId }) } catch (e) { updates[`players/${botId}/wordmoney`] = ((updates[`players/${botId}/wordmoney`] || ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0)) + stake) }
+                            updates[`players/${botId}/doubleDown`] = null
+                            const net = ((updates[`players/${botId}/wordmoney`] || 0) - ((freshPlayers[botId] && Number(freshPlayers[botId].wordmoney)) || 0))
+                            try { updates[`players/${botId}/lastGain`] = { amount: net, by: targetId, reason: 'doubleDownWord', ts: Date.now() } } catch (e) {}
+                          }
+                        }
+                      } catch (e) {}
+                    } catch (e) {}
+
+                    // mark eliminated and related bookkeeping
+                    updates[`players/${targetId}/eliminated`] = true
+                    updates[`players/${targetId}/eliminatedAt`] = Date.now()
+                    try {
+                      const prevWordGuessedBy = (freshTarget && freshTarget.guessedBy && freshTarget.guessedBy['__word']) ? freshTarget.guessedBy['__word'].slice() : []
+                      if (!prevWordGuessedBy.includes(botId)) prevWordGuessedBy.push(botId)
+                      updates[`players/${targetId}/guessedBy/__word`] = prevWordGuessedBy
+                    } catch (e) {}
+                    try {
+                      const prevHits = (freshPlayers[botId] && freshPlayers[botId].privateHits && freshPlayers[botId].privateHits[targetId]) ? freshPlayers[botId].privateHits[targetId].slice() : []
+                      prevHits.push({ type: 'word', word: targetWord, ts: Date.now() })
+                      updates[`players/${botId}/privateHits/${targetId}`] = prevHits
+                    } catch (e) {}
+                    // normalize revealed to unique letters
+                    const uniqueLetters = Array.from(new Set((targetWord || '').split('')))
+                    updates[`players/${targetId}/revealed`] = uniqueLetters
+                    // remove from turnOrder and adjust index
+                    const newOrder = (freshRoom.turnOrder || []).filter(id => id !== targetId)
+                    updates['turnOrder'] = newOrder
+                    let adjustedIndex = curIdx
+                    const removedIndex = (freshRoom.turnOrder || []).indexOf(targetId)
+                    if (removedIndex !== -1 && removedIndex <= curIdx) adjustedIndex = Math.max(0, adjustedIndex - 1)
+                    updates['currentTurnIndex'] = adjustedIndex
+                  }
+                }
+              } catch (e) {}
+
+              if (!appliedFullWord) {
+                updates[`players/${targetId}/revealed`] = nextRevealed
+                // award simple +2 per occurrence to guesser (best-effort)
+                const award = 2 * occurrences
+                const prev = (freshPlayers && freshPlayers[botId] && typeof freshPlayers[botId].wordmoney === 'number') ? freshPlayers[botId].wordmoney : 0
+                updates[`players/${botId}/wordmoney`] = prev + award
+                updates[`players/${botId}/lastGain`] = { amount: award, by: targetId, reason: 'hang', ts: Date.now() }
+              }
               // advance turn
               const len = (order && order.length) || 1
               const nextIndex = (curIdx + 1) % len
