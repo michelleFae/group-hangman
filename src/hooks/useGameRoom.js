@@ -1436,7 +1436,7 @@ export default function useGameRoom(roomId, playerName) {
     const startMoney = getStartMoneyFromRoom(room)
     // Short, friendly bot names (keep overall length < 10 when prefixed with "Bot ")
     const SHORT_BOT_NAMES = [
-      'Sam','Fae','Zoe','Max','Ava','Mia','Under', 'Honey', 'Flow', 'PR', 'Magik', 'Feef', 'Boss', 'Foop', 'Over', 'World', 'Perse', 'Word', 'Phone','Lia','Ben','Leo','Ivy','Eli','Kai','Bit','Noa','Ada','Amy','Ray','Tia','Bo','Lux','Jax','Liv','Sky','Ash','Jay','Cia','Ren','Nia','Dax','Zia','Cy','Rue','Sol','Pax','Alex','Rex','Jude','Cleo','Ezra','Finn','Nova','Sage','Toby','Vera','Lex','Zara','Leaf','Wren','Orin','Indy', 'Quin', 'Rory', 'Seth', 'Tess', 'Zane','Bea','Harry','Luna','Nina','Ollie','Rita','Theo','Vivi','Wade','Zeke','Cody','Demi', 'Gus','Hale','Joni','Kira','Lyle','Mara','Nico','Opal','Rey','Skye','Tara','Vail', 'Zuri','Rumi','Toast','Butter','Mochi','Pixel','Bingo','Jinx','Pip','Doodle','Snickers','Bubbles','Clover','Peanut','Gizmo','Nibbles','Sprout','Widget','Ziggy','Muffin','Cupcake','Pumpkin','Peaches','Pickles','Fox','Poppy','Daisy','Maple','Coco','Sunny','Basil','Pebble','Pogo','Toto','Yuki','Miso','Koko','Suki','Aya','Kiki','Lulu','Mimi','Nana','Rara','Sasa','Titi','Zaza','Bibi','Didi','Fifi','Gigi','Jojo','Kaka','Lala','Nene','Pipi','Riri','Titi','Vivi','Zuzu','Sleepy','Happy','Sparky','Buddy','Shadow','Smokey','Midnight','Tiger','Bear','Rocky','Bandit','Rusty','Scout','Ace','Chief','Duke','King','Prince','Ranger','Sarge','Tank','Thor','Zeus','Blaze','Comet','Flash','Hawk','Jett','Nova','Rocket','Storm','Dash','Frost','Ghost','Hurricane','Lightning','Phantom','Razor','Vortex','Whisper','Wolf','Cheetah','Eagle','Falcon','Jaguar','Lynx','Puma','Raven','Shark','Tiger','Viper','Wolverine','Taylor','Swift','Jordan','Morgan','Casey','Riley','Avery','Parker','Quinn','Reese','Sawyer','Emery','Finley','Hayden','Kendall','Logan','Madison','Peyton','Rowan','Skyler','Tatum','Blair','Drew','Elliot','Frankie','Harper','Jesse','Karter','Lee','Micah','Nolan','Oakley','Phoenix','Reagan','Sloane','Terry','Winter', 'Zion', 'Arlo','Bodhi','Cruz','Enzo','Hugo','Ira','Jax','Kian','Leif','Milo','Nico','Otis','Rafe','Soren','Taj','Viggo','Wynn','Bot','Zig','Neo','Rio','Jap','Hunger'
+      'Kore','Sam','Fae','Zoe','Max','Ava','Mia','Under', 'Honey', 'Flow', 'PR', 'Magik', 'Feef', 'Boss', 'Foop', 'Over', 'World', 'Perse', 'Word', 'Phone','Lia','Ben','Leo','Ivy','Eli','Kai','Bit','Noa','Ada','Amy','Ray','Tia','Bo','Lux','Jax','Liv','Sky','Ash','Jay','Cia','Ren','Nia','Dax','Zia','Cy','Rue','Sol','Pax','Alex','Rex','Jude','Cleo','Ezra','Finn','Nova','Sage','Toby','Vera','Lex','Zara','Leaf','Wren','Orin','Indy', 'Quin', 'Rory', 'Seth', 'Tess', 'Zane','Bea','Harry','Luna','Nina','Ollie','Rita','Theo','Vivi','Wade','Zeke','Cody','Demi', 'Gus','Hale','Joni','Kira','Lyle','Mara','Nico','Opal','Rey','Skye','Tara','Vail', 'Zuri','Rumi','Toast','Butter','Mochi','Pixel','Bingo','Jinx','Pip','Doodle','Snickers','Bubbles','Clover','Peanut','Gizmo','Nibbles','Sprout','Widget','Ziggy','Muffin','Cupcake','Pumpkin','Peaches','Pickles','Fox','Poppy','Daisy','Maple','Coco','Sunny','Basil','Pebble','Pogo','Toto','Yuki','Miso','Koko','Suki','Aya','Kiki','Lulu','Mimi','Nana','Rara','Sasa','Titi','Zaza','Bibi','Didi','Fifi','Gigi','Jojo','Cola','Lala','Nene','Pipi','Riri','Titi','Vivi','Zuzu','Sleepy','Happy','Sparky','Buddy','Shadow','Smokey','Midnight','Tiger','Bear','Rocky','Bandit','Rusty','Scout','Ace','Chief','Duke','King','Prince','Ranger','Sarge','Tank','Thor','Zeus','Blaze','Comet','Flash','Hawk','Jett','Nova','Rocket','Storm','Dash','Frost','Ghost','Hurricane','Lightning','Phantom','Razor','Vortex','Whisper','Wolf','Cheetah','Eagle','Falcon','Jaguar','Lynx','Puma','Raven','Shark','Tiger','Viper','Wolverine','Taylor','Swift','Jordan','Morgan','Casey','Riley','Avery','Parker','Quinn','Reese','Sawyer','Emery','Finley','Hayden','Kendall','Logan','Madison','Peyton','Rowan','Skyler','Tatum','Blair','Drew','Elliot','Frankie','Harper','Jesse','Karter','Lee','Micah','Nolan','Oakley','Phoenix','Reagan','Sloane','Terry','Winter', 'Zion', 'Arlo','Bodhi','Cruz','Enzo','Hugo','Ira','Jax','Kian','Leif','Milo','Nico','Otis','Rafe','Soren','Taj','Viggo','Wynn','Bot','Zig','Neo','Rio','Jap','Hunger'
     ]
     const pick = SHORT_BOT_NAMES[Math.floor(Math.random() * SHORT_BOT_NAMES.length)]
     const botName = `${pick} Bot 🤖`
@@ -1773,8 +1773,40 @@ export default function useGameRoom(roomId, playerName) {
       } catch (e) {}
 
       // choose an alive non-bot target: prefer the player with the most wordmoney
+      // When playing lastTeamStanding, do not target teammates: only consider players on the other team
+      // If there are no opposing players left, award the bot's team the win immediately.
+      try {
+        if (room && room.gameMode === 'lastTeamStanding' && botNode && botNode.team) {
+          const opponents = Object.keys(playersObj || {}).filter(k => {
+            try { const p = playersObj[k] || {}; return p && !p.eliminated && p.team && p.team !== botNode.team } catch (e) { return false }
+          })
+          if (!opponents || opponents.length === 0) {
+            try {
+              const updates = {}
+              updates['phase'] = 'ended'
+              updates['endedAt'] = Date.now()
+              updates['winnerTeam'] = botNode.team
+              updates['winnerId'] = null
+              updates['winnerName'] = null
+              await update(roomRef, updates)
+              try { console.log('botMakeMove: awarded lastTeamStanding victory to team', botNode.team) } catch (e) {}
+            } catch (e) { console.warn('botMakeMove: could not write lastTeamStanding win', e) }
+            return
+          }
+        }
+      } catch (e) {}
+
       const aliveKeys = Object.keys(playersObj).filter(k => {
-        try { const p = playersObj[k] || {}; return p && !p.eliminated && p.id !== botId && !p.isBot } catch (e) { return false }
+        try {
+          const p = playersObj[k] || {}
+          // basic guards: must exist, not eliminated, not self, and not a bot
+          if (!p || p.eliminated || p.id === botId || p.isBot) return false
+          // team-aware: when in lastTeamStanding mode, skip players on the same team as the bot
+          try {
+            if ((room && room.gameMode === 'lastTeamStanding') && botNode && botNode.team && p.team && p.team === botNode.team) return false
+          } catch (e) {}
+          return true
+        } catch (e) { return false }
       })
       if (!aliveKeys || aliveKeys.length === 0) return
       // compute numeric wordmoney (fallback to 0)
