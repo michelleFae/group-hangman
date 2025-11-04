@@ -3957,10 +3957,19 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         if (!updates[buyerKey]) {
           updates[buyerKey] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: (resultPayload || {}) }
         }
-        if (!updates[targetKey]) {
-          // For the target's view prefer a short message if resultPayload is complex
-          const targetResult = (resultPayload && typeof resultPayload === 'object') ? { ...(resultPayload || {}), message: (resultPayload && resultPayload.message) ? resultPayload.message : `${playerIdToName[myId] || myId} used ${powerId}` } : { message: (resultPayload || '') }
-          updates[targetKey] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: targetResult }
+        // Special-case: Crowd Hint should only write the buyer-facing message under the buyer's
+        // privatePowerReveals so the summary appears on the buyer's tile. Avoid writing a
+        // target-side private reveal entry for crowd_hint to prevent the message showing up
+        // on targets' own tiles.
+        if (powerId !== 'crowd_hint') {
+          if (!updates[targetKey]) {
+            // For the target's view prefer a short message if resultPayload is complex
+            const targetResult = (resultPayload && typeof resultPayload === 'object') ? { ...(resultPayload || {}), message: (resultPayload && resultPayload.message) ? resultPayload.message : `${playerIdToName[myId] || myId} used ${powerId}` } : { message: (resultPayload || '') }
+            updates[targetKey] = { powerId, ts: Date.now(), from: myId, to: powerUpTarget, result: targetResult }
+          }
+        } else {
+          // ensure no accidental target entry remains for crowd_hint
+          if (updates[targetKey]) delete updates[targetKey]
         }
       } catch (e) {}
 
