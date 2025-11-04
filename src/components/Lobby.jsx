@@ -346,9 +346,12 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           setJoinError('')
           try {
             const trimmed = (v || '').toString().trim()
-            // If the entered name ends with the literal string "Bot 🤖", show the requested error
-            if (trimmed && trimmed.endsWith('Bot 🤖')) {
-              setNameValidationError("Your name shouldn't end with 'Bot' if you aren't one! Idenity theft is not a joke, mortal.")
+            // If the entered name ends with the word 'bot' (case-insensitive) followed by
+            // any number of spaces and the bot emoji, show the requested error.
+            // Use a regex to match variations like: "Bot 🤖", "bot🤖", "Bot    🤖" etc.
+            const botSuffixRe = /bot\s*🤖$/i
+            if (trimmed && botSuffixRe.test(trimmed)) {
+              setNameValidationError("Idenity theft is not a joke, mortal. Your name shouldn't end with 'Bot' if you aren't one!")
             } else {
               setNameValidationError('')
             }
