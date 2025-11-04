@@ -48,7 +48,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
 
   if (!admin.apps || admin.apps.length === 0) {
-    return res.status(500).json({ error: 'Server not configured. Set FIREBASE_SERVICE_ACCOUNT and FIREBASE_DATABASE_URL.' })
+    return res.status(502).json({ error: 'Server not configured. Set FIREBASE_SERVICE_ACCOUNT and FIREBASE_DATABASE_URL.' })
   }
 
   const authHeader = req.headers.authorization || ''
@@ -86,7 +86,7 @@ module.exports = async (req, res) => {
     const currentIndex = typeof room.currentTurnIndex === 'number' ? room.currentTurnIndex : 0
     const currentPlayerId = turnOrder[currentIndex]
     console.log("Turn check:", { currentPlayerId, from, turnOrder, currentIndex })
-    if (currentPlayerId !== from) return res.status(500).json({ error: 'sell' })
+    if (currentPlayerId !== from) return res.status(501).json({ error: 'Not your turn' })
     if (targetId === from) return res.status(400).json({ error: 'Cannot guess your own word' })
 
     const target = players[targetId]
