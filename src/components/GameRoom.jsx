@@ -300,6 +300,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const powerupListRef = useRef(null)
   const powerupScrollRef = useRef(0)
   const settingsListRef = useRef(null)
+  const settingsRef = useRef(null)
   const settingsScrollRef = useRef(0)
   const multiHitSeenRef = useRef({})
   // control whether certain power-ups reveal publicly (when available in UI)
@@ -2478,7 +2479,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // immediate update: write minWordSize on change to avoid spinner revert issues
 
     return (
-      <div id="settings" className="settings-modal" style={{ display: open ? 'block' : 'none', overflowY: 'auto', height: '100%', position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }} onMouseDown={e => { try { e.stopPropagation() } catch (er) {} }} onClick={e => { try { e.stopPropagation() } catch (er) {} }}>
+      <div id="settings" ref={settingsRef} className="settings-modal" style={{ display: open ? 'block' : 'none', overflowY: 'auto', height: '100%', position: 'fixed', right: 18, top: 64, width: 360, zIndex: 10001 }} onMouseDown={e => { try { e.stopPropagation() } catch (er) {} }} onClick={e => { try { e.stopPropagation() } catch (er) {} }}>
         <div className="card" ref={settingsListRef} onScroll={() => { try { settingsScrollRef.current = settingsListRef.current ? settingsListRef.current.scrollTop : 0 } catch (e) {} }} style={{ padding: 12, maxHeight: '70vh', overflow: 'auto', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>Room settings</strong>
@@ -2787,6 +2788,21 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // room settings change (freeBubblesEnabled was previously omitted causing
   // the checkbox to appear stale).
   }, [showSettings, timedMode, turnSeconds, starterEnabled, secretThemeEnabled, secretThemeType, gameMode, firstWordWins, wordSeekerTimerSeconds, wordSeekerRounds, powerUpsEnabled, ghostReEntryEnabled, ghostGuessCooldownSeconds, minWordSize, startingWordmoney, revealPreserveOrder, revealShowBlanks, freeBubblesEnabled, submitTimerEnabled, submitTimerSeconds, showWordsOnEnd])
+  // Close settings when clicking outside the settings modal
+  useEffect(() => {
+    if (!showSettings) return () => {}
+    function onDocMouseDown(e) {
+      try {
+        const node = settingsRef && settingsRef.current
+        if (!node) return
+        if (!node.contains(e.target)) {
+          setShowSettings(false)
+        }
+      } catch (err) {}
+    }
+    try { document.addEventListener('mousedown', onDocMouseDown) } catch (e) { document.addEventListener && document.addEventListener('click', onDocMouseDown) }
+    return () => { try { document.removeEventListener('mousedown', onDocMouseDown) } catch (e) { try { document.removeEventListener && document.removeEventListener('click', onDocMouseDown) } catch (er) {} } }
+  }, [showSettings])
   const POWER_UPS = [
     { id: 'letter_for_letter', updateType:"not important", name: 'Letter for a Letter', price: 2, desc: "Reveals a random letter from your word and your opponent's word, only to each other. Both players get points unless the letter has already been revealed before. Reveals all occurrences of the letter.", powerupType: 'singleOpponentPowerup' },
     { id: 'vowel_vision', updateType:"important", name: 'Vowel Vision', price: 4, desc: 'Privately tells just you how many vowels the word contains.', powerupType: 'singleOpponentPowerup' },

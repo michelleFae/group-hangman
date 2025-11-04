@@ -315,6 +315,25 @@ button[disabled] {
 .settings-modal button { color: var(--text); background: transparent; border: none; font-size: 16px; cursor: pointer }
 .settings-modal button:hover { color: #fff }
 
+/* Thin black scrollbar for Settings modal: modern and webkit fallbacks */
+.settings-modal .card {
+  scrollbar-width: thin;
+  scrollbar-color: #000 transparent;
+}
+.settings-modal .card::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.settings-modal .card::-webkit-scrollbar-track {
+  background: transparent;
+}
+.settings-modal .card::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.95);
+  border-radius: 8px;
+  border: 2px solid transparent; /* keeps thumb visually thin while preserving hit area */
+  background-clip: padding-box;
+}
+
 /* Prevent modal dialogs (including the power-up shop) from floating on hover */
 .modal-overlay .modal-dialog.card,
 .modal-dialog.card,
