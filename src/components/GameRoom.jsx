@@ -5550,10 +5550,24 @@ try {
             const ok = await submitWord(randomWord)
             // apply penalty of -2 wordmoney (transactional)
             try {
-              const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${myId}/wordmoney`)
-              await runTransaction(playerMoneyRef, curr => Math.max(0, (Number(curr)||0) - 2))
+              if (state && state.gameMode === 'lastTeamStanding' && me && me.team) {
+                const teamKey = me.team
+                const teamMoneyRef = dbRef(db, `rooms/${roomId}/teams/${teamKey}/wordmoney`)
+                await runTransaction(teamMoneyRef, curr => Math.max(0, (Number(curr) || 0) - 2))
+              } else {
+                const playerMoneyRef = dbRef(db, `rooms/${roomId}/players/${myId}/wordmoney`)
+                await runTransaction(playerMoneyRef, curr => Math.max(0, (Number(curr) || 0) - 2))
+              }
             } catch (e) {
-              try { const roomRef = dbRef(db, `rooms/${roomId}`); await dbUpdate(roomRef, { [`players/${myId}/wordmoney`]: Math.max(0, Number(me.wordmoney || 0) - 2) }) } catch (ee) {}
+              try {
+                const roomRef = dbRef(db, `rooms/${roomId}`)
+                if (state && state.gameMode === 'lastTeamStanding' && me && me.team) {
+                  const teamKey = me.team
+                  await dbUpdate(roomRef, { [`teams/${teamKey}/wordmoney`]: Math.max(0, Number(state?.teams?.[teamKey]?.wordmoney || 0) - 2) })
+                } else {
+                  await dbUpdate(roomRef, { [`players/${myId}/wordmoney`]: Math.max(0, Number(me.wordmoney || 0) - 2) })
+                }
+              } catch (ee) {}
             }
             // announce to room so others can show toast
             try {
