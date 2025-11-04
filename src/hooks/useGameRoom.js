@@ -1749,6 +1749,24 @@ export default function useGameRoom(roomId, playerName) {
       if (!botNode) return
       if (room.phase !== 'playing') return
 
+      // Ensure we only act when it is this bot's actual turn. This guards against
+      // accidental calls or race conditions where the host-scheduler invoked botMakeMove
+      // but the turn advanced before the bot acted.
+      try {
+        const order = room.turnOrder || []
+        const idx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+        const currentPlayerId = (idx !== null && Array.isArray(order) && order.length > idx) ? order[idx] : null
+        // Also consult the in-memory `state` snapshot as a fallback for timing/race cases
+        const localOrder = (state && Array.isArray(state.turnOrder)) ? state.turnOrder : null
+        const localIdx = (state && typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : null
+        const localCurrent = (localOrder && localIdx !== null && localOrder.length > localIdx) ? localOrder[localIdx] : null
+        try { console.log('botMakeMove: turn check', { botId, currentPlayerId, idx, localCurrent, localIdx }) } catch (e) {}
+        if (currentPlayerId !== botId && localCurrent !== botId) {
+          try { console.log('botMakeMove: skipped because not bot turn (both snapshot & local)', { botId, currentPlayerId, localCurrent, idx, localIdx }) } catch (e) {}
+          return
+        }
+      } catch (e) {}
+
       // choose an alive non-bot target: prefer the player with the most wordmoney
       const aliveKeys = Object.keys(playersObj).filter(k => {
         try { const p = playersObj[k] || {}; return p && !p.eliminated && p.id !== botId && !p.isBot } catch (e) { return false }
@@ -1926,6 +1944,17 @@ export default function useGameRoom(roomId, playerName) {
       if (!botNode) return false
       // Ensure it's playing phase (safe guard)
       if (room.phase !== 'playing') return false
+
+      // Only allow bots to purchase power-ups on their own turn.
+      try {
+        const order = room.turnOrder || []
+        const idx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+        const currentPlayerId = (idx !== null && Array.isArray(order) && order.length > idx) ? order[idx] : null
+        if (currentPlayerId !== botId) {
+          try { console.warn('botPurchasePowerUp: blocked, not bot turn', { botId, powerId, currentPlayerId }) } catch (e) {}
+          return false
+        }
+      } catch (e) {}
 
       // Minimal price map for supported power-ups (kept small & safe)
       const PRICE_MAP = { the_unseen: 6, word_freeze: 3, price_surge: 2 }
