@@ -1900,7 +1900,32 @@ export default function useGameRoom(roomId, playerName) {
 
       // difficulty -> chance of full-word guess
       const wordGuessChance = difficulty === 'hard' ? 0.22 : (difficulty === 'medium' ? 0.12 : 0.05)
-      const tryWord = Math.random() < wordGuessChance
+      let tryWord = Math.random() < wordGuessChance
+
+      // If blanks are shown and the bot (public reveals + its private knowledge)
+      // effectively knows every letter of the target word, force a full-word attempt.
+      try {
+        if (room && room.revealShowBlanks) {
+          const ownerWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
+          // gather public revealed letters
+          const pub = Array.isArray(targetNode && targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+          const known = new Set()
+          pub.forEach(ch => { if (ch) known.add(ch) })
+          // include bot's privateHits against this target
+          try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) known.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
+          // include any privatePowerReveals the bot has for this target
+          try { const ppr = (botNode.privatePowerReveals && botNode.privatePowerReveals[targetId]) ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) known.add((res.letter||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && known.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && known.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
+          if (ownerWord) {
+            const allKnown = ownerWord.split('').every(ch => known.has(ch))
+            if (allKnown) {
+              tryWord = true
+              // if we actually have the true word in the local targetNode state, prefer it directly
+              // (some deployments may not expose the word; existing logic below will attempt dictionary matches)
+              // candidate remains null here so the later candidate-finding logic can pick it up or use targetNode.word
+            }
+          }
+        }
+      } catch (e) { /* non-fatal */ }
 
         if (tryWord) {
           try { console.log('botMakeMove: decided to attempt full-word guess', { botId, targetId, difficulty }) } catch (e) {}
