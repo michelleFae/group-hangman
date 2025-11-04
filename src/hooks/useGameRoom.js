@@ -1434,7 +1434,12 @@ export default function useGameRoom(roomId, playerName) {
     }
 
     const startMoney = getStartMoneyFromRoom(room)
-    const botName = `Bot (${(difficulty||'med').charAt(0).toUpperCase() + (difficulty||'med').slice(1)})`
+    // Short, friendly bot names (keep overall length < 10 when prefixed with "Bot ")
+    const SHORT_BOT_NAMES = [
+      'Sam','Fae','Zoe','Max','Ava','Mia','Lia','Ben','Leo','Ivy','Eli','Kai','Noa','Ada','Amy','Ray','Tia','Bo','Lux','Jax'
+    ]
+    const pick = SHORT_BOT_NAMES[Math.floor(Math.random() * SHORT_BOT_NAMES.length)]
+    const botName = `Bot ${pick}`
     const botNode = {
       id: botId,
       name: botName,
