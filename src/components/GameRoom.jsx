@@ -342,6 +342,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
   const modeInfoRef = useRef(null)
+  // Whether the ModeBadge is shown in compact (minimized) form
+  const [modeBadgeMinimized, setModeBadgeMinimized] = useState(false)
   // remember when the popover was last opened so we can ignore the same click event
   const modeInfoOpenedAtRef = useRef(null)
   // dedupe double-down room announcements so we only show them once per ts
@@ -1901,6 +1903,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     // outer container uses fixed positioning on wide screens, static flow when inline
     // use a normal zIndex so the badge doesn't block or overlay other UI unexpectedly
     const outerStyle = fixed ? { position: 'fixed', right: 18, top: 18, zIndex: 'auto', pointerEvents: 'none' } : { position: 'static', right: 'auto', top: 'auto', zIndex: 'auto', pointerEvents: 'none' }
+    // If minimized, render a compact badge with an expand control
+    if (modeBadgeMinimized) {
+      return (
+        <div style={outerStyle}>
+          <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.08)' }}>
+            <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
+            <button title="Expand" onClick={() => setModeBadgeMinimized(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>▸</button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div style={outerStyle}>
         <div ref={modeInfoRef} className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 10px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.12)' }}>
@@ -1927,6 +1941,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                 <small style={{ color: '#B4A3A3', fontSize: 12 }}>Curses</small>
               </div>
             )}
+            {/* Minimize control */}
+            <button onClick={() => setModeBadgeMinimized(true)} title="Minimize" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>▾</button>
             {/* Info icon to show mode-specific details */}
             <button onClick={(e) => { try { console.log('ModeBadge info clicked (wasOpen=', showModeInfo, ')') } catch (e) {} try { if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now() } catch (er) {} setShowModeInfo(s => !s) }} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
             {showModeInfo && (() => {
@@ -5484,6 +5500,16 @@ try {
       } else {
         submitPhaseStartRef.current = null
       }
+    } catch (e) {}
+  }, [phase])
+
+  // Auto-minimize/expand ModeBadge on phase transitions:
+  // - minimize when playing begins
+  // - expand when returning to lobby
+  useEffect(() => {
+    try {
+      if (phase === 'playing') setModeBadgeMinimized(true)
+      else if (phase === 'lobby') setModeBadgeMinimized(false)
     } catch (e) {}
   }, [phase])
 
