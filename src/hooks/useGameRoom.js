@@ -1909,8 +1909,57 @@ export default function useGameRoom(roomId, playerName) {
         if (candidate) {
           try { console.log('botMakeMove: attempting full-word push', { botId, candidate, targetId }) } catch (e) {}
           await botPushGuess(botId, botNode.name, targetId, { value: String(candidate) })
-          try { console.log('botMakeMove: pushed full-word guess', { botId, candidate, targetId }) } catch (e) {}
-          return
+              try { console.log('botMakeMove: pushed full-word guess', { botId, candidate, targetId }) } catch (e) {}
+              // Fallback: if server-side processor doesn't run (e.g., local dev without functions),
+              // detect after a short delay and apply minimal local updates so the UI and turn advance.
+              (async () => {
+                try {
+                  await new Promise(r => setTimeout(r, 800))
+                  const fresh = await get(roomRef)
+                  const freshRoom = fresh.val() || {}
+                  const freshPlayers = (freshRoom.players || {})
+                  const freshTarget = freshPlayers[targetId] || {}
+                  const curIdx = (typeof freshRoom.currentTurnIndex === 'number') ? freshRoom.currentTurnIndex : 0
+                  const order = freshRoom.turnOrder || []
+                  const currentPlayerId = (order && order.length > curIdx) ? order[curIdx] : null
+                  // if still the bot's turn, apply a local resolution
+                  if (currentPlayerId === botId) {
+                    const updates = {}
+                    // if candidate matches the target's word, reveal and eliminate
+                    const targetWord = (freshTarget.word || '').toString().toLowerCase()
+                    if (candidate && targetWord && candidate.toString().toLowerCase() === targetWord) {
+                      const unique = Array.from(new Set((targetWord || '').split('')))
+                      updates[`players/${targetId}/revealed`] = unique
+                      updates[`players/${targetId}/eliminated`] = true
+                      updates[`players/${targetId}/eliminatedAt`] = Date.now()
+                      // remove from turnOrder
+                      const newOrder = (freshRoom.turnOrder || []).filter(id => id !== targetId)
+                      updates['turnOrder'] = newOrder
+                      // adjust currentTurnIndex safely
+                      let adjustedIndex = curIdx
+                      const removedIndex = (freshRoom.turnOrder || []).indexOf(targetId)
+                      if (removedIndex !== -1 && removedIndex <= curIdx) adjustedIndex = Math.max(0, adjustedIndex - 1)
+                      updates['currentTurnIndex'] = adjustedIndex
+                    } else {
+                      // nothing changed server-side for full-word guess; just advance the turn
+                      const effOrder = freshRoom.turnOrder || []
+                      if (effOrder.length > 0) {
+                        const nextIndex = (curIdx + 1) % effOrder.length
+                        updates['currentTurnIndex'] = nextIndex
+                        updates['currentTurnStartedAt'] = Date.now()
+                        const nextPlayer = effOrder[nextIndex]
+                        if (nextPlayer) {
+                          updates[`players/${nextPlayer}/frozen`] = null
+                          updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                          updates[`priceSurge/${nextPlayer}`] = null
+                        }
+                      }
+                    }
+                    try { if (Object.keys(updates).length > 0) await update(roomRef, updates) } catch (e) { console.warn('botMakeMove: fallback full-word update failed', e) }
+                  }
+                } catch (e) { /* swallow fallback errors */ }
+              })()
+              return
         } else {
           try { console.log('botMakeMove: no candidate word known, will fall back to letter guess', { botId, targetId }) } catch (e) {}
         }
@@ -1940,6 +1989,66 @@ export default function useGameRoom(roomId, playerName) {
       try { console.log('botMakeMove: pushing letter guess to queue', { botId, targetId, letter }) } catch (e) {}
       await botPushGuess(botId, botNode.name, targetId, { value: letter })
       try { console.log('botMakeMove: pushed letter guess', { botId, targetId, letter }) } catch (e) {}
+
+      // Fallback: wait briefly for server-side processing; if no change, apply minimal local updates
+      (async () => {
+        try {
+          await new Promise(r => setTimeout(r, 600))
+          const freshSnap = await get(roomRef)
+          const freshRoom = freshSnap.val() || {}
+          const freshPlayers = (freshRoom.players || {})
+          const freshTarget = freshPlayers[targetId] || {}
+          const curIdx = (typeof freshRoom.currentTurnIndex === 'number') ? freshRoom.currentTurnIndex : 0
+          const order = freshRoom.turnOrder || []
+          const currentPlayerId = (order && order.length > curIdx) ? order[curIdx] : null
+          // Check if the revealed changed for this target (letter was processed)
+          const revealedNow = Array.isArray(freshTarget.revealed) ? freshTarget.revealed.map(x => (x||'').toString().toLowerCase()) : []
+          const letterLower = (letter || '').toString().toLowerCase()
+          if (currentPlayerId === botId) {
+            // If the server hasn't processed the guess and the letter is in the target word,
+            // apply a local minimal update: reveal letter(s) and advance the turn.
+            const targetWord = (freshTarget.word || '').toString().toLowerCase()
+            if (targetWord && targetWord.indexOf(letterLower) !== -1 && !revealedNow.includes(letterLower)) {
+              const occurrences = Array.from(targetWord).filter(ch => ch === letterLower).length
+              const nextRevealed = Array.isArray(freshTarget.revealed) ? freshTarget.revealed.slice() : []
+              for (let i = 0; i < occurrences; i++) nextRevealed.push(letterLower)
+              const updates = {}
+              updates[`players/${targetId}/revealed`] = nextRevealed
+              // award simple +2 per occurrence to guesser (best-effort)
+              const award = 2 * occurrences
+              const prev = (freshPlayers && freshPlayers[botId] && typeof freshPlayers[botId].wordmoney === 'number') ? freshPlayers[botId].wordmoney : 0
+              updates[`players/${botId}/wordmoney`] = prev + award
+              updates[`players/${botId}/lastGain`] = { amount: award, by: targetId, reason: 'hang', ts: Date.now() }
+              // advance turn
+              const len = (order && order.length) || 1
+              const nextIndex = (curIdx + 1) % len
+              updates['currentTurnIndex'] = nextIndex
+              updates['currentTurnStartedAt'] = Date.now()
+              const nextPlayer = order[nextIndex]
+              if (nextPlayer) {
+                updates[`players/${nextPlayer}/frozen`] = null
+                updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                updates[`priceSurge/${nextPlayer}`] = null
+              }
+              try { await update(roomRef, updates) } catch (e) { console.warn('botMakeMove: fallback letter update failed', e) }
+            } else {
+              // No reveal or already processed: advance turn to avoid repeated bot activity
+              const updates = {}
+              const len = (order && order.length) || 1
+              const nextIndex = (curIdx + 1) % len
+              updates['currentTurnIndex'] = nextIndex
+              updates['currentTurnStartedAt'] = Date.now()
+              const nextPlayer = order[nextIndex]
+              if (nextPlayer) {
+                updates[`players/${nextPlayer}/frozen`] = null
+                updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                updates[`priceSurge/${nextPlayer}`] = null
+              }
+              try { await update(roomRef, updates) } catch (e) { console.warn('botMakeMove: fallback advance after letter failed', e) }
+            }
+          }
+        } catch (e) { /* swallow fallback errors */ }
+      })()
     } catch (e) {
       console.warn('botMakeMove failed', e)
     }
