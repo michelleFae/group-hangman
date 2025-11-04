@@ -1784,13 +1784,32 @@ export default function useGameRoom(roomId, playerName) {
             const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
             if (targetWord) {
               const unrevealed = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
-              if (unrevealed.length > 0 && affordable >= 6) {
+                  if (unrevealed.length > 0 && affordable >= 6) {
                 // Hard bots strongly prefer revealing; medium bots sometimes do
                 if (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.7)) {
                   // debug log
                   try { console.log('botMakeMove: attempting the_unseen', { botId, targetId, affordable, unrevealedCount: unrevealed.length }) } catch (e) {}
-                  try { await botPurchasePowerUp(botId, 'the_unseen', targetId) } catch (e) {}
-                  return
+                  try {
+                    const ok = await botPurchasePowerUp(botId, 'the_unseen', targetId)
+                    if (ok) {
+                      // End the bot's turn after playing a non-double-down power-up
+                      try {
+                        const order = room.turnOrder || []
+                        const curIdx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+                        const len = (order && order.length) || 1
+                        const nextIndex = (curIdx + 1) % len
+                        const upd = { currentTurnIndex: nextIndex, currentTurnStartedAt: Date.now() }
+                        const nextPlayer = order[nextIndex]
+                        if (nextPlayer) {
+                          upd[`players/${nextPlayer}/frozen`] = null
+                          upd[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                          upd[`priceSurge/${nextPlayer}`] = null
+                        }
+                        await update(roomRef, upd)
+                      } catch (err) { console.warn('botMakeMove: could not advance turn after the_unseen', err) }
+                      return
+                    }
+                  } catch (e) {}
                 }
               }
             }
@@ -1801,12 +1820,30 @@ export default function useGameRoom(roomId, playerName) {
             const targetMoney = Number(targetNode.wordmoney) || 0
             const myMoney = Number(botNode.wordmoney) || 0
             const targetFrozen = !!targetNode.frozen
-            if (!targetFrozen && affordable >= 3 && targetMoney > myMoney + 2) {
+              if (!targetFrozen && affordable >= 3 && targetMoney > myMoney + 2) {
               // Hard bots will freeze more aggressively; medium bots with some probability
               if (difficulty === 'hard' || (difficulty === 'medium' && Math.random() < 0.5)) {
                 try { console.log('botMakeMove: attempting word_freeze', { botId, targetId, affordable, targetMoney, myMoney }) } catch (e) {}
-                try { await botPurchasePowerUp(botId, 'word_freeze', targetId) } catch (e) {}
-                return
+                try {
+                  const ok = await botPurchasePowerUp(botId, 'word_freeze', targetId)
+                  if (ok) {
+                    try {
+                      const order = room.turnOrder || []
+                      const curIdx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+                      const len = (order && order.length) || 1
+                      const nextIndex = (curIdx + 1) % len
+                      const upd = { currentTurnIndex: nextIndex, currentTurnStartedAt: Date.now() }
+                      const nextPlayer = order[nextIndex]
+                      if (nextPlayer) {
+                        upd[`players/${nextPlayer}/frozen`] = null
+                        upd[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                        upd[`priceSurge/${nextPlayer}`] = null
+                      }
+                      await update(roomRef, upd)
+                    } catch (err) { console.warn('botMakeMove: could not advance turn after word_freeze', err) }
+                    return
+                  }
+                } catch (e) {}
               }
             }
           } catch (e) {}
@@ -1815,8 +1852,26 @@ export default function useGameRoom(roomId, playerName) {
           try {
             if (affordable >= 2 && ((difficulty === 'hard' && Math.random() < 0.08) || (difficulty === 'medium' && Math.random() < 0.03))) {
               try { console.log('botMakeMove: attempting price_surge', { botId, affordable }) } catch (e) {}
-              try { await botPurchasePowerUp(botId, 'price_surge', null) } catch (e) {}
-              return
+              try {
+                const ok = await botPurchasePowerUp(botId, 'price_surge', null)
+                if (ok) {
+                  try {
+                    const order = room.turnOrder || []
+                    const curIdx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+                    const len = (order && order.length) || 1
+                    const nextIndex = (curIdx + 1) % len
+                    const upd = { currentTurnIndex: nextIndex, currentTurnStartedAt: Date.now() }
+                    const nextPlayer = order[nextIndex]
+                    if (nextPlayer) {
+                      upd[`players/${nextPlayer}/frozen`] = null
+                      upd[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                      upd[`priceSurge/${nextPlayer}`] = null
+                    }
+                    await update(roomRef, upd)
+                  } catch (err) { console.warn('botMakeMove: could not advance turn after price_surge', err) }
+                  return
+                }
+              } catch (e) {}
             }
           } catch (e) {}
         }
