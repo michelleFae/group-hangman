@@ -6743,12 +6743,7 @@ try {
               {/* authoritative mode badge rendered in the right gutter so it doesn't overlap centered content */}
         <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>{/* ModeBadge moved to render after victory screen so it appears above it */}</div>
 
-              {/* Host PlayAgain controls shown in the gutter (only when ended/team winner present) */}
-              {phase === 'ended' && state?.winnerTeam && (
-                <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-                  <PlayAgainControls isHost={isHost} myId={myId} players={players} />
-                </div>
-              )}
+              {/* Host PlayAgain controls shown in the gutter (moved to the main victory screen to avoid duplicates) */}
 
               {/* Turn indicator (flowed into the gutter instead of fixed) */}
               {/* <div className="turn-indicator" style={{ fontSize: 13, color: '#ddd', textAlign: 'right' }}>
