@@ -239,6 +239,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const processedFreeBubbleRef = useRef({})
   // store stable random positions per free-bubble id so they don't jitter on re-renders
   const freeBubblePositionsRef = useRef({})
+  // track auto-claim timers for free-bubbles so we can cancel when claimed by humans
+  const freeBubbleAutoClaimTimersRef = useRef({})
 
   const [powerUpOpen, setPowerUpOpen] = useState(false)
   const [powerUpTarget, setPowerUpTarget] = useState(null)
@@ -1400,6 +1402,88 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
         setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
       } catch (e) {}
+
+      // Schedule an automatic bot claim when possible. Choose the fastest available bot difficulty
+      try {
+        // Clear any stale timer for this bubble id
+        try { if (freeBubbleAutoClaimTimersRef.current[id]) { clearTimeout(freeBubbleAutoClaimTimersRef.current[id]); delete freeBubbleAutoClaimTimersRef.current[id] } } catch (e) {}
+        const playersList = Array.isArray(state?.players) ? state.players.slice() : []
+        const bots = playersList.filter(p => p && p.isBot && !p.eliminated)
+        if (bots && bots.length > 0) {
+          // group by difficulty
+          const byDiff = { hard: [], medium: [], easy: [] }
+          bots.forEach(b => {
+            try {
+              const d = (b.botSettings && b.botSettings.difficulty) ? (''+b.botSettings.difficulty).toLowerCase() : 'medium'
+              if (!byDiff[d]) byDiff[d] = []
+              byDiff[d].push(b)
+            } catch (e) {}
+          })
+          // prefer hard -> medium -> easy (fastest claims win)
+          let chosenBucket = null
+          if ((byDiff.hard || []).length > 0) chosenBucket = 'hard'
+          else if ((byDiff.medium || []).length > 0) chosenBucket = 'medium'
+          else if ((byDiff.easy || []).length > 0) chosenBucket = 'easy'
+          if (chosenBucket) {
+            const delays = { hard: 2000, medium: 4000, easy: 10000 }
+            const delayMs = delays[chosenBucket] || 4000
+            const candidates = byDiff[chosenBucket] || []
+            // pick a random bot among same-difficulty bots
+            const pick = candidates[Math.floor(Math.random() * candidates.length)]
+            if (pick && pick.id) {
+              // schedule the claim; ensure we re-check bubble state at claim time
+              const t = setTimeout(async () => {
+                try {
+                  const roomRef = dbRef(db, `rooms/${roomId}`)
+                  // Attempt atomic claim via transaction similar to human claim
+                  const fbRef = dbRef(db, `rooms/${roomId}/freeBubble`)
+                  try {
+                    const res = await runTransaction(fbRef, (curr) => {
+                      if (!curr) return
+                      if (curr.claimedBy) return
+                      return { ...curr, claimedBy: pick.id, claimedAt: Date.now() }
+                    }, { applyLocally: false })
+                    if (!res || !res.committed) return
+                    const val = res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : (res && res.val) || {}
+                    if (!val || val.claimedBy !== pick.id) return
+                    const amount = Number(val.amount || 0)
+                    const updates = {}
+                    const roomSnap = (state || {})
+                    // award to team or player depending on game mode
+                    if (roomSnap && roomSnap.gameMode === 'lastTeamStanding') {
+                      const botNode = (roomSnap.players || []).find(p => p.id === pick.id) || {}
+                      if (botNode && botNode.team) {
+                        const teamKey = `teams/${botNode.team}/wordmoney`
+                        const currTeam = Number(roomSnap?.teams?.[botNode.team]?.wordmoney || 0)
+                        updates[teamKey] = Math.max(0, currTeam + amount)
+                      } else {
+                        const playerKey = `players/${pick.id}/wordmoney`
+                        const currPlayer = Number((roomSnap.players || []).find(p => p.id === pick.id)?.wordmoney || 0)
+                        updates[playerKey] = Math.max(0, currPlayer + amount)
+                      }
+                    } else {
+                      const playerKey = `players/${pick.id}/wordmoney`
+                      const currPlayer = Number((state?.players || []).find(p => p.id === pick.id)?.wordmoney || 0)
+                      updates[playerKey] = Math.max(0, currPlayer + amount)
+                    }
+                    // clear bubble and create announcement
+                    const claimKey = `fb_claim_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+                    const ann = { by: pick.id, name: (playerIdToName && playerIdToName[pick.id]) ? playerIdToName[pick.id] : pick.name || pick.id, amount, ts: Date.now() }
+                    updates[`freeBubble`] = null
+                    updates[`freeBubbleClaims/${claimKey}`] = ann
+                    try { await dbUpdate(roomRef, updates) } catch (e) { try { if (roomRef && typeof roomRef.update === 'function') await roomRef.update(updates) } catch (ee) {} }
+                    // schedule removal of announcement
+                    setTimeout(async () => { try { await dbUpdate(roomRef, { [`freeBubbleClaims/${claimKey}`]: null }) } catch (e) {} }, 7000)
+                  } catch (e) { /* transaction failed or already claimed */ }
+                } catch (e) { console.warn('auto-claim timer handler failed', e) }
+                // cleanup timer ref
+                try { delete freeBubbleAutoClaimTimersRef.current[id] } catch (e) {}
+              }, delayMs)
+              freeBubbleAutoClaimTimersRef.current[id] = t
+            }
+          }
+        }
+      } catch (e) {}
       // claiming is handled via a short-lived announcement node (`freeBubbleClaims`) so
       // the bubble itself can be cleared immediately for everyone while clients show who claimed it.
     } catch (e) {}
@@ -1466,6 +1550,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     } catch (e) {}
   }, [state?.freeBubbleClaims])
 
+  // Clear any pending auto-claim timers when the bubble is removed or claimed by a human
+  useEffect(() => {
+    try {
+      const fb = state?.freeBubble || null
+      // if no bubble exists or it's already claimed, clear any scheduled timers
+      if (!fb || fb.claimedBy) {
+        try {
+          const keys = Object.keys(freeBubbleAutoClaimTimersRef.current || {})
+          keys.forEach(k => { try { clearTimeout(freeBubbleAutoClaimTimersRef.current[k]) } catch (e) {} })
+          freeBubbleAutoClaimTimersRef.current = {}
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }, [state?.freeBubble])
+
+  // cleanup on unmount: clear any remaining auto-claim timers
+  useEffect(() => {
+    return () => {
+      try {
+        const keys = Object.keys(freeBubbleAutoClaimTimersRef.current || {})
+        keys.forEach(k => { try { clearTimeout(freeBubbleAutoClaimTimersRef.current[k]) } catch (e) {} })
+        freeBubbleAutoClaimTimersRef.current = {}
+      } catch (e) {}
+    }
+  }, [])
+
   // Watch for host start-block announcements and show a fading toast once
   const processedStartAnnRef = useRef({})
   useEffect(() => {
@@ -1485,6 +1595,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       })
     } catch (e) {}
   }, [state?.startBlockedAnnouncements])
+
+  // processed ref for bot-skip announcements
+  const processedBotSkipRef = useRef({})
+  useEffect(() => {
+    try {
+      const anns = state?.botSkipAnnouncements || {}
+      Object.keys(anns || {}).forEach(k => {
+        if (processedBotSkipRef.current[k]) return
+        processedBotSkipRef.current[k] = true
+        const a = anns[k] || {}
+        try {
+          const name = a.name || a.by || 'A bot'
+          const text = `${name} skipped their turn (no valid targets)`
+          const id = `bot_skip_${k}`
+          setToasts(t => [...t, { id, text, fade: true }])
+          // keep fading toasts visible for 6s
+          setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000)
+        } catch (e) {}
+        // attempt to remove announcement so it doesn't persist
+        try {
+          const roomRef = dbRef(db, `rooms/${roomId}`)
+          dbUpdate(roomRef, { [`botSkipAnnouncements/${k}`]: null }).catch(() => {})
+        } catch (e) {}
+      })
+    } catch (e) {}
+  }, [state?.botSkipAnnouncements])
 
   // Watch for setting change announcements and show a fading toast to all clients
   // except the host (host doesn't need the notification since they initiated it).

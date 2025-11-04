@@ -1796,11 +1796,15 @@ export default function useGameRoom(roomId, playerName) {
         }
       } catch (e) {}
 
+      // Exclude players who are eliminated OR currently frozen from being targeted by bots.
+      // Bots must not guess letters/words or play curses on frozen players.
       const aliveKeys = Object.keys(playersObj).filter(k => {
         try {
           const p = playersObj[k] || {}
           // basic guards: must exist, not eliminated, not self, and not a bot
           if (!p || p.eliminated || p.id === botId || p.isBot) return false
+          // skip players whose words are frozen for this round
+          if (p.frozen) return false
           // team-aware: when in lastTeamStanding mode, skip players on the same team as the bot
           try {
             if ((room && room.gameMode === 'lastTeamStanding') && botNode && botNode.team && p.team && p.team === botNode.team) return false
@@ -1808,7 +1812,35 @@ export default function useGameRoom(roomId, playerName) {
           return true
         } catch (e) { return false }
       })
-      if (!aliveKeys || aliveKeys.length === 0) return
+      // If there are no valid (non-frozen, non-eliminated) targets, the bot cannot
+      // play curses or guess letters/words. Emit a short-lived room announcement so
+      // all clients show a fading toast, then advance the turn to the next player.
+      if (!aliveKeys || aliveKeys.length === 0) {
+        try {
+          const roomRefWrite = dbRef(db, `rooms/${roomId}`)
+          const key = `bot_skip_${Date.now()}_${Math.random().toString(36).slice(2,6)}`
+          const ann = { id: key, by: botId, name: (botNode && botNode.name) ? botNode.name : botId, ts: Date.now() }
+          const updates = {}
+          updates[`botSkipAnnouncements/${key}`] = ann
+          // advance turn so game doesn't stall
+          try {
+            const order = room.turnOrder || []
+            const curIdx = (typeof room.currentTurnIndex === 'number') ? room.currentTurnIndex : 0
+            const len = (order && order.length) || 1
+            const nextIndex = (curIdx + 1) % len
+            updates['currentTurnIndex'] = nextIndex
+            updates['currentTurnStartedAt'] = Date.now()
+            const nextPlayer = order[nextIndex]
+            if (nextPlayer) {
+              updates[`players/${nextPlayer}/frozen`] = null
+              updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              updates[`priceSurge/${nextPlayer}`] = null
+            }
+          } catch (e) {}
+          try { await update(roomRefWrite, updates) } catch (e) { console.warn('botMakeMove: bot-skip announcement write failed', e) }
+        } catch (e) {}
+        return
+      }
       // compute numeric wordmoney (fallback to 0)
       const scored = aliveKeys.map(k => {
         try { const p = playersObj[k] || {}; return { id: k, score: Number(p.wordmoney) || 0 } } catch (e) { return { id: k, score: 0 } }

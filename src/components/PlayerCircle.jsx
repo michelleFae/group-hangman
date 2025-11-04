@@ -65,8 +65,8 @@ export default function PlayerCircle({
   // when parent state updates (turn/time) race with the click that opened it.
   const ignoreCloseUntilRef = useRef(0)
   // (removed guess-closed toast; keep dialog open/closed logic only)
-  // default expanded only for the player's own tile; other tiles start collapsed
-  const [expanded, setExpanded] = useState(!!isSelf)
+  // default expanded: show info by default for all players (button will hide it)
+  const [expanded, setExpanded] = useState(true)
   // teammates' full-word view must be explicitly enabled; default off to avoid leakage
   const [showTeammateWord, setShowTeammateWord] = useState(false)
   const [showOwnWord, setShowOwnWord] = useState(true)
