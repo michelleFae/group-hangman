@@ -644,6 +644,7 @@ exports.processGuess = functions.database
 
         let awardTotal = 0
         let addedAny = false
+        const actuallyAdded = []
 
         for (const f of found) {
           try {
@@ -651,10 +652,8 @@ exports.processGuess = functions.database
             const letter = (f.letter || '').toString().toLowerCase()
             const count = Number(f.count || 0)
             if (!letter || count <= 0) continue
-            // skip if already publicly revealed
+            // skip only if already publicly revealed
             if (existingSet.has(letter)) continue
-            // skip if buyer already has this letter recorded in privateHits
-            if (Object.prototype.hasOwnProperty.call(prevHitsMap, letter)) continue
 
             // append letter occurrences to revealed (preserve duplicates)
             for (let i = 0; i < count; i++) existing.push(letter)
@@ -664,18 +663,30 @@ exports.processGuess = functions.database
             // award buyer 2 per occurrence
             awardTotal += 2 * count
 
-            // merge into prevHits array
-            prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            // merge into prevHits array: increment existing entry if present, else push new
+            let merged = false
+            for (let i = 0; i < prevHits.length; i++) {
+              const h = prevHits[i]
+              if (h && h.type === 'letter' && (h.letter || '').toString().toLowerCase() === letter) {
+                prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                merged = true
+                break
+              }
+            }
+            if (!merged) {
+              prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            }
             prevHitsMap[letter] = (prevHitsMap[letter] || 0) + count
+            actuallyAdded.push({ letter, count })
           } catch (e) {}
         }
 
         if (addedAny) {
           // write back revealed and buyer privateHits
           curr.players[targetId].revealed = existing
-          // record a lastReveal payload so clients re-render and can show a short summary
+          // record a lastReveal payload containing only letters actually added so clients re-render correctly
           try {
-            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: (found || []).map(f => ({ letter: (f.letter||'').toString().toLowerCase(), count: Number(f.count || 0) })) }
+            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: actuallyAdded.slice() }
           } catch (e) {}
           if (!curr.players[buyerId]) curr.players[buyerId] = {}
           if (!curr.players[buyerId].privateHits) curr.players[buyerId].privateHits = {}

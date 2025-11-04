@@ -2050,7 +2050,38 @@ export default function useGameRoom(roomId, playerName) {
                         }
                       }
                     }
-                    try { if (Object.keys(updates).length > 0) await update(roomRef, updates) } catch (e) { console.warn('botMakeMove: fallback full-word update failed', e) }
+                    try {
+                      // If local fallback is applying an elimination or other change, detect
+                      // whether only one non-eliminated player will remain and finalize the game.
+                      try {
+                        const simulatedPlayers = Object.assign({}, freshPlayers)
+                        // apply per-player elimination if present in updates
+                        const elimKey = `players/${targetId}/eliminated`
+                        if (Object.prototype.hasOwnProperty.call(updates, elimKey) && updates[elimKey] === true) {
+                          if (!simulatedPlayers[targetId]) simulatedPlayers[targetId] = {}
+                          simulatedPlayers[targetId].eliminated = true
+                        }
+                        // apply any explicit per-player revealed changes (not needed for count)
+                        // compute alive list
+                        const alive = Object.keys(simulatedPlayers || {}).filter(pid => { try { const p = simulatedPlayers[pid] || {}; return !p.eliminated } catch (e) { return false } })
+                        if (alive.length <= 1) {
+                          // finalize locally
+                          updates['phase'] = 'ended'
+                          updates['endedAt'] = Date.now()
+                          if (alive.length === 1) {
+                            const winner = alive[0]
+                            updates['winnerId'] = winner
+                            try { updates['winnerName'] = (simulatedPlayers[winner] && simulatedPlayers[winner].name) ? simulatedPlayers[winner].name : winner } catch (e) { updates['winnerName'] = winner }
+                            try { if (simulatedPlayers[winner] && simulatedPlayers[winner].team) updates['winnerTeam'] = simulatedPlayers[winner].team } catch (e) {}
+                          } else {
+                            updates['winnerId'] = null
+                            updates['winnerName'] = null
+                            updates['winnerTeam'] = null
+                          }
+                        }
+                      } catch (e) { /* non-fatal */ }
+                      if (Object.keys(updates).length > 0) await update(roomRef, updates)
+                    } catch (e) { console.warn('botMakeMove: fallback full-word update failed', e) }
                   }
                 } catch (e) { /* swallow fallback errors */ }
               })()
@@ -2125,7 +2156,40 @@ export default function useGameRoom(roomId, playerName) {
                 updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
                 updates[`priceSurge/${nextPlayer}`] = null
               }
-              try { await update(roomRef, updates) } catch (e) { console.warn('botMakeMove: fallback letter update failed', e) }
+              try {
+                // Local fallback end-of-game check similar to full-word fallback
+                try {
+                  const simulatedPlayers = Object.assign({}, freshPlayers)
+                  // if we updated elimination for any player, reflect that (letter fallback rarely eliminates)
+                  // detect eliminated flag in updates by scanning keys
+                  Object.keys(updates || {}).forEach(k => {
+                    try {
+                      if (k.startsWith('players/') && k.endsWith('/eliminated') && updates[k] === true) {
+                        const parts = k.split('/')
+                        const pid = parts[1]
+                        if (!simulatedPlayers[pid]) simulatedPlayers[pid] = {}
+                        simulatedPlayers[pid].eliminated = true
+                      }
+                    } catch (e) {}
+                  })
+                  const alive = Object.keys(simulatedPlayers || {}).filter(pid => { try { const p = simulatedPlayers[pid] || {}; return !p.eliminated } catch (e) { return false } })
+                  if (alive.length <= 1) {
+                    updates['phase'] = 'ended'
+                    updates['endedAt'] = Date.now()
+                    if (alive.length === 1) {
+                      const winner = alive[0]
+                      updates['winnerId'] = winner
+                      try { updates['winnerName'] = (simulatedPlayers[winner] && simulatedPlayers[winner].name) ? simulatedPlayers[winner].name : winner } catch (e) { updates['winnerName'] = winner }
+                      try { if (simulatedPlayers[winner] && simulatedPlayers[winner].team) updates['winnerTeam'] = simulatedPlayers[winner].team } catch (e) {}
+                    } else {
+                      updates['winnerId'] = null
+                      updates['winnerName'] = null
+                      updates['winnerTeam'] = null
+                    }
+                  }
+                } catch (e) { /* non-fatal */ }
+                await update(roomRef, updates)
+              } catch (e) { console.warn('botMakeMove: fallback letter update failed', e) }
             } else {
               // No reveal or already processed: advance turn to avoid repeated bot activity
               const updates = {}
