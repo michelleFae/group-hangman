@@ -2502,6 +2502,19 @@ export default function useGameRoom(roomId, playerName) {
     const payloadVal = (payload && payload.value) ? String(payload.value).trim() : ''
     if (!payloadVal) return
 
+    // Block guesses locally when it's not this player's turn. This prevents
+    // sending to the serverless endpoint which validates the currentTurn owner
+    // and returns a 500 when the auth token doesn't match (e.g., guessing while
+    // it's a bot's turn). Return a blocking object so callers can show a toast.
+    try {
+      const curIdx = (state && typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : null
+      const curOrder = (state && Array.isArray(state.turnOrder)) ? state.turnOrder : []
+      const curPid = (curIdx !== null && curOrder && curOrder.length > 0) ? curOrder[curIdx] : null
+      if (curPid && playerIdRef.current && curPid !== playerIdRef.current) {
+        return { blocked: true, message: `It's not your turn` }
+      }
+    } catch (e) {}
+
     // Client-side duplicate-guess prevention (best-effort).
     // If we detect the viewer already guessed this letter/word for this target
     // (publicly or privately), short-circuit and return a blocking object so
