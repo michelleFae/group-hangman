@@ -9,6 +9,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
   const [password, setPassword] = useState('')
   const [tagLoaded, setTagLoaded] = useState(false)
   const [joinError, setJoinError] = useState('')
+  const [nameValidationError, setNameValidationError] = useState('')
   const [createdRoom, setCreatedRoom] = useState(null)
   const [toasts, setToasts] = useState([])
   const [storedAnonForRoom, setStoredAnonForRoom] = useState(null)
@@ -329,7 +330,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         <p className="underword-tag">Hold your word in shadow. Drag theirs to light.</p>
       </div>
   <div style={{display:'flex',flexDirection:'column',gap:6}}>
-    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
       <input
         id="display_name"
         name="display_name"
@@ -338,7 +339,23 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         placeholder="Your name"
         className={`name-input ${(!name || !name.toString().trim()) ? 'required-glow' : ''}`}
         value={name}
-        onChange={e => { setName(e.target.value); setJoinError('') }}
+        onChange={e => {
+          const v = e.target.value || ''
+          setName(v)
+          // clear global join errors on input change
+          setJoinError('')
+          try {
+            const trimmed = (v || '').toString().trim()
+            // If the entered name ends with the literal string "Bot 🤖", show the requested error
+            if (trimmed && trimmed.endsWith('Bot 🤖')) {
+              setNameValidationError("Your name shouldn't end with 'Bot' if you aren't one! Idenity theft is not a joke, mortal.")
+            } else {
+              setNameValidationError('')
+            }
+          } catch (err) {
+            setNameValidationError('')
+          }
+        }}
         onKeyDown={e => {
           if (e.key === 'Enter') {
             // If a room id is present in the join section, prefer joining that room.
@@ -354,6 +371,9 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
       {/* Always render the helper to reserve layout space; hide visually when name is present */}
       <div className="small-error" style={{color:'#d9534f',marginLeft:8, visibility: (!name || !name.toString().trim()) ? 'visible' : 'hidden'}}>Please enter a name</div>
     </div>
+    {nameValidationError && (
+      <div className="small-error" style={{color:'#d9534f'}}>{nameValidationError}</div>
+    )}
     {name && name.toString().length > 14 && (
       <div className="small-error" style={{color:'#d9534f'}}>Display name too long : it will be truncated to 14 characters.</div>
     )}
@@ -369,7 +389,7 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
           setPassword(e.target.value)
           console.log('Password updated to:', e.target.value)
         }} />
-        <button onClick={handleCreate} disabled={!!(room && room.toString().trim()) || !(name && name.toString().trim())}>Create</button>
+  <button onClick={handleCreate} disabled={!!(room && room.toString().trim()) || !(name && name.toString().trim()) || !!nameValidationError}>Create</button>
 
         {createdRoom && (
           <div className="share">
@@ -384,7 +404,15 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
         <h3>Join room</h3>
   <input id="join_room_id" name="join_room_id" placeholder="room id" value={room} onChange={e => { setRoom(e.target.value); setStoredAnonForRoom(window.localStorage && window.localStorage.getItem(`gh_anon_${e.target.value}`)) }} />
     <input id="join_room_password" name="join_room_password" placeholder="password (if required)" value={password} onChange={e => { setPassword(e.target.value); setJoinError('') }} />
-    <button onClick={handleJoin} className={`join-btn ${room && room.toString().trim() ? 'join-glow' : ''}`} disabled={!(room && room.toString().trim() && (storedAnonForRoom || (name && name.toString().trim()))) }>Join</button>
+    {/* compute join enabled state: either we have a stored anon id for the room, or the user provided a valid name */}
+    {(() => {
+      const roomPresent = room && room.toString().trim()
+      const hasValidName = name && name.toString().trim() && !nameValidationError
+      const canJoin = roomPresent && (storedAnonForRoom || hasValidName)
+      return (
+        <button onClick={handleJoin} className={`join-btn ${roomPresent ? 'join-glow' : ''}`} disabled={!canJoin}>Join</button>
+      )
+    })()}
   {joinError && <div className="small-error">{joinError}</div>}
         </div>
 

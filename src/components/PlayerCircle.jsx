@@ -712,8 +712,8 @@ export default function PlayerCircle({
                 )
               })()}
 
-              {/* Skip turn button: visible to the current player (self) when it's their turn */}
-              {isSelf && isTurn && !hideInteractiveForWordSeeker && (
+              {/* Skip turn button: visible to the current player (self) when it's their turn (hidden in lobby) */}
+              {isSelf && isTurn && !hideInteractiveForWordSeeker && phase !== 'lobby' && (
                 <button className="action-button" title="End your turn" onClick={() => { try { if (typeof onSkip === 'function') onSkip() } catch (e) {} }} style={{ marginLeft: 8 }}>Skip turn</button>
               )}
 

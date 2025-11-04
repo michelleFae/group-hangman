@@ -5983,7 +5983,7 @@ try {
   }, [])
 
   return (
-    <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''}`}>
+    <div className={`game-room ${state && state.winnerByWordmoney ? 'money-theme' : ''} ${phase === 'lobby' ? 'lobby' : ''}`}>
       {/* Layout: two-column grid. Left = main app content (centered by content styles),
           Right = a fixed-width gutter that holds mode badge, turn indicator, timers, etc. */}
   <div style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr ', gap: 0 }}>

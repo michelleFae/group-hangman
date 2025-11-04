@@ -20,7 +20,6 @@ body {
   background: linear-gradient(180deg, var(--bg), #121214 80%);
   color: var(--text);
   padding: 28px;
-  height: 100vh;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
 }
@@ -1070,4 +1069,38 @@ body.underworld-body::before {
 
 @media (max-width: 520px) {
   .lobby-smoke .smoke { opacity: 0.09; filter: blur(28px) }
+}
+
+/* Floating souls / wisps for the Lobby phase (scoped to .lobby .ambient-embers) */
+.lobby .ambient-embers::before,
+.lobby .ambient-embers::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-repeat: no-repeat;
+  /* layered soft radial gradients to simulate drifting souls/wisps */
+  background-image:
+    radial-gradient(circle at 18% 30%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.00) 20%),
+    radial-gradient(circle at 75% 70%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.00) 16%),
+    radial-gradient(circle at 50% 50%, rgba(255,240,220,0.03) 0%, rgba(255,240,220,0) 30%);
+  opacity: 0.9;
+  mix-blend-mode: screen;
+  animation: souls-drift 16s linear infinite;
+  transform: translateY(0);
+}
+.lobby .ambient-embers::after {
+  opacity: 0.6;
+  filter: blur(18px);
+  animation-duration: 22s;
+  animation-delay: 4s;
+}
+
+@keyframes souls-drift {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0 }
+  10% { opacity: 0.25 }
+  50% { transform: translateY(-18vh) translateX(4vw) scale(1.06); opacity: 0.55 }
+  90% { opacity: 0.18 }
+  100% { transform: translateY(-38vh) translateX(-2vw) scale(1.12); opacity: 0 }
 }
