@@ -1,4 +1,8 @@
 const admin = require('firebase-admin')
+// If this file is deployed as a Firebase Function bundle, we can optionally
+// register a DB trigger to process Mind Leech purchases authoritatively.
+let functions = null
+try { functions = require('firebase-functions') } catch (e) { /* not running in functions env */ }
 
 // Initialize admin with service account provided via env var FIREBASE_SERVICE_ACCOUNT
 function initAdmin() {
@@ -735,4 +739,99 @@ module.exports = async (req, res) => {
     console.error('processGuess error', err)
     return res.status(500).json({ error: err.message })
   }
+}
+
+// Authoritative handler for Mind Leech power-up purchases when running in
+// Firebase Functions environment. This listens for privatePowerReveals entries
+// created under players/{buyer}/privatePowerReveals/{target}/{key} and, when
+// powerId === 'mind_leech', appends discovered letters to the target's public
+// `revealed` array, merges buyer privateHits, writes a short `lastReveal`
+// summary (helps clients re-render bot tiles), and credits the buyer (or
+// buyer's team) 2 wordmoney per newly revealed occurrence.
+if (functions && functions.database && typeof functions.database.ref === 'function') {
+  exports.handleMindLeech = functions.database
+    .ref('/rooms/{roomId}/players/{buyerId}/privatePowerReveals/{targetId}/{key}')
+    .onCreate(async (snap, context) => {
+      const { roomId, buyerId, targetId } = context.params || {}
+      const val = snap.val()
+      if (!val || !val.powerId) return null
+      try { if (val.powerId !== 'mind_leech') return null } catch (e) { return null }
+
+      const roomRef = admin.database().ref(`/rooms/${roomId}`)
+      await roomRef.transaction(curr => {
+        if (!curr) return curr
+        if (!curr.players) curr.players = {}
+        const buyer = curr.players[buyerId] || {}
+        const target = curr.players[targetId] || {}
+
+        if (!curr.players[buyerId]) curr.players[buyerId] = buyer
+        if (!curr.players[targetId]) curr.players[targetId] = target
+
+        const found = (val && val.result && Array.isArray(val.result.found)) ? val.result.found : []
+        if (!found || found.length === 0) return curr
+
+        const existing = Array.isArray(target.revealed) ? target.revealed.slice() : []
+        const existingSet = new Set((existing || []).map(x => (x || '').toString().toLowerCase()))
+
+        const prevHits = (buyer.privateHits && buyer.privateHits[targetId]) ? (buyer.privateHits[targetId].slice ? buyer.privateHits[targetId].slice() : JSON.parse(JSON.stringify(buyer.privateHits[targetId] || '[]'))) : []
+        const prevHitsMap = {}
+        try { prevHits.forEach(h => { if (h && h.type === 'letter' && h.letter) prevHitsMap[(h.letter || '').toString().toLowerCase()] = Number(h.count) || 0 }) } catch (e) {}
+
+        let awardTotal = 0
+        let addedAny = false
+
+        for (const f of found) {
+          try {
+            if (!f || !f.letter) continue
+            const letter = (f.letter || '').toString().toLowerCase()
+            const count = Number(f.count || 0)
+            if (!letter || count <= 0) continue
+            if (existingSet.has(letter)) continue
+            if (Object.prototype.hasOwnProperty.call(prevHitsMap, letter)) continue
+
+            for (let i = 0; i < count; i++) existing.push(letter)
+            existingSet.add(letter)
+            addedAny = true
+
+            awardTotal += 2 * count
+
+            prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            prevHitsMap[letter] = (prevHitsMap[letter] || 0) + count
+          } catch (e) {}
+        }
+
+        if (addedAny) {
+          curr.players[targetId].revealed = existing
+          try {
+            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: (found || []).map(f => ({ letter: (f.letter||'').toString().toLowerCase(), count: Number(f.count || 0) })) }
+          } catch (e) {}
+
+          if (!curr.players[buyerId]) curr.players[buyerId] = {}
+          if (!curr.players[buyerId].privateHits) curr.players[buyerId].privateHits = {}
+          curr.players[buyerId].privateHits[targetId] = prevHits
+
+          if (awardTotal > 0) {
+            try {
+              if ((curr && curr.gameMode) === 'lastTeamStanding' && curr.players[buyerId] && curr.players[buyerId].team) {
+                const team = curr.players[buyerId].team
+                if (!curr.teams) curr.teams = {}
+                if (!curr.teams[team]) curr.teams[team] = {}
+                const prev = typeof curr.teams[team].wordmoney === 'number' ? curr.teams[team].wordmoney : 0
+                curr.teams[team].wordmoney = Math.max(0, prev + Number(awardTotal || 0))
+              } else {
+                if (!curr.players[buyerId]) curr.players[buyerId] = {}
+                const prev = typeof curr.players[buyerId].wordmoney === 'number' ? curr.players[buyerId].wordmoney : 0
+                curr.players[buyerId].wordmoney = Math.max(0, prev + Number(awardTotal || 0))
+              }
+              if (!curr.players[buyerId]) curr.players[buyerId] = {}
+              curr.players[buyerId].lastGain = { amount: Number(awardTotal || 0), by: targetId, reason: 'mind_leech', ts: Date.now() }
+            } catch (e) {}
+          }
+        }
+
+        return curr
+      })
+
+      return null
+    })
 }

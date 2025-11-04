@@ -673,6 +673,10 @@ exports.processGuess = functions.database
         if (addedAny) {
           // write back revealed and buyer privateHits
           curr.players[targetId].revealed = existing
+          // record a lastReveal payload so clients re-render and can show a short summary
+          try {
+            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: (found || []).map(f => ({ letter: (f.letter||'').toString().toLowerCase(), count: Number(f.count || 0) })) }
+          } catch (e) {}
           if (!curr.players[buyerId]) curr.players[buyerId] = {}
           if (!curr.players[buyerId].privateHits) curr.players[buyerId].privateHits = {}
           curr.players[buyerId].privateHits[targetId] = prevHits
