@@ -1898,102 +1898,118 @@ export default function useGameRoom(roomId, playerName) {
         }
       } catch (e) {}
 
-      // difficulty -> chance of full-word guess
+  // difficulty -> chance of full-word guess
       const wordGuessChance = difficulty === 'hard' ? 0.22 : (difficulty === 'medium' ? 0.12 : 0.05)
       let tryWord = Math.random() < wordGuessChance
 
-      // If blanks are shown and the bot (public reveals + its private knowledge)
-      // effectively knows every letter of the target word, force a full-word attempt.
+      // If blanks are shown or the bot has a private length reveal (letter_scope) and the bot
+      // (public reveals + its private knowledge) effectively knows every letter of the target
+      // word, force a full-word attempt. Also allow assembling candidate lists when the bot
+      // has private info about the target (so bots who buy letter_scope can attempt words).
       try {
-        if (room && room.revealShowBlanks) {
-          const ownerWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
-          // gather public revealed letters
-          const pub = Array.isArray(targetNode && targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
-          const known = new Set()
-          pub.forEach(ch => { if (ch) known.add(ch) })
-          // include bot's privateHits against this target
-          try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) known.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
-          // include any privatePowerReveals the bot has for this target
-          try { const ppr = (botNode.privatePowerReveals && botNode.privatePowerReveals[targetId]) ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) known.add((res.letter||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && known.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && known.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
-          if (ownerWord) {
-            const allKnown = ownerWord.split('').every(ch => known.has(ch))
-            if (allKnown) {
-              tryWord = true
-              // if we actually have the true word in the local targetNode state, prefer it directly
-              // (some deployments may not expose the word; existing logic below will attempt dictionary matches)
-              // candidate remains null here so the later candidate-finding logic can pick it up or use targetNode.word
+        const hasPrivatePPR = !!(botNode.privatePowerReveals && botNode.privatePowerReveals[targetId])
+        const ownerWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
+        // gather public revealed letters
+        const pub = Array.isArray(targetNode && targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+        const known = new Set()
+        pub.forEach(ch => { if (ch) known.add(ch) })
+        // include bot's privateHits against this target
+        try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) known.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
+        // include any privatePowerReveals the bot has for this target
+        try { const ppr = hasPrivatePPR ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) known.add((res.letter||'').toString().toLowerCase()); if (res.last) known.add((res.last||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && known.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && known.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
+        if (ownerWord) {
+          const allKnown = ownerWord.split('').every(ch => known.has(ch))
+          if (allKnown) {
+            tryWord = true
+          }
+        }
+        // If we have private length info (from letter_scope) or blanks are shown, assemble candidate list
+        // so the bot can decide on a confident full-word guess even when server doesn't show blanks.
+        const hasBlankView = !!(room && room.revealShowBlanks)
+        // detect numeric 'letters' entries in privatePowerReveals
+        let privateLen = null
+        try {
+          if (hasPrivatePPR) {
+            const pvals = Object.values(botNode.privatePowerReveals[targetId] || {})
+            for (const r of pvals) {
+              try {
+                if (!r || !r.result) continue
+                const res = r.result || {}
+                if (typeof res.letters === 'number') { privateLen = Number(res.letters); break }
+                if (typeof res.letters === 'string' && !Number.isNaN(Number(res.letters))) { privateLen = Number(res.letters); break }
+              } catch (e) {}
             }
           }
+        } catch (e) {}
+        // make length usable if blanks visible or private length exists
+        const usableLen = hasBlankView ? ( (targetNode && targetNode.word) ? String(targetNode.word).length : (typeof targetNode.wordLength === 'number' ? Number(targetNode.wordLength) : null) ) : (privateLen || null)
+        // if privateLen exists and bot doesn't already plan to guess a word, be willing to assemble candidates
+        if (usableLen !== null || hasBlankView) {
+          // allow later logic to build a candidate list based on usableLen and known letters
         }
       } catch (e) { /* non-fatal */ }
 
         if (tryWord) {
           try { console.log('botMakeMove: decided to attempt full-word guess', { botId, targetId, difficulty }) } catch (e) {}
-        // attempt a full-word guess: prefer a direct known target word if available
-        let candidate = (targetNode && targetNode.word) ? targetNode.word : null
-        // If the room exposes blanks (word length) to viewers, try to construct
-        // a high-confidence candidate from the local dictionary by filtering
-        // words of the same length that contain letters the bot already knows
-        // (revealed letters, privateHits, guessedBy, privatePowerReveals). This
-        // helps bots attempt full-word guesses when they can see the number of
-        // blanks but not the full word.
+        // attempt to assemble a candidate list when we can derive length info either
+        // from blanks or from a private Letter Scope result so bots that purchased
+        // letter_scope can narrow to a single candidate and guess confidently.
         try {
-          if (!candidate && room && room.revealShowBlanks) {
-            // determine length if available: prefer explicit word, then property
-            const explicitLen = (targetNode && targetNode.word) ? (String(targetNode.word).length) : (typeof targetNode.wordLength === 'number' ? Number(targetNode.wordLength) : null)
-            const len = explicitLen || (targetNode && targetNode.word ? String(targetNode.word).length : null)
-            if (len && typeof NOUNS !== 'undefined') {
-              const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
-              // gather letters the bot already knows about this target
-              const knownLetters = new Set()
-              try {
-                // public reveals
-                const pub = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
-                pub.forEach(ch => { if (ch) knownLetters.add(ch) })
-                // guessedBy on bot (letters they have tried on their own word)
-                try { Object.keys(botNode.guessedBy || {}).forEach(k => { if (k && k !== '__word') knownLetters.add(k.toString().toLowerCase()) }) } catch (e) {}
-                // privateHits recorded for this bot against the target
-                try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) knownLetters.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
-                // privatePowerReveals that may include found/letters arrays
-                try { const ppr = (botNode.privatePowerReveals && botNode.privatePowerReveals[targetId]) ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) knownLetters.add((res.letter||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && knownLetters.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && knownLetters.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
-              } catch (e) {}
-
-              // filter noun list by length and known letters
-              const lowered = Array.isArray(nounsList) ? nounsList.map(w => (w||'').toString().toLowerCase()) : []
-              const candidatesList = lowered.filter(w => (w && w.length === Number(len)) && Array.from(knownLetters).every(l => w.includes(l)))
-
-              // If only one candidate fits length+known letters, it's high confidence
-              if (candidatesList.length === 1) {
-                candidate = candidatesList[0]
-              } else if (candidatesList.length > 1) {
-                // score by number of known letters matched, prefer higher overlap
-                let best = candidatesList[0]
-                let bestScore = -1
-                candidatesList.forEach(w => {
-                  let score = 0
-                  knownLetters.forEach(l => { if (w.indexOf(l) !== -1) score++ })
-                  if (score > bestScore) { bestScore = score; best = w }
-                })
-
-                // compute a lightweight confidence metric so bots only guess when very likely
-                const wordLen = best ? best.length : Number(len)
-                const matchCount = bestScore || 0
-                const baseConfidence = wordLen > 0 ? (matchCount / wordLen) : 0
-                // penalize large ambiguous candidate pools modestly
-                const poolPenalty = candidatesList.length <= 2 ? 1 : (candidatesList.length <= 5 ? 0.85 : 0.7)
-                const confidence = baseConfidence * poolPenalty
-
-                // difficulty-specific thresholds: hard bots guess more aggressively
-                const thresholds = { hard: 0.65, medium: 0.8, easy: 0.95 }
-                const thr = thresholds[((''+difficulty).toLowerCase())] || 0.8
-
-                // require at least half the word's letters matched (or at least one) plus confidence above threshold
-                const minMatches = Math.max(1, Math.floor(wordLen / 2))
-                if ((matchCount >= minMatches && confidence >= thr) || candidatesList.length === 1) {
-                  candidate = best
-                } else {
-                  // not confident enough: do not set candidate so the bot falls back to letter guessing
-                }
+          const hasPrivatePPR = !!(botNode.privatePowerReveals && botNode.privatePowerReveals[targetId])
+          // determine usable length: prefer explicit word, then room blanks, then private letter_scope
+          let explicitLen = null
+          try { explicitLen = (targetNode && targetNode.word) ? String(targetNode.word).length : (typeof targetNode.wordLength === 'number' ? Number(targetNode.wordLength) : null) } catch (e) { explicitLen = null }
+          let privateLen = null
+          try {
+            if (hasPrivatePPR) {
+              const pvals = Object.values(botNode.privatePowerReveals[targetId] || {})
+              for (const r of pvals) {
+                try { if (!r || !r.result) continue; const res = r.result || {}; if (typeof res.letters === 'number') { privateLen = Number(res.letters); break } if (typeof res.letters === 'string' && !Number.isNaN(Number(res.letters))) { privateLen = Number(res.letters); break } } catch (e) {}
+              }
+            }
+          } catch (e) {}
+          const len = explicitLen || (room && room.revealShowBlanks ? explicitLen : null) || privateLen || null
+          if (!candidate && len && typeof NOUNS !== 'undefined') {
+            const nounsList = (NOUNS && NOUNS.default) ? NOUNS.default : NOUNS
+            // gather letters the bot already knows about this target
+            const knownLetters = new Set()
+            try {
+              const pub = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+              pub.forEach(ch => { if (ch) knownLetters.add(ch) })
+              try { Object.keys(botNode.guessedBy || {}).forEach(k => { if (k && k !== '__word') knownLetters.add(k.toString().toLowerCase()) }) } catch (e) {}
+              try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) knownLetters.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
+              try { const ppr = (botNode.privatePowerReveals && botNode.privatePowerReveals[targetId]) ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) knownLetters.add((res.letter||'').toString().toLowerCase()); if (res.last) knownLetters.add((res.last||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && knownLetters.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && knownLetters.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
+            } catch (e) {}
+            // filter noun list by length and known letters
+            const lowered = Array.isArray(nounsList) ? nounsList.map(w => (w||'').toString().toLowerCase()) : []
+            const candidatesList = lowered.filter(w => (w && w.length === Number(len)) && Array.from(knownLetters).every(l => w.includes(l)))
+            // If only one candidate fits length+known letters, it's high confidence
+            if (candidatesList.length === 1) {
+              candidate = candidatesList[0]
+              // a unique candidate is sufficient cause for the bot to attempt a full-word guess
+              tryWord = true
+            } else if (candidatesList.length > 1) {
+              // score by number of known letters matched, prefer higher overlap
+              let best = candidatesList[0]
+              let bestScore = -1
+              candidatesList.forEach(w => {
+                let score = 0
+                knownLetters.forEach(l => { if (w.indexOf(l) !== -1) score++ })
+                if (score > bestScore) { bestScore = score; best = w }
+              })
+              // compute a lightweight confidence metric so bots only guess when very likely
+              const wordLen = best ? best.length : Number(len)
+              const matchCount = bestScore || 0
+              const baseConfidence = wordLen > 0 ? (matchCount / wordLen) : 0
+              const poolPenalty = candidatesList.length <= 2 ? 1 : (candidatesList.length <= 5 ? 0.85 : 0.7)
+              const confidence = baseConfidence * poolPenalty
+              const thresholds = { hard: 0.65, medium: 0.8, easy: 0.95 }
+              const thr = thresholds[((''+difficulty).toLowerCase())] || 0.8
+              const minMatches = Math.max(1, Math.floor(wordLen / 2))
+              if ((matchCount >= minMatches && confidence >= thr) || candidatesList.length === 1) {
+                candidate = best
+              } else {
+                // not confident enough: do not set candidate so the bot falls back to letter guessing
               }
             }
           }
@@ -2093,14 +2109,25 @@ export default function useGameRoom(roomId, playerName) {
       }
 
       // Letter guess strategy: prefer unrevealed letters from the target word when possible
+      // Avoid guessing letters already revealed publicly or privately for that specific target
       let letter = null
       try {
         const targetWord = (targetNode && targetNode.word) ? String(targetNode.word).toLowerCase() : null
+        // Build known letters for this target from public reveals and the bot's private knowledge
         const revealed = Array.isArray(targetNode.revealed) ? targetNode.revealed.map(x => (x||'').toString().toLowerCase()) : []
+        const known = new Set()
+        revealed.forEach(ch => { if (ch) known.add(ch) })
+        // letters the bot itself has tried/recorded (guessedBy on bot node)
+        try { Object.keys(botNode.guessedBy || {}).forEach(k => { if (k && k !== '__word') known.add(k.toString().toLowerCase()) }) } catch (e) {}
+        // bot's privateHits against this target
+        try { (botNode.privateHits && botNode.privateHits[targetId] || []).forEach(h => { if (h && h.letter) known.add((h.letter||'').toString().toLowerCase()) }) } catch (e) {}
+        // bot's privatePowerReveals that targeted this player (may include letters/letters arrays/found)
+        try { const ppr = (botNode.privatePowerReveals && botNode.privatePowerReveals[targetId]) ? Object.values(botNode.privatePowerReveals[targetId]) : []; ppr.forEach(r => { try { if (!r || !r.result) return; const res = r.result || {}; if (res.letter) known.add((res.letter||'').toString().toLowerCase()); if (res.last) known.add((res.last||'').toString().toLowerCase()); if (Array.isArray(res.letters)) res.letters.forEach(ch => ch && known.add((ch||'').toString().toLowerCase())); if (Array.isArray(res.found)) res.found.forEach(f => f && f.letter && known.add((f.letter||'').toString().toLowerCase())) } catch (e) {} }) } catch (e) {}
+
         if (targetWord) {
-          const candidates = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !revealed.includes(ch))))
+          const candidates = Array.from(new Set(targetWord.split('').filter(ch => /^[a-z]$/.test(ch) && !known.has(ch))))
           if (candidates.length > 0) {
-            // choose an unrevealed letter from the target (bots always prefer target letters)
+            // choose an unrevealed/un-known letter from the target (bots always prefer target letters)
             letter = candidates[Math.floor(Math.random() * candidates.length)]
           }
         }

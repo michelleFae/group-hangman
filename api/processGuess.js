@@ -779,6 +779,7 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
 
         let awardTotal = 0
         let addedAny = false
+        const actuallyAdded = []
 
         for (const f of found) {
           try {
@@ -786,24 +787,39 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
             const letter = (f.letter || '').toString().toLowerCase()
             const count = Number(f.count || 0)
             if (!letter || count <= 0) continue
+            // skip only if already publicly revealed
             if (existingSet.has(letter)) continue
-            if (Object.prototype.hasOwnProperty.call(prevHitsMap, letter)) continue
 
+            // append letter occurrences to revealed (preserve duplicates)
             for (let i = 0; i < count; i++) existing.push(letter)
             existingSet.add(letter)
             addedAny = true
 
+            // award buyer 2 per occurrence
             awardTotal += 2 * count
 
-            prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            // merge into prevHits array: increment existing entry if present, else push new
+            let merged = false
+            for (let i = 0; i < prevHits.length; i++) {
+              const h = prevHits[i]
+              if (h && h.type === 'letter' && (h.letter || '').toString().toLowerCase() === letter) {
+                prevHits[i] = { ...h, count: (Number(h.count) || 0) + count, ts: Date.now() }
+                merged = true
+                break
+              }
+            }
+            if (!merged) {
+              prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            }
             prevHitsMap[letter] = (prevHitsMap[letter] || 0) + count
+            actuallyAdded.push({ letter, count })
           } catch (e) {}
         }
 
         if (addedAny) {
           curr.players[targetId].revealed = existing
           try {
-            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: (found || []).map(f => ({ letter: (f.letter||'').toString().toLowerCase(), count: Number(f.count || 0) })) }
+            curr.players[targetId].lastReveal = { ts: Date.now(), by: buyerId, found: actuallyAdded.slice() }
           } catch (e) {}
 
           if (!curr.players[buyerId]) curr.players[buyerId] = {}

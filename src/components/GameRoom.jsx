@@ -1891,7 +1891,10 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         pl.forEach(p => {
           try {
             if (!p || !p.id) return
+            // Never clear the host's ready flag.
             if (p.id === hostId) return
+            // Keep bots always ready: do not clear ready for bot players on settings update
+            if (p.isBot) return
             updates[`players/${p.id}/ready`] = null
           } catch (e) {}
         })
@@ -4885,11 +4888,11 @@ try {
   } catch (e) {}
   // determine starting wordmoney to apply for resets : prefer room setting, fallback to 2
   const resetStart = (state && typeof state.startingWordmoney !== 'undefined' && !Number.isNaN(Number(state.startingWordmoney))) ? Number(state.startingWordmoney) : 2
-    ;(players || []).forEach(p => {
-          updates[`players/${p.id}/wantsRematch`] = null
-      // Reset ready flag for everyone except the host so players must re-ready after a restart
-      try { if (p.id !== myId) updates[`players/${p.id}/ready`] = null } catch (e) {}
-          updates[`players/${p.id}/hasWord`] = false
+  ;(players || []).forEach(p => {
+      updates[`players/${p.id}/wantsRematch`] = null
+    // Reset ready flag for everyone except the host so players must re-ready after a restart
+    try { if (p.id !== myId && !p.isBot) updates[`players/${p.id}/ready`] = null } catch (e) {}
+      updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
           updates[`players/${p.id}/eliminated`] = false
@@ -5030,7 +5033,7 @@ try {
         playersArr.forEach(p => {
           updates[`players/${p.id}/wantsRematch`] = null
           // Reset ready flag for everyone except the host so players must re-ready after an automatic rematch
-          try { if (p.id !== hostId) updates[`players/${p.id}/ready`] = null } catch (e) {}
+          try { if (p.id !== hostId && !p.isBot) updates[`players/${p.id}/ready`] = null } catch (e) {}
           updates[`players/${p.id}/hasWord`] = false
           updates[`players/${p.id}/word`] = null
           updates[`players/${p.id}/revealed`] = []
