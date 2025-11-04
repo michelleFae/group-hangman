@@ -5911,6 +5911,11 @@ try {
                   try {
                     const reasons = []
                     const pcount = (players || []).length
+                    // enforce max 5 bots at game start
+                    try {
+                      const botCount = (players || []).filter(p => p && p.isBot).length
+                      if (botCount > 5) reasons.push('Cannot start with more than 5 bots in the room')
+                    } catch (e) {}
                     if (pcount < 2) reasons.push('Need at least 2 players to start')
                     if ((state && state.gameMode) === 'lastTeamStanding' && pcount < 3) reasons.push('Need at least 3 players to start Last Team Standing')
                     if ((state && state.gameMode) === 'wordSeeker' && pcount < 3) reasons.push('Need at least 3 players to start Word Seeker')
