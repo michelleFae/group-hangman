@@ -563,6 +563,36 @@ exports.processGuess = functions.database
           }
         } catch (e) { /* ignore non-fatal */ }
 
+        // General end condition: if only one (or zero) non-eliminated players remain,
+        // finalize the game. This handles solo-bot or solo-player situations across
+        // all game modes (non-team and legacy modes).
+        try {
+          if (curr && curr.phase === 'playing') {
+            const alivePlayers = []
+            if (curr.players) {
+              Object.keys(curr.players).forEach(pid => {
+                try {
+                  const p = curr.players[pid]
+                  if (p && !p.eliminated) alivePlayers.push({ id: pid, name: p.name || null })
+                } catch (e) {}
+              })
+            }
+            if (alivePlayers.length <= 1) {
+              curr.phase = 'ended'
+              if (alivePlayers.length === 1) {
+                curr.winnerId = alivePlayers[0].id || null
+                curr.winnerName = alivePlayers[0].name || alivePlayers[0].id || null
+                curr.winnerTeam = null
+              } else {
+                curr.winnerId = null
+                curr.winnerName = null
+                curr.winnerTeam = null
+              }
+              curr.endedAt = Date.now()
+            }
+          }
+        } catch (e) { /* ignore */ }
+
         return curr
       })
     }
@@ -572,6 +602,107 @@ exports.processGuess = functions.database
 
     return null
   });
+
+  // Authoritative handler for Mind Leech power-up purchases.
+  // Listens for privatePowerReveals entries created under players/{buyer}/privatePowerReveals/{target}/{key}
+  // and, when the powerId is 'mind_leech', appends any newly-discovered letters to the target's
+  // public `revealed` array and credits the buyer (or buyer's team in lastTeamStanding) 2 wordmoney
+  // per newly revealed occurrence. Also merges privateHits for the buyer so UI stays consistent.
+  exports.handleMindLeech = functions.database
+    .ref('/rooms/{roomId}/players/{buyerId}/privatePowerReveals/{targetId}/{key}')
+    .onCreate(async (snap, context) => {
+      const { roomId, buyerId, targetId, key } = context.params
+      const val = snap.val()
+      if (!val || !val.powerId) return null
+      try {
+        if (val.powerId !== 'mind_leech') return null
+      } catch (e) { return null }
+
+      const roomRef = db.ref(`/rooms/${roomId}`)
+
+      await roomRef.transaction(curr => {
+        if (!curr) return curr
+        if (!curr.players) curr.players = {}
+        const buyer = curr.players[buyerId] || {}
+        const target = curr.players[targetId] || {}
+
+        // defensive: ensure structures exist
+        if (!curr.players[buyerId]) curr.players[buyerId] = buyer
+        if (!curr.players[targetId]) curr.players[targetId] = target
+
+        const found = (val && val.result && Array.isArray(val.result.found)) ? val.result.found : []
+        if (!found || found.length === 0) return curr
+
+        // existing revealed occurrences (keep duplicates)
+        const existing = Array.isArray(target.revealed) ? target.revealed.slice() : []
+        const existingSet = new Set((existing || []).map(x => (x || '').toString().toLowerCase()))
+
+        // buyer's previous privateHits for this target (array of {type:'letter', letter, count})
+        const prevHits = (buyer.privateHits && buyer.privateHits[targetId]) ? (buyer.privateHits[targetId].slice ? buyer.privateHits[targetId].slice() : JSON.parse(JSON.stringify(buyer.privateHits[targetId]) || '[]')) : []
+        const prevHitsMap = {}
+        try { prevHits.forEach(h => { if (h && h.type === 'letter' && h.letter) prevHitsMap[(h.letter || '').toString().toLowerCase()] = Number(h.count) || 0 }) } catch (e) {}
+
+        let awardTotal = 0
+        let addedAny = false
+
+        for (const f of found) {
+          try {
+            if (!f || !f.letter) continue
+            const letter = (f.letter || '').toString().toLowerCase()
+            const count = Number(f.count || 0)
+            if (!letter || count <= 0) continue
+            // skip if already publicly revealed
+            if (existingSet.has(letter)) continue
+            // skip if buyer already has this letter recorded in privateHits
+            if (Object.prototype.hasOwnProperty.call(prevHitsMap, letter)) continue
+
+            // append letter occurrences to revealed (preserve duplicates)
+            for (let i = 0; i < count; i++) existing.push(letter)
+            existingSet.add(letter)
+            addedAny = true
+
+            // award buyer 2 per occurrence
+            awardTotal += 2 * count
+
+            // merge into prevHits array
+            prevHits.push({ type: 'letter', letter, count, ts: Date.now() })
+            prevHitsMap[letter] = (prevHitsMap[letter] || 0) + count
+          } catch (e) {}
+        }
+
+        if (addedAny) {
+          // write back revealed and buyer privateHits
+          curr.players[targetId].revealed = existing
+          if (!curr.players[buyerId]) curr.players[buyerId] = {}
+          if (!curr.players[buyerId].privateHits) curr.players[buyerId].privateHits = {}
+          curr.players[buyerId].privateHits[targetId] = prevHits
+
+          // apply awardTotal to buyer (or buyer's team in lastTeamStanding)
+          if (awardTotal > 0) {
+            try {
+              if ((curr && curr.gameMode) === 'lastTeamStanding' && curr.players[buyerId] && curr.players[buyerId].team) {
+                const team = curr.players[buyerId].team
+                if (!curr.teams) curr.teams = {}
+                if (!curr.teams[team]) curr.teams[team] = {}
+                const prev = typeof curr.teams[team].wordmoney === 'number' ? curr.teams[team].wordmoney : 0
+                curr.teams[team].wordmoney = Math.max(0, prev + Number(awardTotal || 0))
+              } else {
+                if (!curr.players[buyerId]) curr.players[buyerId] = {}
+                const prev = typeof curr.players[buyerId].wordmoney === 'number' ? curr.players[buyerId].wordmoney : 0
+                curr.players[buyerId].wordmoney = Math.max(0, prev + Number(awardTotal || 0))
+              }
+              // set visible lastGain for buyer
+              if (!curr.players[buyerId]) curr.players[buyerId] = {}
+              curr.players[buyerId].lastGain = { amount: Number(awardTotal || 0), by: targetId, reason: 'mind_leech', ts: Date.now() }
+            } catch (e) {}
+          }
+        }
+
+        return curr
+      })
+
+      return null
+    })
 
 // Scheduled safety: every minute, advance any timed-out turns and apply penalty
 exports.advanceTimedTurns = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
