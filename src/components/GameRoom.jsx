@@ -6791,7 +6791,7 @@ try {
                   }}
                   showPowerUpButton={powerUpsEnabled && p.id !== myId}
                   onOpenPowerUps={(targetId) => { setPowerUpTarget(targetId); setPowerUpOpen(true); setPowerUpChoiceValue(''); setPowerUpStakeValue('') }}
-                  onSkip={skipTurn}
+                  onSkip={phase === 'playing' ? skipTurn : undefined}
                   playerIdToName={playerIdToName}
                   timeLeftMs={msLeftForPlayer} currentTurnId={currentTurnId}
                   starterApplied={!!state?.starterBonus?.applied}
