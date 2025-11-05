@@ -1912,7 +1912,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         <div style={outerStyle}>
           <div className="mode-badge card" style={{ pointerEvents: 'auto', padding: '6px 8px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(34,139,34,0.08)' }}>
             <span style={{ fontSize: 16 }}>{state?.gameMode === 'wordSeeker' ? '🕵️' : (state?.gameMode === 'lastTeamStanding' ? '👥' : (state?.winnerByWordmoney ? '💸' : '🛡️'))}</span>
-            <button title="Expand" onClick={() => setModeBadgeMinimized(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>▸</button>
+            <button
+              title="Expand"
+              aria-label="Expand mode badge"
+              onMouseDown={(e) => { try { e.preventDefault(); e.stopPropagation(); setModeBadgeMinimized(false) } catch (err) {} }}
+              onTouchStart={(e) => { try { e.preventDefault(); e.stopPropagation(); setModeBadgeMinimized(false) } catch (err) {} }}
+              onClick={() => setModeBadgeMinimized(false)}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}
+            >▸</button>
           </div>
         </div>
       )
@@ -1945,9 +1952,23 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               </div>
             )}
             {/* Minimize control */}
-            <button onClick={() => setModeBadgeMinimized(true)} title="Minimize" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}>▾</button>
+            <button
+              title="Minimize"
+              aria-label="Minimize mode badge"
+              onMouseDown={(e) => { try { e.preventDefault(); e.stopPropagation(); setModeBadgeMinimized(true) } catch (err) {} }}
+              onTouchStart={(e) => { try { e.preventDefault(); e.stopPropagation(); setModeBadgeMinimized(true) } catch (err) {} }}
+              onClick={() => setModeBadgeMinimized(true)}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14 }}
+            >▾</button>
             {/* Info icon to show mode-specific details */}
-            <button onClick={(e) => { try { console.log('ModeBadge info clicked (wasOpen=', showModeInfo, ')') } catch (e) {} try { if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now() } catch (er) {} setShowModeInfo(s => !s) }} title="Game info" style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>ℹ️</button>
+            <button
+              title="Game info"
+              aria-label="Game info"
+              onMouseDown={(e) => { try { e.preventDefault(); e.stopPropagation(); if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now(); setShowModeInfo(s => !s) } catch (err) {} }}
+              onTouchStart={(e) => { try { e.preventDefault(); e.stopPropagation(); if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now(); setShowModeInfo(s => !s) } catch (err) {} }}
+              onClick={(e) => { try { console.log('ModeBadge info clicked (wasOpen=', showModeInfo, ')') } catch (e) {} try { if (!showModeInfo) modeInfoOpenedAtRef.current = Date.now() } catch (er) {} setShowModeInfo(s => !s) }}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}
+            >ℹ️</button>
             {showModeInfo && (() => {
               // Render the info popover via a portal to avoid being blocked by player tiles
               const node = (
