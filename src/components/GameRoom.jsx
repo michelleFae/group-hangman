@@ -6497,6 +6497,17 @@ try {
           if (sanitized.length !== (players || []).length) {
             try { console.warn('GameRoom: filtered invalid player entries from state.players', { rawPlayers: players, stateSnapshot: state }) } catch (e) {}
           }
+          // Order players according to the authoritative turnOrder for non-team modes
+          let orderedPlayers = sanitized
+          try {
+            if ((state && state.gameMode) !== 'lastTeamStanding' && Array.isArray(state?.turnOrder) && state.turnOrder.length > 0) {
+              const byId = (sanitized || []).reduce((acc, p) => { if (p && p.id) acc[p.id] = p; return acc }, {})
+              const fromOrder = state.turnOrder.map(id => byId[id]).filter(Boolean)
+              // Append any players not present in turnOrder at the end to avoid dropping nodes
+              const extras = (sanitized || []).filter(p => !state.turnOrder.includes(p.id))
+              orderedPlayers = fromOrder.concat(extras)
+            }
+          } catch (e) { orderedPlayers = sanitized }
           // Build a renderer for individual player tiles, then arrange teams into columns
           const renderTile = (p) => {
             // host-only remove API for player tiles
@@ -6767,7 +6778,7 @@ try {
           // Non-team modes: render players in a circular/wrap layout centered on screen
           return (
             <div style={{ paddingTop: '2vh', display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center', width: '100%' }}>
-              {sanitized.map(p => (
+              {orderedPlayers.map(p => (
                 <div key={`pc_circle_${p.id}`} style={{ flex: '0 0 auto' }}>{renderTile(p)}</div>
               ))}
             </div>

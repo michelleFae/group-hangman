@@ -2886,7 +2886,22 @@ export default function useGameRoom(roomId, playerName) {
           }
         } catch (e) {}
 
-        const turnOrder = (roomRoot && roomRoot.gameMode === 'lastTeamStanding') ? buildAlternatingOrder(playersObj, prevLastTeam) : Object.keys(playersObj)
+        const turnOrder = (roomRoot && roomRoot.gameMode === 'lastTeamStanding')
+          ? buildAlternatingOrder(playersObj, prevLastTeam)
+          : (() => {
+            // Non-team modes: randomize player order on each new game so turns rotate fairly.
+            try {
+              const ids = Object.keys(playersObj || {})
+              // Fisher-Yates shuffle
+              for (let i = ids.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1))
+                const tmp = ids[i]
+                ids[i] = ids[j]
+                ids[j] = tmp
+              }
+              return ids
+            } catch (e) { return Object.keys(playersObj || {}) }
+          })()
         const turnTimeout = roomRoot.turnTimeoutSeconds || null
         const timed = !!roomRoot.timed
         const updates = {
