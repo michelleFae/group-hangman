@@ -955,6 +955,130 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
               curr.players[buyerId].lastGain = { amount: Number(awardTotal || 0), by: targetId, reason: 'mind_leech', ts: Date.now() }
             } catch (e) {}
           }
+
+          // If the room is configured to treat the last revealed blank as a full-word
+          // guess (revealShowBlanks), detect whether this Mind Leech reveal completed
+          // the set of unique letters for the target's word. If so, treat this as a
+          // whole-word reveal: award the +5 bonus to the buyer, mark the target
+          // eliminated, normalize revealed to unique letters, and perform the same
+          // bookkeeping as a full-word guess so clients react consistently.
+          try {
+            const revealShowBlanks = !!(curr && curr.revealShowBlanks)
+            if (revealShowBlanks) {
+              const word = (curr.players[targetId] && curr.players[targetId].word) ? (curr.players[targetId].word || '') : ''
+              const wordUnique = Array.from(new Set((word || '').split(''))).map(x => (x || '').toString().toLowerCase())
+              const revealedUnique = Array.from(new Set((existing || []).map(x => (x || '').toString().toLowerCase())))
+              const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
+              if (allRevealed) {
+                // award +5 for whole-word completion
+                const bonus = 5
+                awardTotal += bonus
+
+                // apply award to buyer (respect team mode)
+                try {
+                  if ((curr && curr.gameMode) === 'lastTeamStanding' && curr.players[buyerId] && curr.players[buyerId].team) {
+                    const team = curr.players[buyerId].team
+                    if (!curr.teams) curr.teams = {}
+                    if (!curr.teams[team]) curr.teams[team] = {}
+                    const prev = typeof curr.teams[team].wordmoney === 'number' ? curr.teams[team].wordmoney : 0
+                    curr.teams[team].wordmoney = Math.max(0, prev + Number(bonus || 0))
+                  } else {
+                    if (!curr.players[buyerId]) curr.players[buyerId] = {}
+                    const prev = typeof curr.players[buyerId].wordmoney === 'number' ? curr.players[buyerId].wordmoney : 0
+                    curr.players[buyerId].wordmoney = Math.max(0, prev + Number(bonus || 0))
+                  }
+                  if (!curr.players[buyerId]) curr.players[buyerId] = {}
+                  // update lastGain to reflect the added bonus as part of mind_leech resolution
+                  curr.players[buyerId].lastGain = { amount: Number((curr.players[buyerId].lastGain && curr.players[buyerId].lastGain.amount ? curr.players[buyerId].lastGain.amount : 0) + bonus), by: targetId, reason: 'mind_leech_word', ts: Date.now() }
+                } catch (e) {}
+
+                // mark eliminated and record metadata like full-word guesses do
+                curr.players[targetId].eliminated = true
+                curr.players[targetId].eliminatedAt = Date.now()
+                if (!curr.players[targetId].guessedBy) curr.players[targetId].guessedBy = {}
+                const prevWordGuessedBy = (curr.players[targetId].guessedBy && curr.players[targetId].guessedBy['__word']) ? curr.players[targetId].guessedBy['__word'].slice() : []
+                if (!prevWordGuessedBy.includes(buyerId)) prevWordGuessedBy.push(buyerId)
+                curr.players[targetId].guessedBy['__word'] = prevWordGuessedBy
+
+                // record private hit for buyer as a word guess
+                if (!curr.players[buyerId]) curr.players[buyerId] = {}
+                if (!curr.players[buyerId].privateHits) curr.players[buyerId].privateHits = {}
+                const prevHits = (curr.players[buyerId].privateHits && curr.players[buyerId].privateHits[targetId]) ? curr.players[buyerId].privateHits[targetId].slice() : []
+                prevHits.push({ type: 'word', word: word, ts: Date.now() })
+                curr.players[buyerId].privateHits[targetId] = prevHits
+
+                // normalize revealed to unique letters
+                const uniqueLetters = Array.from(new Set((word || '').split('')))
+                curr.players[targetId].revealed = uniqueLetters
+
+                // remove from turnOrder and adjust currentTurnIndex
+                try {
+                  const buildLTSOrder = (playersMap) => {
+                    try {
+                      const keys = Object.keys(playersMap || {})
+                      const teams = {}
+                      const unteamed = []
+                      keys.forEach(k => {
+                        try {
+                          const p = playersMap[k] || {}
+                          if (p.eliminated) return
+                          const t = p.team || null
+                          if (t) {
+                            teams[t] = teams[t] || []
+                            teams[t].push(k)
+                          } else {
+                            unteamed.push(k)
+                          }
+                        } catch (e) {}
+                      })
+                      const teamNames = Object.keys(teams)
+                      if (teamNames.length === 2) {
+                        const a = teams[teamNames[0]] || []
+                        const b = teams[teamNames[1]] || []
+                        const total = a.length + b.length
+                        const res = []
+                        const seen = new Set()
+                        let j = 0
+                        while (res.length < total) {
+                          if (a.length > 0) {
+                            const cand = a[j % a.length]
+                            if (!seen.has(cand)) { res.push(cand); seen.add(cand) }
+                          }
+                          if (res.length >= total) break
+                          if (b.length > 0) {
+                            const cand2 = b[j % b.length]
+                            if (!seen.has(cand2)) { res.push(cand2); seen.add(cand2) }
+                          }
+                          j++
+                        }
+                        return res.concat(unteamed.filter(p => !seen.has(p)))
+                      }
+                      return keys.filter(k => !(playersMap[k] && playersMap[k].eliminated))
+                    } catch (e) {
+                      return Object.keys(playersMap || {}).filter(k => !(playersMap[k] && playersMap[k].eliminated))
+                    }
+                  }
+
+                  const originalOrder = (curr.turnOrder || [])
+                  let newTurnOrder = originalOrder.filter(id => id !== targetId)
+                  try {
+                    if ((curr && curr.gameMode) === 'lastTeamStanding') {
+                      const playersAfter = Object.assign({}, curr.players)
+                      if (!playersAfter[targetId]) playersAfter[targetId] = Object.assign({}, { id: targetId, eliminated: true })
+                      else playersAfter[targetId] = Object.assign({}, playersAfter[targetId], { eliminated: true })
+                      newTurnOrder = buildLTSOrder(playersAfter)
+                    }
+                  } catch (e) {}
+                  curr.turnOrder = newTurnOrder
+                  const removedIndex = originalOrder.indexOf(targetId)
+                  if (removedIndex !== -1) {
+                    // if removedIndex was before or equal to current index, decrement
+                    if (typeof curr.currentTurnIndex === 'number' && removedIndex <= curr.currentTurnIndex) curr.currentTurnIndex = Math.max(0, curr.currentTurnIndex - 1)
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (e) {}
         }
 
         return curr
