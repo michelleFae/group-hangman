@@ -4886,73 +4886,110 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       }
     } catch (e) {}
   }, [showSettings])
-  function PowerUpModal({ open, targetId, onClose }) {
-    // Always render the power-up modal container to avoid remounts that reset scrollTop.
-    // Visibility is controlled via inline style. The modal will be hidden when `open` is false
-    // or when no targetId is provided.
-    const targetName = playerIdToName[targetId] || targetId
-    const me = (state?.players || []).find(p => p.id === myId) || {}
-    // buyerBalance is the authoritative balance used for enabling/disabling buy buttons.
-    // Default to player's personal wallet; when in lastTeamStanding and the player has a team,
-    // fetch the authoritative team wallet once when the modal opens.
-    const [buyerBalance, setBuyerBalance] = React.useState(Number(me.wordmoney) || 0)
-    React.useEffect(() => {
-      let mounted = true
-      async function computeBalance() {
-        try {
-          const base = Number(me.wordmoney) || 0
-          const gm = state?.gameMode
-          if (gm === 'lastTeamStanding' && me.team) {
-            try {
-              const teamRef = dbRef(db, `rooms/${roomId}/teams/${me.team}/wordmoney`)
-              const snap = await dbGet(teamRef)
-              let live = null
-              try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
-              const teamVal = (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) ? Number(live) : Number(state?.teams?.[me.team]?.wordmoney || 0)
-              if (mounted) setBuyerBalance(teamVal)
-            } catch (e) {
-              if (mounted) setBuyerBalance(Number(state?.teams?.[me.team]?.wordmoney || 0))
-            }
-          } else {
-            if (mounted) setBuyerBalance(base)
-          }
-        } catch (e) {
-          if (mounted) setBuyerBalance(Number(me.wordmoney) || 0)
-        }
-      }
-      if (open) computeBalance()
-      else setBuyerBalance(Number(me.wordmoney) || 0)
-      return () => { mounted = false }
-    // avoid depending on the entire `state` object - only depend on the specific pieces we read
-    }, [open, state?.gameMode, state?.teams?.[me.team]?.wordmoney, me && me.id, me && me.wordmoney, me && me.team, roomId])
+  // Stable PowerUpModal component created once and reading dynamic values via refs.
+  // This avoids changing the component identity on parent re-renders which would
+  // otherwise unmount/remount the modal (causing scrollTop to reset).
+  const _powerUpModalRef = useRef(null)
+  const _stateRef = useRef(state)
+  const _playerIdToNameRef = useRef(playerIdToName)
+  const _myIdRef = useRef(myId)
+  const _roomIdRef = useRef(roomId)
+  const _phaseRef = useRef(phase)
+  const _currentTurnIdRef = useRef(currentTurnId)
+  // keep refs up-to-date
+  useEffect(() => { _stateRef.current = state }, [state])
+  useEffect(() => { _playerIdToNameRef.current = playerIdToName }, [playerIdToName])
+  useEffect(() => { _myIdRef.current = myId }, [myId])
+  useEffect(() => { _roomIdRef.current = roomId }, [roomId])
+  useEffect(() => { _phaseRef.current = phase }, [phase])
+  useEffect(() => { _currentTurnIdRef.current = currentTurnId }, [currentTurnId])
+  // keep copies of modal-related callbacks/state in refs so the stable modal
+  // component can read latest values without being redefined each render
+  const purchasePowerUpRef = useRef(null)
+  const powerUpLoadingRef = useRef(false)
+  const powerUpChoiceValueRef = useRef('')
+  const powerUpStakeValueRef = useRef('')
+  const setPowerUpChoiceValueRef = useRef(null)
+  const setPowerUpStakeValueRef = useRef(null)
+  const powerUpRevealPublicRef = useRef(false)
+  useEffect(() => { purchasePowerUpRef.current = purchasePowerUp }, [purchasePowerUp])
+  useEffect(() => { powerUpLoadingRef.current = powerUpLoading }, [powerUpLoading])
+  useEffect(() => { powerUpChoiceValueRef.current = powerUpChoiceValue }, [powerUpChoiceValue])
+  useEffect(() => { powerUpStakeValueRef.current = powerUpStakeValue }, [powerUpStakeValue])
+  useEffect(() => { setPowerUpChoiceValueRef.current = setPowerUpChoiceValue }, [setPowerUpChoiceValue])
+  useEffect(() => { setPowerUpStakeValueRef.current = setPowerUpStakeValue }, [setPowerUpStakeValue])
+  useEffect(() => { powerUpRevealPublicRef.current = powerUpRevealPublic }, [powerUpRevealPublic])
 
-    
-  const isLobby = phase === 'lobby'
-  const isMyTurn = (myId === currentTurnId)
-    return (
-      <div id="powerup" className={`modal-overlay shop-modal ${open ? 'open' : 'closed'}`} role="dialog" aria-modal="true" style={{ display: (open && targetId) ? 'flex' : 'none', overflowY: 'auto', height: '100%' }}>
-        <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
-          <div className="shop-modal-header">
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <strong>Curses on {targetName}</strong>
-              <small style={{ fontSize: 12, color: '#ddd' }}>Use these to influence the round</small>
+  if (!_powerUpModalRef.current) {
+    _powerUpModalRef.current = function PowerUpModalStable({ open, targetId, onClose }) {
+      // read dynamic values from refs so this function can be defined once
+      const stateNow = _stateRef.current || {}
+      const playerIdToNameNow = _playerIdToNameRef.current || {}
+      const myIdNow = _myIdRef.current
+      const roomIdNow = _roomIdRef.current
+      const phaseNow = _phaseRef.current
+      const currentTurnIdNow = _currentTurnIdRef.current
+
+      const targetName = (playerIdToNameNow && playerIdToNameNow[targetId]) ? playerIdToNameNow[targetId] : targetId
+      const me = (stateNow?.players || []).find(p => p.id === myIdNow) || {}
+      const [buyerBalance, setBuyerBalance] = React.useState(Number(me.wordmoney) || 0)
+
+      React.useEffect(() => {
+        let mounted = true
+        async function computeBalance() {
+          try {
+            const base = Number(me.wordmoney) || 0
+            const gm = stateNow?.gameMode
+            if (gm === 'lastTeamStanding' && me.team) {
+              try {
+                const teamRef = dbRef(db, `rooms/${roomIdNow}/teams/${me.team}/wordmoney`)
+                const snap = await dbGet(teamRef)
+                let live = null
+                try { live = (snap && typeof snap.val === 'function') ? snap.val() : snap.val } catch (e) { live = snap }
+                const teamVal = (typeof live === 'number' || (typeof live === 'string' && !Number.isNaN(Number(live)))) ? Number(live) : Number(stateNow?.teams?.[me.team]?.wordmoney || 0)
+                if (mounted) setBuyerBalance(teamVal)
+              } catch (e) {
+                if (mounted) setBuyerBalance(Number(stateNow?.teams?.[me.team]?.wordmoney || 0))
+              }
+            } else {
+              if (mounted) setBuyerBalance(base)
+            }
+          } catch (e) {
+            if (mounted) setBuyerBalance(Number(me.wordmoney) || 0)
+          }
+        }
+        if (open) computeBalance()
+        else setBuyerBalance(Number(me.wordmoney) || 0)
+        return () => { mounted = false }
+      // avoid depending on the entire `state` object - only depend on the specific pieces we read
+      }, [open, stateNow?.gameMode, stateNow?.teams?.[me.team]?.wordmoney, me && me.id, me && me.wordmoney, me && me.team, roomIdNow])
+
+      const isLobby = phaseNow === 'lobby'
+      const isMyTurn = (myIdNow === currentTurnIdNow)
+      return (
+        <div id="powerup" className={`modal-overlay shop-modal ${open ? 'open' : 'closed'}`} role="dialog" aria-modal="true" style={{ display: (open && targetId) ? 'flex' : 'none', overflowY: 'auto', height: '100%' }}>
+          <div className="modal-dialog card no-anim shop-modal-dialog shop-modal-dialog">
+            <div className="shop-modal-header">
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <strong>Curses on {targetName}</strong>
+                <small style={{ fontSize: 12, color: '#ddd' }}>Use these to influence the round</small>
+              </div>
+              <button className="shop-modal-close" onClick={onClose}>✖</button>
             </div>
-            <button className="shop-modal-close" onClick={onClose}>✖</button>
-          </div>
-          <div className="powerup-list" ref={powerupListRef}>
-            {(POWER_UPS || []).map(p => {
+            <div className="powerup-list" ref={powerupListRef}>
+              {(POWER_UPS || []).map(p => {
               // compute effective price for display (show surge applied if it affects buyer)
               let displayPrice = p.price
               try {
                 // compute sum of active surges (skip any surge authored by viewer)
                 let totalSurgeAmount = 0
-                const ps = state && state.priceSurge
+                const ps = stateNow && stateNow.priceSurge
                 if (ps && typeof ps === 'object') {
                   if (typeof ps.amount !== 'undefined' && (typeof ps.by !== 'undefined' || typeof ps.expiresAtTurnIndex !== 'undefined')) {
                     const surge = ps
-                    if (surge && surge.amount && surge.by !== myId) {
+                    if (surge && surge.amount && surge.by !== myIdNow) {
                       const expires = typeof surge.expiresAtTurnIndex === 'number' ? surge.expiresAtTurnIndex : null
-                      const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                      const active = expires === null || (typeof stateNow.currentTurnIndex === 'number' ? stateNow.currentTurnIndex < expires : true)
                       if (active) totalSurgeAmount += Number(surge.amount || 0)
                     }
                   } else {
@@ -4960,9 +4997,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       try {
                         const entry = ps[k]
                         if (!entry || !entry.amount) return
-                        if (entry.by === myId) return
+                        if (entry.by === myIdNow) return
                         const expires = typeof entry.expiresAtTurnIndex === 'number' ? entry.expiresAtTurnIndex : null
-                        const active = expires === null || (typeof state.currentTurnIndex === 'number' ? state.currentTurnIndex < expires : true)
+                        const active = expires === null || (typeof stateNow.currentTurnIndex === 'number' ? stateNow.currentTurnIndex < expires : true)
                         if (active) totalSurgeAmount += Number(entry.amount || 0)
                       } catch (e) {}
                     })
@@ -4974,7 +5011,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               // compute a visual style/class to distinguish power-up types
               const isSelfType = p.powerupType === 'selfPowerup'
               const isSingleOpponent = p.powerupType === 'singleOpponentPowerup'
-              const rowClass = `powerup-row ${isSelfType ? 'powerup-type-self' : isSingleOpponent ? 'powerup-type-opponent' : ''} ${(isSelfType && powerUpTarget === myId) ? 'self-powerup' : ''}`
+              const rowClass = `powerup-row ${isSelfType ? 'powerup-type-self' : isSingleOpponent ? 'powerup-type-opponent' : ''} ${(isSelfType && targetId === myIdNow) ? 'self-powerup' : ''}`
               const rowStyle = isSelfType ? { background: '#fff9e6', border: '1px solid rgba(204,170,60,0.12)' } : (isSingleOpponent ? { background: '#f0f7ff', border: '1px solid rgba(30,120,220,0.08)' } : {})
                       return (
                 <div key={p.id} className={rowClass} style={rowStyle}>
@@ -4986,18 +5023,18 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         {p.id === 'letter_peek' ? (
                       <LetterPeekControl
                         ref={powerUpChoiceRef}
-                        open={powerUpOpen}
-                        disabled={isLobby || state?.phase === 'wordseeker_playing'}
+                        open={open}
+                        disabled={isLobby || stateNow?.phase === 'wordseeker_playing'}
                         displayPrice={displayPrice}
-                        onBuy={(pos) => purchasePowerUp(p.id, { pos })}
-                        powerUpLoading={powerUpLoading}
+                        onBuy={(pos) => { try { purchasePowerUpRef.current && purchasePowerUpRef.current(p.id, { pos }) } catch (e) {} }}
+                        powerUpLoading={powerUpLoadingRef.current}
                         buyerBalance={buyerBalance}
                         isMyTurn={isMyTurn}
                       />
                     ) : p.id === 'double_down' ? (
                       (() => {
                         // Double Down should use the stake input, not the letter_peek choice
-                        const stakeVal = (powerUpStakeValue || '').toString().trim()
+                        const stakeVal = (powerUpStakeValueRef.current || '').toString().trim()
                         const stakeNum = Number(stakeVal)
                         const stakeInvalid = !stakeVal || Number.isNaN(stakeNum) || stakeNum <= 0
                         // Max stake is your buyerBalance - 1 (buyerBalance is authoritative for enabling/disabling purchases)
@@ -5006,8 +5043,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValue} onChange={e => setPowerUpStakeValue(e.target.value)} disabled={isLobby || state?.phase === 'wordseeker_playing'} />
-                              <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || state?.phase === 'wordseeker_playing' || !isMyTurn} onClick={() => purchasePowerUp(p.id, { stake: powerUpStakeValue })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValueRef.current} onChange={e => { try { setPowerUpStakeValueRef.current && setPowerUpStakeValueRef.current(e.target.value) } catch (e) {} }} disabled={isLobby || stateNow?.phase === 'wordseeker_playing'} />
+                              <button className="powerup-buy" disabled={isLobby || powerUpLoadingRef.current || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || stateNow?.phase === 'wordseeker_playing' || !isMyTurn} onClick={() => { try { purchasePowerUpRef.current && purchasePowerUpRef.current(p.id, { stake: powerUpStakeValueRef.current }) } catch (e) {} }}>{powerUpLoadingRef.current ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
                               <div style={{ color: '#900', fontSize: 12 }}>Please enter a valid stake greater than 0</div>
@@ -5022,9 +5059,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                       })()
                       ) : (
                       p.id === 'the_unseen' ? (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id, { public: powerUpRevealPublic })}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoadingRef.current || buyerBalance < displayPrice || !isMyTurn} onClick={() => { try { purchasePowerUpRef.current && purchasePowerUpRef.current(p.id, { public: powerUpRevealPublicRef.current }) } catch (e) {} }}>{powerUpLoadingRef.current ? '...' : 'Buy'}</button>
                       ) : (
-                        <button className="powerup-buy" disabled={isLobby || powerUpLoading || buyerBalance < displayPrice || !isMyTurn} onClick={() => purchasePowerUp(p.id)}>{powerUpLoading ? '...' : 'Buy'}</button>
+                        <button className="powerup-buy" disabled={isLobby || powerUpLoadingRef.current || buyerBalance < displayPrice || !isMyTurn} onClick={() => { try { purchasePowerUpRef.current && purchasePowerUpRef.current(p.id) } catch (e) {} }}>{powerUpLoadingRef.current ? '...' : 'Buy'}</button>
                       )
                     )}
                   </div>
@@ -5037,7 +5074,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
     )
   }
 
-// inject small styling for power-up types if not present
+  }
+
+  const PowerUpModal = _powerUpModalRef.current
+
+  // inject small styling for power-up types if not present
 try {
   const styleId = 'gh-powerup-type-style'
   if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
