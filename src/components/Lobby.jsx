@@ -348,10 +348,10 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
             const trimmed = (v || '').toString().trim()
             // If the entered name ends with the word 'bot' (case-insensitive) followed by
             // any number of spaces and the bot emoji, show the requested error.
-            // Use a regex to match variations like: "Bot 🤖", "bot🤖", "Bot    🤖" etc.
-            const botSuffixRe = /bot\s*🤖$/i
+            // Use a regex to match variations like: " 🤖", "🤖", "    🤖 " etc.
+            const botSuffixRe = /\s*🤖\s*$/i
             if (trimmed && botSuffixRe.test(trimmed)) {
-              setNameValidationError("Idenity theft is not a joke, mortal. Your name shouldn't end with 'Bot' if you aren't one!")
+              setNameValidationError("Idenity theft is not a joke, mortal. Your name shouldn't end with '🤖' if you aren't one!")
             } else {
               setNameValidationError('')
             }
@@ -377,8 +377,8 @@ export default function Lobby({ onJoin, initialRoom = '' }) {
     {nameValidationError && (
       <div className="small-error" style={{color:'#d9534f'}}>{nameValidationError}</div>
     )}
-    {name && name.toString().length > 14 && (
-      <div className="small-error" style={{color:'#d9534f'}}>Display name too long : it will be truncated to 14 characters.</div>
+    {name && name.toString().length > 10 && (
+      <div className="small-error" style={{color:'#d9534f'}}>Display name too long : it will be truncated to 10 characters.</div>
     )}
   </div>
 

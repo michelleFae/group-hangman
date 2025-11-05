@@ -1439,7 +1439,7 @@ export default function useGameRoom(roomId, playerName) {
       'Kore','Sam','Fae','Fishy','Alien','Zoe','Hex', 'Hotto','Fire','Hades', 'Max', 'Ava','Mia','Under', 'Honey', 'Flow', 'PR', 'Magik', 'Feef', 'Boss', 'Foop', 'Over', 'World', 'Perse', 'Word', 'Phone','Lia','Ben','Leo','Ivy','Eli','Kai','Bit','Noa','Ada','Amy','Ray','Tia','Bo','Lux','Jax','Liv','Sky','Ash','Jay','Cia','Ren','Nia','Dax','Zia','Cy','Rue','Sol','Pax','Alex','Rex','Jude','Cleo','Ezra','Finn','Nova','Sage','Toby','Vera','Lex','Zara','Leaf','Wren','Orin','Indy', 'Quin', 'Rory', 'Seth', 'Tess', 'Zane','Bea','Harry','Luna','Nina','Ollie','Rita','Theo','Vivi','Wade','Zeke','Cody','Demi', 'Gus','Hale','Joni','Kira','Lyle','Mara','Nico','Opal','Rey','Skye','Tara','Vail', 'Zuri','Rumi','Toast','Butter','Mochi','Pixel','Bingo','Jinx','Pip','Doodle','Snickers','Bubbles','Clover','Peanut','Gizmo','Nibbles','Sprout','Widget','Ziggy','Muffin','Cupcake','Pumpkin','Peaches','Pickles','Fox','Poppy','Daisy','Maple','Coco','Sunny','Basil','Pebble','Pogo','Toto','Yuki','Miso','Koko','Suki','Aya','Kiki','Lulu','Mimi','Nana','Rara','Sasa','Titi','Zaza','Bibi','Didi','Fifi','Gigi','Jojo','Cola','Lala','Nene','Pipi','Riri','Titi','Vivi','Zuzu','Sleepy','Happy','Sparky','Buddy','Shadow','Smokey','Midnight','Tiger','Bear','Rocky','Bandit','Rusty','Scout','Ace','Chief','Duke','King','Prince','Ranger','Sarge','Tank','Thor','Zeus','Blaze','Comet','Flash','Hawk','Jett','Nova','Rocket','Storm','Dash','Frost','Ghost','Hurricane','Lightning','Phantom','Razor','Vortex','Whisper','Wolf','Cheetah','Eagle','Falcon','Jaguar','Lynx','Puma','Raven','Shark','Tiger','Viper','Wolverine','Taylor','Swift','Jordan','Morgan','Casey','Riley','Avery','Parker','Quinn','Reese','Sawyer','Emery','Finley','Hayden','Kendall','Logan','Madison','Peyton','Rowan','Skyler','Tatum','Blair','Drew','Elliot','Frankie','Harper','Jesse','Karter','Lee','Micah','Nolan','Oakley','Phoenix','Reagan','Sloane','Terry','Winter', 'Zion', 'Arlo','Bodhi','Cruz','Enzo','Hugo','Ira','Jax','Kian','Leif','Milo','Nico','Otis','Rafe','Soren','Taj','Viggo','Wynn','Bot','Zig','Neo','Rio','Jap','Hunger'
     ]
     const pick = SHORT_BOT_NAMES[Math.floor(Math.random() * SHORT_BOT_NAMES.length)]
-    const botName = `${pick} Bot 🤖`
+    const botName = `${pick} 🤖`
     const botNode = {
       id: botId,
       name: botName,
@@ -2441,6 +2441,16 @@ export default function useGameRoom(roomId, playerName) {
       const playersObj = room.players || {}
       const botNode = playersObj[botId]
       if (!botNode) return false
+      // Prevent bots from purchasing additional power-ups while they have an
+      // active Double Down stake pending resolution. When a Double Down is
+      // active the buyer is expected to make a guess; disallow further
+      // purchases until the guess resolves to avoid stacked power-ups/abuse.
+      try {
+        if (botNode.doubleDown && botNode.doubleDown.active) {
+          try { console.warn('botPurchasePowerUp: blocked, bot has active double_down', { botId, powerId }) } catch (e) {}
+          return false
+        }
+      } catch (e) {}
       // Ensure it's playing phase (safe guard)
       if (room.phase !== 'playing') return false
 
