@@ -20,7 +20,7 @@ body {
   background: linear-gradient(180deg, var(--bg), #121214 80%);
   color: var(--text);
   padding: 28px;
-  height: max(max-content, 100vh);
+  height: 100vh;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
 }
