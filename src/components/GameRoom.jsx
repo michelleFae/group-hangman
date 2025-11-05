@@ -298,7 +298,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const [ddShopLocked, setDdShopLocked] = useState(false)
   const powerUpChoiceRef = useRef(null)
   const powerupListRef = useRef(null)
-  const powerupScrollRef = useRef(0)
+  // null means "no stored scroll position yet"; avoid defaulting to 0 which forces
+  // the list to scroll-to-top when effects run but the user previously scrolled.
+  const powerupScrollRef = useRef(null)
   const settingsListRef = useRef(null)
   const settingsRef = useRef(null)
   const settingsScrollRef = useRef(0)
@@ -3714,6 +3716,28 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             }
           } catch (e) {}
        
+          // Also merge the discovered letters into the target's public revealed array
+          // so they appear in the target's "revealed" div for all viewers.
+          try {
+            if (found && Array.isArray(found) && found.length > 0) {
+              const existing = (targetNode && Array.isArray(targetNode.revealed)) ? targetNode.revealed.slice() : []
+              const existingCounts = {}
+              try { existing.forEach(ch => { const l = (ch || '').toString().toLowerCase(); existingCounts[l] = (existingCounts[l] || 0) + 1 }) } catch (e) {}
+              const updated = existing.slice()
+              for (const f of (found || [])) {
+                try {
+                  const letter = (f && f.letter) ? (f.letter || '').toString().toLowerCase() : null
+                  const count = Number(f.count) || 0
+                  if (!letter || count <= 0) continue
+                  const already = existingCounts[letter] || 0
+                  const need = Math.max(0, count - already)
+                  for (let i = 0; i < need; i++) updated.push(letter)
+                  existingCounts[letter] = (existingCounts[letter] || 0) + need
+                } catch (e) {}
+              }
+              updates[`players/${powerUpTarget}/revealed`] = updated
+            }
+          } catch (e) {}
 
       } else if (powerId === 'vowel_vision') {
     // Include a human-readable message for buyer and target, visible only to them.
