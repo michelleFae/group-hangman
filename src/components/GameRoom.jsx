@@ -1983,7 +1983,14 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               return node
             })()}
             {isHost && phase === 'lobby' && (
-              <button title="Room settings" onClick={() => setShowSettings(true)} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>⚙️</button>
+              <button
+                title="Room settings"
+                aria-label="Room settings"
+                onMouseDown={(e) => { try { e.preventDefault(); e.stopPropagation(); setShowSettings(true) } catch (err) {} }}
+                onTouchStart={(e) => { try { e.preventDefault(); e.stopPropagation(); setShowSettings(true) } catch (err) {} }}
+                onClick={() => setShowSettings(true)}
+                style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}
+              >⚙️</button>
             )}
           </div>
         </div>
