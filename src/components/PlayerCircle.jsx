@@ -60,6 +60,8 @@ export default function PlayerCircle({
   const lastTotalRef = useRef(null)
   const lastGainTsRef = useRef(0)
   const [showGuessDialog, setShowGuessDialog] = useState(false)
+  const rootRef = useRef(null)
+  const [ghostPortalPos, setGhostPortalPos] = useState(null)
   const [guessValue, setGuessValue] = useState('')
   // small transient ignore window to avoid immediately-closing the guess dialog
   // when parent state updates (turn/time) race with the click that opened it.
@@ -486,6 +488,24 @@ export default function PlayerCircle({
     }
   }, [timeLeftMs])
 
+  // compute portal position for ghost re-enter button so it can be rendered
+  // outside the .player element (avoids parent's filter affecting it)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const compute = () => {
+      try {
+        const el = rootRef.current
+        if (!el) { setGhostPortalPos(null); return }
+        const r = el.getBoundingClientRect()
+        setGhostPortalPos({ top: r.top + window.scrollY, left: r.left + window.scrollX, width: r.width, height: r.height })
+      } catch (e) { setGhostPortalPos(null) }
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    window.addEventListener('scroll', compute, true)
+    return () => { window.removeEventListener('resize', compute); window.removeEventListener('scroll', compute, true) }
+  }, [showGhostReenter])
+
   useEffect(() => {
     if (flashPenalty) { setAnimateHang(true); const id = setTimeout(() => setAnimateHang(false), 1000); return () => clearTimeout(id) }
   }, [flashPenalty])
@@ -555,7 +575,7 @@ export default function PlayerCircle({
   const visiblePrivatePowerRevealsDeduped = _deduped
 
   return (
-  <div data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${player && player.stale ? 'player-stale' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
+  <div ref={rootRef} data-player-id={player.id} className={`player ${isSelf ? 'player-self' : ''} ${player && player.stale ? 'player-stale' : ''} ${isTurn ? 'player-turn' : ''} ${!hasSubmitted && phase === 'submit' ? 'waiting-pulse' : ''} ${flashPenalty ? 'flash-penalty' : ''} ${player && (player.frozen || (typeof player.frozenUntilTurnIndex !== 'undefined' && player.frozenUntilTurnIndex !== null)) ? 'player-frozen' : ''} ${isEliminated ? 'player-eliminated' : ''}`} style={{ ['--halo']: haloRgba, position: 'relative', transform: 'none' }}>
       {/* Host remove control (red X) shown to host for non-self players in all phases.
           Automated stale/kick behavior is disabled; hosts should remove absent players manually. */}
       {isHost && onRemove && !isSelf && (
@@ -766,14 +786,30 @@ export default function PlayerCircle({
                 {(phase !== 'lobby' && phase !== 'submit') ? (
                   <>
                     {showGhostReenter && typeof onGhostReenter === 'function' && (
-                      <button
-                        className="action-button ghost-reenter"
-                        onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }}
-                        disabled={!!ghostReenterDisabled}
-                        style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}
-                      >
-                        Re-enter as Ghost
-                      </button>
+                      // Render the ghost re-enter button via portal so it is outside the
+                      // .player element (which may have a filter applied). If portal
+                      // position is not yet known, fall back to inline rendering.
+                      (typeof document !== 'undefined' && ghostPortalPos) ? createPortal(
+                        <div className="ghost-reenter-portal" style={{ position: 'absolute', top: ghostPortalPos.top + 8, left: ghostPortalPos.left + (ghostPortalPos.width / 2) - 56, width: 112, display: 'flex', justifyContent: 'center', pointerEvents: 'auto', zIndex: 1200 }}>
+                          <button
+                            className="action-button ghost-reenter"
+                            onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }}
+                            disabled={!!ghostReenterDisabled}
+                            style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}
+                          >
+                            Re-enter as Ghost
+                          </button>
+                        </div>
+                      , document.body) : (
+                        <button
+                          className="action-button ghost-reenter"
+                          onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }}
+                          disabled={!!ghostReenterDisabled}
+                          style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}
+                        >
+                          Re-enter as Ghost
+                        </button>
+                      )
                     )}
                     <button onClick={() => setExpanded(x => !x)} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
                       {expanded ? 'Hide info' : `View info for ${(player && player.name) ? player.name : 'player'}'s word`}

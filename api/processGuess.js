@@ -740,9 +740,8 @@ module.exports = async (req, res) => {
               newTeamIdxObj[teamNames[1]] = idxB
               updates[`teamTurnIndex`] = newTeamIdxObj
 
-              // record which team played last (the opposite of nextTeam) so subsequent advances alternate
-              const lastPlayed = nextTeam ? teamNames.find(t => t !== nextTeam) : null
-              if (lastPlayed) updates['lastTeamPlayed'] = lastPlayed
+              // record which team just played so subsequent advances alternate
+              if (nextTeam) updates['lastTeamPlayed'] = nextTeam
 
               // set currentTurnIndex to index of nextPlayer in interleaved (compatibility) and stamp
               const nextIdx = interleaved.indexOf(nextPlayer)

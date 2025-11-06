@@ -515,8 +515,8 @@ exports.processGuess = functions.database
             newTeamIdxObj[teamNames[0]] = idxA
             newTeamIdxObj[teamNames[1]] = idxB
             updates[`teamTurnIndex`] = newTeamIdxObj
-            const lastPlayed = nextTeam ? teamNames.find(t => t !== nextTeam) : null
-            if (lastPlayed) updates['lastTeamPlayed'] = lastPlayed
+            // record which team just played so subsequent advances alternate
+            if (nextTeam) updates['lastTeamPlayed'] = nextTeam
             const nextIdx = interleaved.indexOf(nextPlayer)
             updates[`currentTurnIndex`] = (nextIdx !== -1) ? nextIdx : 0
             updates[`currentTurnStartedAt`] = Date.now()

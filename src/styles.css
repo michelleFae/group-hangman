@@ -1352,6 +1352,21 @@ body.underworld-body::before {
   animation-delay: 4s;
 }
 
+/* Ghost re-enter button: render via portal to avoid parent filters. Ensure it looks bright
+   and is not affected by .player.player-eliminated filter. Use !important for filter to be
+   robust against parent stacking contexts. */
+.ghost-reenter { 
+  background: linear-gradient(90deg,#ff8a80,#ff5c5c);
+  color: #fff; 
+  font-weight: 800; 
+  border: none; 
+  box-shadow: 0 10px 28px rgba(255,92,92,0.24), 0 2px 8px rgba(0,0,0,0.5);
+  filter: none !important;
+}
+.ghost-reenter:disabled { opacity: 0.6 }
+.ghost-reenter-portal { pointer-events: none }
+.ghost-reenter-portal > button { pointer-events: auto }
+
 @keyframes ghostly-flicker {
   0%, 100% { opacity: 0; transform: translateY(0px) scale(1); }
   50% { opacity: 0.08; transform: translateY(-5px) scale(1.02); }
