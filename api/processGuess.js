@@ -235,15 +235,7 @@ module.exports = async (req, res) => {
               updates[`players/${from}/privatePowerReveals/${from}/${ddKey}`] = ddPayload
               // Also add a buyer-visible entry under the buyer's privatePowerReveals keyed by the target
              
-                const ddKeyTarget = `double_down_target_${Date.now()}`
-                updates[`players/${from}/privatePowerReveals/${targetId}/${ddKeyTarget}`] = { powerId: 'double_down', ts: Date.now(), from: from, to: targetId, result: {
-                  letter: letterStr,
-                  amount: award,
-                  stake: stake,
-                  message: `Double Down: guessed '${letterStr}' and netted +$${award}`,
-                  messageHtml: `<strong class="power-name">Double Down</strong>: guessed '<strong class="revealed-letter">${letterStr}</strong>' and netted <strong class="revealed-letter">+$${award}</strong>`
-                } }
-             
+               
               // announcement for all clients: brief double-down summary (ephemeral)
               
                 addLastDoubleDown({ buyerId: from, buyerName: (guesser && guesser.name) ? guesser.name : from, targetId: targetId, targetName: (target && target.name) ? target.name : targetId, letter: letterStr, amount: award, stake: stake, success: true, ts: Date.now() })
