@@ -7527,9 +7527,9 @@ try {
                         <div style={{ marginTop: 6 }}>Pick a word that fits the theme: <strong style={{ color: '#ff9d42', textTransform: 'capitalize' }}>{secretThemeType}</strong>.</div>
                       )}
                       {state?.starterBonus?.enabled && (
-                        <div style={{ marginTop: 6 }}>Starter bonus: <strong style={{ color: '#4efcfc' }}>+10 wordmoney</strong> if your word uses the letter <strong style={{ color: '#ffd28a' }}>{state?.starterBonus?.value || 'a specific letter'}</strong>.</div>
+                        <div style={{ marginTop: 6 }}><strong style={{ color: '#4efcfc' }}>+10 wordmoney</strong> if your word contains the letter <strong style={{ color: '#ffd28a' }}>{state?.starterBonus?.value || 'a specific letter'}</strong>.</div>
                       )}
-                      <div style={{ marginTop: 8 }}>Goal: <span style={{ color: '#ff6fff' }}>guess</span> other players' words with the <strong style={{ color: '#4efcfc' }}>Guess</strong> button. {(state?.powerUpsEnabled || powerUpsEnabled) && (<span style={{ color: '#ff9d42' }}>Curses are enabled to reveal more letters.</span>)}</div>
+                      <div style={{ marginTop: 8 }}>Win by <span style={{ color: '#ff6fff' }}>guessing</span> other players' words with the <strong style={{ color: '#4efcfc' }}>Guess</strong> button. {(state?.powerUpsEnabled || powerUpsEnabled) && (<span style={{ color: '#ff9d42' }}>Curses are enabled to reveal more letters.</span>)}</div>
                       <div style={{ marginTop: 6 }}><span style={{ color: '#ff6fff' }}>Guess a letter</span> to reveal it, or <span style={{ color: '#4efcfc' }}>guess the whole word</span> if you know it.</div>
                       {state?.gameMode === 'lastTeamStanding' && (
                         <div style={{ marginTop: 6 }}>Last Team Standing: <span style={{ color: '#ff6fff' }}>guess opponents' words</span> to eliminate them. {state?.firstWordWins ? <span style={{ color: '#ffd28a' }}>First to guess an opponent wins.</span> : <span style={{ color: '#ffd28a' }}>Guess all opponents’ words to win.</span>}</div>
@@ -7541,7 +7541,10 @@ try {
                         <div style={{ marginTop: 6 }}>Money mode: <span style={{ color: '#4efcfc' }}>have the most wordmoney</span> to win.</div>
                       )}
                       {(typeof state?.ghostReEntryEnabled !== 'undefined' ? state.ghostReEntryEnabled : ghostReEntryEnabled) && (
-                        <div style={{ marginTop: 6 }}>Ghost re-entry: if your word is guessed, you may rejoin <span style={{ color: '#ff9d42' }}>once</span> by guessing a system word shared by ghosts.</div>
+                        <div style={{ marginTop: 6 }}>If your word is guessed, you may rejoin <span style={{ color: '#ff9d42' }}>once</span> by guessing a system word shared by ghosts. Once you rejoin the round, your new word will be the word you guessed.s</div>
+                      )}
+                      {state?.freeBubblesEnabled && (
+                        <div style={{ marginTop: 6 }}>Click the randomly appearing tombstones to get free wordmoney. Only the fastest player gets the $$$!</div>
                       )}
                       {state?.timed && (
                         <div style={{ marginTop: 6, fontWeight: 700, color: '#ffd28a' }}>Watch the <span style={{ color: '#ff6fff' }}>timer</span>!</div>
