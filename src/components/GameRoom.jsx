@@ -172,6 +172,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // starting wordmoney is hard-coded to 2; no local state needed
   const [startingWordmoney, setStartingWordmoney] = useState(2)
   const [showSettings, setShowSettings] = useState(false)
+  const [howToOpen, setHowToOpen] = useState(false)
+  const [howToMinimized, setHowToMinimized] = useState(false)
   const [startGameHint, setStartGameHint] = useState(null)
   const [secretThemeEnabled, setSecretThemeEnabled] = useState(true)
   const [secretThemeType, setSecretThemeType] = useState('animals')
@@ -976,6 +978,100 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   const waitingForSubmission = (players || []).filter(p => !p.hasWord)
   const firstWaiting = waitingForSubmission && waitingForSubmission.length > 0 ? waitingForSubmission[0] : null
   const submittedCount = players.filter(p => p.hasWord).length
+
+  // Submit-phase phrases: compute once and cycle through them while in submit phase.
+  const submitPhrases = useMemo(() => {
+    return [
+      'Submit your word',
+                            (state?.secretThemeEnabled && state?.secretThemeType) ? `The word should belong to the category "${state.secretThemeType}"` : null,
+                            "Don't know how to play? There's a button on the top right!",
+                            `Don't keep us waiting, ${firstWaiting ? firstWaiting.name : 'mortal'}`,
+                            'Choose wisely',
+                            'Hide it well',
+                            'Make your move',
+                            `Hey ${firstWaiting ? firstWaiting.name : 'mortal'}, hurry up!`,
+                            'Whisper it to the void. It listens',
+                            'The tombstones are taking bets',
+                            'Even the bats are gossiping',
+                            'Seal it in a sarcophagus of secrecy',
+                            "Don't anger the librarians of Hades",
+                            'Sacrifice a syllable for good luck',
+                            'The reaper prefers short words',
+                            'Make the underworld proud (or at least entertained)',
+                            'Quick, the ghosts are forming a conga line',
+                            `My ghost mother comes up with words faster than ${firstWaiting ? firstWaiting.name : 'you mortal'}`,
+                            'Keep it cursed, not cursed out',
+                            'Hide it better than a vampire hides sunscreen',
+                            'Hurry! The bats are voting',
+                            "They'll haunt you for a bad word choice",
+                            "Don't let the skeletons correct your spelling",
+                            "Write it fast! The crypt's closing soon",
+                            'Oh my ghoul...',
+                            "You'd think you'd have a word by now",
+                            'This part of the game is not meant to be hard',
+                            'Just write something! ANYTHING!!!',
+                            'Ask your fellow mortals on the chat?',
+                            'The spirits are waiting',
+                            'Hurry up before the ghosts start judging you',
+                            'The underworld is watching...',
+                            'Time is running out, and so are your chances',
+                            "Don't let the pressure get to you",
+                            'The spirits are restless',
+                            'Can you feel their gaze?',
+                            'Every second counts',
+                            `Choose wisely, ${firstWaiting ? firstWaiting.name : 'mortal'}`,
+                            'The clock is ticking...',
+                            "Don't keep the spirits waiting",
+                            'Your word is your shield',
+                            'Speak your word into the void',
+                            'Let the darkness consume your doubts',
+                            'Embrace the chaos within',
+                            'The underworld awaits your choice',
+                            "Make your mark before it's too late",
+                            'The reaper is getting impatient',
+                            'Choose a word that even the ghosts would fear',
+                            'Remember, in the underworld, silence is deadly',
+                            `OKAY, ${firstWaiting ? firstWaiting.name : 'MORTAL'}.`,
+                            'TIME IS UP SO PICK A WORD ALREADY!',
+                            'THE GHOSTS ARE GETTING RESTLESS!',
+                            'EVEN THE REAPER IS TAPPING HIS SCYTHE!',
+                            'THE UNDERWORLD IS STARTING TO MOAN!',
+                            'HURRY UP BEFORE YOU\'RE HAUNTED!',
+                            'THE BATTS ARE STARTING TO VOTE!',
+                            'THE SKELETONS ARE CORRECTING YOUR SPELLING!',
+                            "THE CRYPT'S CLOSING SOON!",
+                            'OH MY GHOUL, JUST PICK A WORD!',
+                            'ASK GhostGPT FOR A SUGGESTION!',
+                            'I need to calm down.',
+                            'I apologize. Did not mean to yell.',
+                            'Please, take your time.',
+                            'Choose a word that resonates with your soul.',
+                            'Let your intuition guide you.',
+                            'Trust in the whispers of the underworld.',
+                            'Select a word that echoes through eternity.',
+                            'Find a term that even the shadows respect.',
+                            'Pick a word that would make the reaper nod in approval.',
+                            `${firstWaiting ? firstWaiting.name : 'someone'}, the spirits are waiting for you.`,
+                            'Hurry, before the underworld loses its patience.',
+                            'The fate of your word lies in your hands.',
+                            'Choose wisely, for the underworld remembers all.',
+                            'Let your word be your legacy in the realm of shadows.'
+    ].filter(Boolean)
+  }, [state?.secretThemeEnabled, state?.secretThemeType, firstWaiting && firstWaiting.id])
+
+  const [submitPhraseIndex, setSubmitPhraseIndex] = useState(0)
+  useEffect(() => {
+    if (phase !== 'submit' || !submitPhrases || submitPhrases.length === 0) {
+      setSubmitPhraseIndex(0)
+      return undefined
+    }
+    // start at 0 each time submit phase begins
+    setSubmitPhraseIndex(0)
+    const id = setInterval(() => {
+      setSubmitPhraseIndex(i => (i + 1) % submitPhrases.length)
+    }, 9000)
+    return () => clearInterval(id)
+  }, [phase, submitPhrases.length])
 
   const isHost = hostId && window.__firebaseAuth && window.__firebaseAuth.currentUser && window.__firebaseAuth.currentUser.uid === hostId
   const currentTurnIndex = state?.currentTurnIndex || 0
@@ -6158,6 +6254,56 @@ try {
         <span className="ember" />
         <span className="ember" />
       </div>
+        {/* Ambient runic letters: ghostly, low-opacity shapes that fade randomly */}
+        <div className="ambient-runes" aria-hidden="true">
+          {state && state.gameMode === 'lastOneStanding' && (
+            <span className="rune" style={{ left: '50%', bottom: '84%', fontSize: '20px', animationDuration: '18s', animationDelay: '4s' }}>
+              υηιтє тσ яєνєαℓ тнєιρ ωσя∂ѕ
+            </span>
+          )}
+          {state && state.gameMode === 'wordSeeker' && (
+            <span className="rune" style={{ left: '50%', bottom: '84%', fontSize: '20px', animationDuration: '18s', animationDelay: '4s' }}>
+              𝐒𝐩𝐲? 𝐅𝐚𝐝𝐞 𝐢𝐧𝐭𝐨 𝐭𝐡𝐞 𝐮𝐧𝐝𝐞𝐫𝐰𝐨𝐫𝐥𝐝. 𝐄𝐥𝐬𝐞, 𝐬𝐡𝐢𝐧𝐞 𝐚 𝐥𝐢𝐠𝐡𝐭.
+            </span>
+          )}
+          {(state?.powerUpsEnabled || powerUpsEnabled) && (
+            <span className="rune" style={{ left: '16%', bottom: '42%', fontSize: '20px', animationDuration: '14s', animationDelay: '1.1s' }}>
+              ᑭᑌᖇᑕᕼᗩᔕE ᗪᗩᖇK ᑕᑌᖇᔕEᔕ
+            </span>
+          )}
+          <span className="rune" style={{ left: '2%',  bottom: '18%', fontSize: '20px', animationDuration: '13s', animationDelay: '0s' }}>Lҽƚƚҽɾʂ Hαʋҽ Sσυʅʂ</span>
+          <span className="rune" style={{ left: '6%',  bottom: '12%', fontSize: '20px', animationDuration: '10s', animationDelay: '7s' }}>ᛉ</span>
+          <span className="rune" style={{ left: '14%', bottom: '8%',  fontSize: '26px', animationDuration: '13s', animationDelay: '1.2s' }}>ᛜ</span>
+          <span className="rune" style={{ left: '22%', bottom: '18%', fontSize: '18px', animationDuration: '9s',  animationDelay: '0.6s' }}>ᛟ</span>
+          <span className="rune" style={{ left: '30%', bottom: '6%',  fontSize: '28px', animationDuration: '14s', animationDelay: '2.4s' }}>ᛞ</span>
+          <span className="rune" style={{ left: '38%', bottom: '14%', fontSize: '22px', animationDuration: '11s', animationDelay: '0.9s' }}>ᛒ</span>
+          <span className="rune" style={{ left: '46%', bottom: '10%', fontSize: '20px', animationDuration: '12s', animationDelay: '11.8s' }}>ᛇ</span>
+          <span className="rune" style={{ left: '54%', bottom: '22%', fontSize: '24px', animationDuration: '56s', animationDelay: '5.0s' }}>ᛉ</span>
+          <span className="rune" style={{ left: '80%',  bottom: '2%', fontSize: '20px', animationDuration: '43s', animationDelay: '7.7s' }}>Ͳհҽ աìղղҽɾ ʂքҽӀӀʂ ահąէ օէհҽɾʂ հìժҽ</span>
+          <span className="rune" style={{ left: '62%', bottom: '20%', fontSize: '18px', animationDuration: '8s',  animationDelay: '1.6s' }}>ᛝ</span>
+          <span className="rune" style={{ left: '70%', bottom: '12%', fontSize: '24px', animationDuration: '15s', animationDelay: '2.8s' }}>⚰</span>
+          <span className="rune" style={{ left: '78%', bottom: '9%',  fontSize: '20px', animationDuration: '11s', animationDelay: '0.4s' }}>⚱</span>
+          <span className="rune" style={{ left: '86%', bottom: '18%', fontSize: '22px', animationDuration: '12s', animationDelay: '1.0s' }}>⚔</span>
+          <span className="rune" style={{ left: '92%', bottom: '6%',  fontSize: '20px', animationDuration: '10s', animationDelay: '2.0s' }}>⚚</span>
+          <span className="rune" style={{ left: '4%',  bottom: '24%', fontSize: '22px', animationDuration: '13s', animationDelay: '3.4s' }}>⚗</span>
+          <span className="rune" style={{ left: '12%', bottom: '28%', fontSize: '18px', animationDuration: '9s',  animationDelay: '0.7s' }}>🜏</span>
+          <span className="rune" style={{ left: '20%', bottom: '26%', fontSize: '20px', animationDuration: '14s', animationDelay: '2.2s' }}>🜃</span>
+          <span className="rune" style={{ left: '28%', bottom: '30%', fontSize: '24px', animationDuration: '11s', animationDelay: '1.1s' }}>🜄</span>
+          <span className="rune" style={{ left: '36%', bottom: '32%', fontSize: '18px', animationDuration: '10s', animationDelay: '0.2s' }}>🜂</span>
+          <span className="rune" style={{ left: '44%', bottom: '26%', fontSize: '26px', animationDuration: '16s', animationDelay: '3.8s' }}>✴</span>
+          <span className="rune" style={{ left: '52%', bottom: '28%', fontSize: '20px', animationDuration: '12s', animationDelay: '1.4s' }}>✶</span>
+          <span className="rune" style={{ left: '60%', bottom: '32%', fontSize: '20px', animationDuration: '13s', animationDelay: '2.6s' }}>✹</span>
+          <span className="rune" style={{ left: '68%', bottom: '30%', fontSize: '18px', animationDuration: '9s',  animationDelay: '0.9s' }}>✺</span>
+          <span className="rune" style={{ left: '76%', bottom: '26%', fontSize: '22px', animationDuration: '11s', animationDelay: '1.9s' }}>⊙</span>
+          <span className="rune" style={{ left: '84%', bottom: '28%', fontSize: '22px', animationDuration: '10s', animationDelay: '0.6s' }}>⊗</span>
+          <span className="rune" style={{ left: '90%', bottom: '24%', fontSize: '24px', animationDuration: '14s', animationDelay: '2.3s' }}>◈</span>
+          <span className="rune" style={{ left: '8%',  bottom: '36%', fontSize: '18px', animationDuration: '12s', animationDelay: '0.3s' }}>⋇</span>
+          <span className="rune" style={{ left: '18%', bottom: '34%', fontSize: '20px', animationDuration: '10s', animationDelay: '1.7s' }}>∴</span>
+          <span className="rune" style={{ left: '28%', bottom: '36%', fontSize: '20px', animationDuration: '13s', animationDelay: '2.9s' }}>∵</span>
+          <span className="rune" style={{ left: '40%', bottom: '38%', fontSize: '26px', animationDuration: '15s', animationDelay: '3.6s' }}>⁂</span>
+        </div>
+        {/* CSS-only ghostly symbols (pseudo-elements) - very faint, animated background glyphs */}
+        <div className="ghostly-symbols" aria-hidden="true" />
       <div className="lobby-smoke" aria-hidden="true">
         <span className="smoke smoke-left" />
         <span className="smoke smoke-right" />
@@ -7265,29 +7411,138 @@ try {
       </div>
       {/* Bottom-fixed submit bar (shown during submit phase). This contains the secret-word entry and submit button
           and is intentionally separated so it can be reused later for power-ups. */}
-  {phase === 'submit' && (() => {
+  {phase === 'submit' 
+
+
+  && (() => {
         const me = players.find(p => p.id === myId) || {}
         const myHasSubmitted = !!me.hasWord
         const candidateInput = (word || '').toString().trim()
         const localInvalid = !candidateInput || candidateInput.length === 1 || !/^[a-zA-Z]+$/.test(candidateInput)
         return (
-          <div className="submit-bar card">
-            <div className="submit-left">
+          <div style={{ position: 'relative' }}>
+            {/* Full-screen dim overlay during submit phase */}
+            <div
+              aria-hidden="true"
+              className="submit-overlay"
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                background: 'rgba(0,0,0,0.98)',
+                zIndex: 200
+              }}
+            >
+              {/* Decorative underworld ghosts/fog (purely visual) */}
+              <div className="submit-ghost ghost-1" aria-hidden="true" />
+              <div className="submit-ghost ghost-2" aria-hidden="true" />
+              <div className="submit-fog" aria-hidden="true" />
+
+             
+                      <div className="submit-phrases" aria-hidden="true">
+                        {(() => {
+                          const positions = [
+                            { left: '50%', top: '34%' },
+                            { left: '50%', top: '46%' },
+                            { left: '50%', top: '58%' },
+                            { left: '30%', top: '38%' },
+                            { left: '70%', top: '38%' },
+                            { left: '32%', top: '50%' },
+                            { left: '72%', top: '50%' },
+                            { left: '34%', top: '30%' },
+                            { left: '76%', top: '30%' },
+                            { left: '36%', top: '26%' },
+                            { left: '74%', top: '26%' }
+                          ]
+                          const i = submitPhraseIndex || 0
+                          const text = (submitPhrases && submitPhrases.length > 0) ? submitPhrases[i % submitPhrases.length] : ''
+                          const pos = positions[i % positions.length]
+                          const size = `${Math.max(20, 40 - (i % 6))}px`
+                          return (
+                            <span key={i} className="submit-phrase" style={{ left: pos.left, top: pos.top, fontSize: size, animationDuration: '9s' }}>{text}</span>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                    <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 202 }}>
+                      <button
+                      onClick={() => { try { setHowToOpen(o => !o); if (!howToOpen) setHowToMinimized(false) } catch (e) {} }}
+                className="how-to-toggle"
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 20,
+                  background: 'linear-gradient(90deg,#ff9d42,#ff6fff)',
+                  color: '#141217',
+                  fontWeight: 800,
+                  border: 'none',
+                  boxShadow: '0 8px 28px rgba(255,157,66,0.18)',
+                  cursor: 'pointer'
+                }}
+              >
+                How to Win
+              </button>
+            </div>
+
+            {howToOpen && (
+              <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%',  maxWidth: '980px', maxHeight: 'calc(100vh - 120px)', zIndex: 900 }}>
+                <div className="how-to-win card" style={{ padding: 22, borderRadius: 12, background: 'rgba(12,12,12,0.995)', border: '1px solid rgba(255,255,255,0.04)', color: '#E8E6E6', fontSize: 16, boxShadow: '0 18px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ color: '#ffd28a' }}>How to Win</strong>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setHowToOpen(false)} style={{ padding: '6px 8px', borderRadius: 8, border: 'none', cursor: 'pointer' }}>Close</button>
+                    </div>
+                  </div>
+                  {!howToMinimized && (
+                    <div style={{ marginTop: 14, overflowY: 'auto', paddingRight: 8, maxHeight: 'calc(100vh - 200px)' }}>
+                      <div>Enter your <span style={{ color: '#4efcfc' }}>secret word</span> now.</div>
+                      {secretThemeEnabled && secretThemeType && (
+                        <div style={{ marginTop: 6 }}>Pick a word that fits the theme: <strong style={{ color: '#ff9d42', textTransform: 'capitalize' }}>{secretThemeType}</strong>.</div>
+                      )}
+                      {state?.starterBonus?.enabled && (
+                        <div style={{ marginTop: 6 }}>Starter bonus: <strong style={{ color: '#4efcfc' }}>+10 wordmoney</strong> if your word uses the letter <strong style={{ color: '#ffd28a' }}>{state?.starterBonus?.value || 'a specific letter'}</strong>.</div>
+                      )}
+                      <div style={{ marginTop: 8 }}>Goal: <span style={{ color: '#ff6fff' }}>guess</span> other players' words with the <strong style={{ color: '#4efcfc' }}>Guess</strong> button. {(state?.powerUpsEnabled || powerUpsEnabled) && (<span style={{ color: '#ff9d42' }}>Curses are enabled to reveal more letters.</span>)}</div>
+                      <div style={{ marginTop: 6 }}><span style={{ color: '#ff6fff' }}>Guess a letter</span> to reveal it, or <span style={{ color: '#4efcfc' }}>guess the whole word</span> if you know it.</div>
+                      {state?.gameMode === 'lastTeamStanding' && (
+                        <div style={{ marginTop: 6 }}>Last Team Standing: <span style={{ color: '#ff6fff' }}>guess opponents' words</span> to eliminate them. {state?.firstWordWins ? <span style={{ color: '#ffd28a' }}>First to guess an opponent wins.</span> : <span style={{ color: '#ffd28a' }}>Guess all opponents’ words to win.</span>}</div>
+                      )}
+                      {state?.gameMode === 'lastOneStanding' && (
+                        <div style={{ marginTop: 6 }}>Last One Standing: <span style={{ color: '#ff6fff' }}>be the last player alive</span> to win.</div>
+                      )}
+                      {(state?.winnerByWordmoney || state?.gameMode === 'money') && (
+                        <div style={{ marginTop: 6 }}>Money mode: <span style={{ color: '#4efcfc' }}>have the most wordmoney</span> to win.</div>
+                      )}
+                      {(typeof state?.ghostReEntryEnabled !== 'undefined' ? state.ghostReEntryEnabled : ghostReEntryEnabled) && (
+                        <div style={{ marginTop: 6 }}>Ghost re-entry: if your word is guessed, you may rejoin <span style={{ color: '#ff9d42' }}>once</span> by guessing a system word shared by ghosts.</div>
+                      )}
+                      {state?.timed && (
+                        <div style={{ marginTop: 6, fontWeight: 700, color: '#ffd28a' }}>Watch the <span style={{ color: '#ff6fff' }}>timer</span>!</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+
+          <div className="submit-bar card" style={{ position: 'fixed', left: 0, bottom: 0, width: '100%',  maxWidth: '980px', boxSizing: 'border-box', zIndex: 201, overflow: 'hidden', display: 'flex', justifyContent: 'space-between', padding: 10 }}>
+         
+              <div>
               <h4 style={{ margin: 0 }}>Submit your secret word</h4>
               {secretThemeEnabled && (
                 <ThemeBadge type={secretThemeType} />
               )}
+              </div>
               {state?.starterBonus?.enabled && (
                 <div style={{ marginTop: 6, fontSize: 13, color: '#B4A3A3' }} title={state?.starterBonus?.description}>
                   +10 bonus wordmoney if: <strong>{state?.starterBonus?.description}</strong>
-                  <div style={{ marginTop: 4, color: '#e3bebeff', fontSize: 12 }}>
+                  <div style={{ marginTop: 4, color: '#e3bebeff', fontSize: 10 }}>
                    Note: All occurrences of this letter in your word will be revealed to other players.</div>
                 </div>
               )}
-              <div className="progress" style={{ marginTop: 8, width: 220 }}>
-                <div className="progress-bar" style={{ width: `${(players.length ? (submittedCount / players.length) * 100 : 0)}%`, background: '#4caf50', height: 10, borderRadius: 6 }} />
-                <div style={{ marginTop: 6, fontSize: 13 }}>{submittedCount} / {players.length} players submitted</div>
-              </div>
+              
               {/* Explain balanced last-team-standing behavior when teams will be unbalanced */}
               {state?.gameMode === 'lastTeamStanding' && (() => {
                 try {
@@ -7300,7 +7555,7 @@ try {
                       const compExtra = state?.starterBonus && state.starterBonus.enabled ? 10 : 0
                       const comp = compBase + compExtra
                       return (
-                        <div style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                        <div style={{ marginTop: 8, fontSize: 10, color: '#666' }}>
                           <strong>Balancing:</strong> Teams will be split approximately {larger} vs {smaller}. The smaller team only needs to eliminate {smaller} player{smaller !== 1 ? 's' : ''} from the larger team to win. At game start the smaller team will be credited <strong>+${comp}</strong> to compensate.
                         </div>
                       )
@@ -7309,7 +7564,7 @@ try {
                 } catch (e) {}
                 return null
               })()}
-            </div>
+            
             <div className="submit-controls">
               {!myHasSubmitted ? (
                 <>
@@ -7354,18 +7609,29 @@ try {
                 <div style={{ padding: '8px 12px' }}>Submitted : waiting for others</div>
               )}
             </div>
-            <div className="submit-waiting">
-              {players.filter(p => !p.hasWord).length > 0 && (
-                <div className="notice" style={{ marginLeft: 12 }}>
-                  <strong>Waiting for:</strong>
-                  <div style={{ marginTop: 8 }}>{players.filter(p => !p.hasWord).map(p => (
-                    <div key={p.id} style={{ marginBottom: 6 }}>
-                      <span className="waiting-dot" style={{ background: p.color || '#FFABAB' }} />{p.name}
+            <div>
+              <div className="submit-waiting">
+                {players.filter(p => !p.hasWord).length > 0 && (
+                  <div
+                    className="notice"
+                    style={{ marginLeft: 12 }}
+                    title={`${Math.max(0, (players.length || 0) - (Number(submittedCount) || 0))} player${((players.length || 0) - (Number(submittedCount) || 0)) === 1 ? '' : 's'} still to submit`}
+                    aria-label={`Waiting for ${Math.max(0, (players.length || 0) - (Number(submittedCount) || 0))} players`}
+                  >
+                    <strong>Waiting for:</strong>
+                    <div className="waiting-list" style={{ marginTop: 8 }}>
+                      {players.filter(p => !p.hasWord).map(p => (
+                        <div key={p.id} style={{ marginBottom: 6 }}>
+                          <span className="waiting-dot" style={{ background: p.color || '#FFABAB' }} />{p.name}
+                        </div>
+                      ))}
                     </div>
-                  ))}</div>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+              </div>
+            
+          </div>
           </div>
         )
       })()}

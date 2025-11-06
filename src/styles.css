@@ -1,3 +1,159 @@
+/* Waiting list in submit bar: fixed height and thin black scrollbar */
+.waiting-list {
+  max-height: 20vh;
+  overflow-y: auto;
+  padding-right: 6px; /* avoid content under scrollbar */
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(0,0,0,0.75) transparent;
+}
+.waiting-list::-webkit-scrollbar {
+  width: 8px;
+}
+.waiting-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.waiting-list::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.75);
+  border-radius: 6px;
+  border: 2px solid transparent;
+}
+
+/* Underworld-themed submit overlay animations */
+.submit-overlay {
+  position: fixed; /* already set inline; this keeps CSS definitions available */
+  inset: 0;
+  pointer-events: auto; /* overlay may capture clicks by default; submit controls sit above it */
+}
+
+.submit-overlay .submit-ghost {
+  position: absolute;
+  width: 260px;
+  height: 160px;
+  border-radius: 50% / 40%;
+  background: radial-gradient(ellipse at 30% 30%, rgba(255,255,255,0.14), rgba(255,255,255,0.02) 40%, transparent 60%);
+  filter: blur(8px);
+  mix-blend-mode: screen;
+  opacity: 0.14;
+  transform: translate3d(0,0,0);
+  will-change: transform, opacity;
+}
+
+.submit-overlay .submit-ghost.ghost-1 {
+  left: 8%;
+  top: 18%;
+  animation: ghost-drift-1 14s linear infinite;
+}
+
+.submit-overlay .submit-ghost.ghost-2 {
+  right: 12%;
+  top: 46%;
+  width: 220px;
+  height: 140px;
+  background: radial-gradient(ellipse at 70% 40%, rgba(255,255,255,0.12), rgba(255,255,255,0.01) 45%, transparent 65%);
+  animation: ghost-drift-2 18s linear infinite;
+  opacity: 0.12;
+}
+
+.submit-overlay .submit-fog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 36vh;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.004));
+  filter: blur(10px) saturate(1.2);
+  opacity: 0.08;
+  animation: fog-sway 24s ease-in-out infinite;
+}
+
+@keyframes ghost-drift-1 {
+  0% { transform: translate3d(0,0,0) scale(1) rotate(0deg); opacity: 0.12 }
+  25% { transform: translate3d(40px,-18px,0) scale(0.98) rotate(-3deg); opacity: 0.16 }
+  50% { transform: translate3d(-24px,22px,0) scale(1.02) rotate(3deg); opacity: 0.12 }
+  75% { transform: translate3d(18px,-6px,0) scale(1) rotate(-1deg); opacity: 0.14 }
+  100% { transform: translate3d(0,0,0) scale(1) rotate(0deg); opacity: 0.12 }
+}
+
+@keyframes ghost-drift-2 {
+  0% { transform: translate3d(0,0,0) scale(1) rotate(0deg); opacity: 0.10 }
+  20% { transform: translate3d(-36px,12px,0) scale(1.02) rotate(2deg); opacity: 0.14 }
+  50% { transform: translate3d(24px,-28px,0) scale(0.98) rotate(-2deg); opacity: 0.11 }
+  80% { transform: translate3d(-8px,6px,0) scale(1) rotate(1deg); opacity: 0.13 }
+  100% { transform: translate3d(0,0,0) scale(1) rotate(0deg); opacity: 0.10 }
+}
+
+@keyframes fog-sway {
+  0% { transform: translateY(0) }
+  50% { transform: translateY(-8px) }
+  100% { transform: translateY(0) }
+}
+
+/* make sure ghosts remain faint on lower-end GPUs */
+@media (prefers-reduced-motion: reduce) {
+  .submit-overlay .submit-ghost,
+  .submit-overlay .submit-fog {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Ghostly prompting phrases inside the submit overlay */
+.submit-overlay .submit-phrases {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.submit-overlay .submit-phrase {
+  position: absolute;
+  /* stronger white for better contrast on black background */
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  text-align: center;
+  /* allow wrapping so long phrases don't get clipped off-screen */
+  white-space: normal;
+  max-width: 84vw;
+  padding: 0 12px; /* small horizontal padding so wrapped text doesn't hit the edge */
+  word-break: break-word;
+  /* use CSS variable to hold fixed horizontal centering; keyframes will include this var so centering isn't lost */
+  --tx: translateX(-50%);
+  transform: var(--tx) translateY(0) scale(1);
+  filter: blur(0.3px);
+  mix-blend-mode: screen;
+  opacity: 0;
+  will-change: transform, opacity;
+  /* brighter, softer glow to improve legibility */
+  text-shadow: 0 12px 32px rgba(0,0,0,0.75), 0 3px 8px rgba(255,255,255,0.06);
+  animation: phrase-fade 9s ease-in-out infinite;
+}
+
+@keyframes phrase-fade {
+  /* Rapid ramp-up to full visibility, held briefly, then fade out */
+  0% { opacity: 0; transform: var(--tx) translateY(8px) scale(0.98); }
+  6% { opacity: 0.48; transform: var(--tx) translateY(4px) scale(1); }
+  18% { opacity: 1; transform: var(--tx) translateY(0) scale(1.02); }
+  48% { opacity: 1; transform: var(--tx) translateY(-4px) scale(1.02); }
+  72% { opacity: 0.26; transform: var(--tx) translateY(-8px) scale(0.995); }
+  100% { opacity: 0; transform: var(--tx) translateY(12px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .submit-overlay .submit-phrase {
+    animation: none !important;
+    opacity: 0.20 !important;
+    transform: none !important;
+  }
+}
+@media (max-width: 520px) {
+  .submit-overlay .submit-phrase { font-size: 18px; max-width: 92vw; padding: 0 8px }
+}
 :root{
   --bg: #0f0f12; /* Deep noir background */
   --accent: #6b4f3b; /* Sepia / detective coat */
@@ -1087,11 +1243,95 @@ body.underworld-body::before {
   100% { transform: translateY(-68vh) translateX(0vw) scale(1.06); opacity: 0 }
 }
 
+/* Ambient ghostly runes that appear in the lobby background while waiting.
+   Very low opacity, gentle vertical drift and staggered delays to feel random.
+   Kept GPU-friendly (opacity + transform) and disabled on small screens. */
+.lobby .ambient-runes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0; /* behind UI */
+  overflow: hidden;
+}
+.lobby .ambient-runes .rune {
+  position: absolute;
+  font-family: serif, system-ui, sans-serif;
+  color: rgba(251, 227, 196, 0.418);
+  opacity: 0;
+  transform: translateY(0) scale(0.98);
+  will-change: transform, opacity;
+  user-select: none;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  text-rendering: optimizeLegibility;
+}
+.lobby .ambient-runes .rune:nth-child(1) { left: 8%;  bottom: 12%; font-size: 20px; animation: rune-fade 10s ease-in-out infinite; animation-delay: 0s }
+.lobby .ambient-runes .rune:nth-child(2) { left: 22%; bottom: 8%;  font-size: 26px; animation: rune-fade 13s ease-in-out infinite; animation-delay: 2.1s }
+.lobby .ambient-runes .rune:nth-child(3) { left: 36%; bottom: 18%; font-size: 18px; animation: rune-fade 9s ease-in-out infinite;  animation-delay: 1s }
+.lobby .ambient-runes .rune:nth-child(4) { left: 50%; bottom: 6%;  font-size: 28px; animation: rune-fade 14s ease-in-out infinite; animation-delay: 3.2s }
+.lobby .ambient-runes .rune:nth-child(5) { left: 66%; bottom: 14%; font-size: 22px; animation: rune-fade 11s ease-in-out infinite; animation-delay: 0.8s }
+.lobby .ambient-runes .rune:nth-child(6) { left: 78%; bottom: 10%; font-size: 20px; animation: rune-fade 12s ease-in-out infinite; animation-delay: 1.8s }
+.lobby .ambient-runes .rune:nth-child(7) { left: 44%; bottom: 22%; font-size: 24px; animation: rune-fade 16s ease-in-out infinite; animation-delay: 4.4s }
+.lobby .ambient-runes .rune:nth-child(8) { left: 90%; bottom: 20%; font-size: 18px; animation: rune-fade 8s ease-in-out infinite;  animation-delay: 2.6s }
+.lobby .ambient-runes .rune:nth-child(9) { left: 48%;  bottom: 7%; font-size: 20px; animation: rune-fade 10s ease-in-out infinite; animation-delay: 0s }
+.lobby .ambient-runes .rune:nth-child(10) { left: 2%; bottom: 68%;  font-size: 26px; animation: rune-fade 13s ease-in-out infinite; animation-delay: 2.1s }
+.lobby .ambient-runes .rune:nth-child(11) { left: 3%; bottom: 8%; font-size: 18px; animation: rune-fade 9s ease-in-out infinite;  animation-delay: 1s }
+.lobby .ambient-runes .rune:nth-child(12) { left: 25%; bottom: 99%;  font-size: 28px; animation: rune-fade 14s ease-in-out infinite; animation-delay: 3.2s }
+.lobby .ambient-runes .rune:nth-child(13) { left: 64%; bottom: 84%; font-size: 22px; animation: rune-fade 11s ease-in-out infinite; animation-delay: 0.8s }
+.lobby .ambient-runes .rune:nth-child(14) { left: 7%; bottom: 41%; font-size: 20px; animation: rune-fade 12s ease-in-out infinite; animation-delay: 1.8s }
+.lobby .ambient-runes .rune:nth-child(15) { left: 84%; bottom: 62%; font-size: 24px; animation: rune-fade 16s ease-in-out infinite; animation-delay: 4.4s }
+.lobby .ambient-runes .rune:nth-child(16) { left: 10%; bottom: 6%; font-size: 18px; animation: rune-fade 8s ease-in-out infinite;  animation-delay: 2.6s }
+
+@keyframes rune-fade {
+  0% { opacity: 0; transform: translateY(0) scale(0.98) }
+  10% { opacity: 0.04 }
+  35% { opacity: 0.10; transform: translateY(-3vh) scale(1.01) }
+  65% { opacity: 0.06; transform: translateY(-6vh) scale(1.02) }
+  95% { opacity: 0.02 }
+ 100% { opacity: 0; transform: translateY(-9vh) scale(1.03) }
+}
+
+@media (max-width: 520px) {
+  .lobby .ambient-runes .rune { display: none }
+}
+
+/* Option 1: CSS-only ghostly symbols (very faint, efficient)
+   Renders pseudo-element glyph clusters that fade and drift gently.
+   This is intentionally ultra-low opacity so it's a mood layer only. */
+.ghostly-symbols {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  /* place above background decorations but below interactive UI cards and modals */
+  z-index: 10;
+  pointer-events: none;
+}
+.ghostly-symbols::after {
+  top: 60%;
+  left: 50%;
+  font-size: 8rem;
+  color: rgba(151, 236, 251, 0.21);
+  animation-delay: 4s;
+}
+
+@keyframes ghostly-flicker {
+  0%, 100% { opacity: 0; transform: translateY(0px) scale(1); }
+  50% { opacity: 0.08; transform: translateY(-5px) scale(1.02); }
+}
+
+/* Disable on narrow viewports to avoid visual clutter */
+@media (max-width: 520px) {
+  .ghostly-symbols { display: none !important }
+}
+
 @media (max-width: 520px) {
   .lobby-smoke .smoke { opacity: 0.09; filter: blur(28px) }
 }
 
-/* Floating souls / wisps for the Lobby phase (scoped to .lobby .ambient-embers) */
+/* Floating souls / wisps for the Lobby phase were removed per user request.
+   The decorative wisps (pseudo-elements on .lobby .ambient-embers) are
+   disabled while ember elements remain enabled. Keeping this block as a
+   no-op makes it easy to re-enable later if desired. */
 .lobby .ambient-embers::before,
 .lobby .ambient-embers::after {
   content: '';
@@ -1099,28 +1339,11 @@ body.underworld-body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background-repeat: no-repeat;
-  /* layered soft radial gradients to simulate drifting souls/wisps */
-  background-image:
-    radial-gradient(circle at 18% 30%, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.00) 20%),
-    radial-gradient(circle at 75% 70%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.00) 16%),
-    radial-gradient(circle at 50% 50%, rgba(255,240,220,0.03) 0%, rgba(255,240,220,0) 30%);
-  opacity: 0.9;
-  mix-blend-mode: screen;
-  animation: souls-drift 16s linear infinite;
-  transform: translateY(0);
-}
-.lobby .ambient-embers::after {
-  opacity: 0.6;
-  filter: blur(18px);
-  animation-duration: 22s;
-  animation-delay: 4s;
-}
-
-@keyframes souls-drift {
-  0% { transform: translateY(0) translateX(0) scale(1); opacity: 0 }
-  10% { opacity: 0.25 }
-  50% { transform: translateY(-18vh) translateX(4vw) scale(1.06); opacity: 0.55 }
-  90% { opacity: 0.18 }
-  100% { transform: translateY(-38vh) translateX(-2vw) scale(1.12); opacity: 0 }
+  /* Wisps disabled: no background, no animation, fully transparent */
+  background: none !important;
+  background-image: none !important;
+  opacity: 0 !important;
+  mix-blend-mode: normal !important;
+  animation: none !important;
+  display: none !important;
 }

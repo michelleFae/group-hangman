@@ -268,17 +268,42 @@ module.exports = async (req, res) => {
             // award the +5 full-word bonus (and double-down stake if applicable),
             // mark the target eliminated, and perform the same bookkeeping as a
             // correct full-word guess. We respect noScore logic above (so if
-            // noScore was true we do not award nor eliminate here).
+            // noScore was true we do not award nor eliminate here.
             try {
               const revealShowBlanks = !!(room && room.revealShowBlanks)
+              // Debug trace to help diagnose why last-letter completion may not fire
+              try {
+                console.info('processGuess: revealShowBlanks check', {
+                  roomId: roomId,
+                  targetId: targetId,
+                  guesser: from,
+                  revealShowBlanks: revealShowBlanks,
+                  word: word,
+                  toAdd: toAdd,
+                  prevRevealed: prevRevealed && prevRevealed.slice ? prevRevealed.slice() : prevRevealed
+                })
+              } catch (e) {}
+
               if (revealShowBlanks && !noScore) {
                 // compute unique letters in the target word and in the updated revealed array
                 const wordUnique = Array.from(new Set((word || '').split(''))).map(x => (x || '').toString().toLowerCase())
+                // compute what was revealed BEFORE this guess
+                const prevRevealedBefore = Array.isArray(target.revealed) ? Array.from(new Set(target.revealed.map(x => (x || '').toString().toLowerCase()))) : []
                 const revealedUnique = Array.from(new Set((prevRevealed || []).map(x => (x || '').toString().toLowerCase())))
                 const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
+                // number of unique letters that were previously unrevealed prior to this guess
+                const unrevealedBeforeCount = wordUnique.filter(ch => !prevRevealedBefore.includes(ch)).length
+
+                // Debug details for the computed sets
+                try {
+                  console.info('processGuess: reveal sets', { wordUnique, revealedUnique, allRevealed, unrevealedBeforeCount })
+                } catch (e) {}
+
                 if (allRevealed) {
-                  // award +5 for guessing the whole word
-                  hangDeltas[from] = (hangDeltas[from] || 0) + 5
+                  // award +5 plus 2 * every previously unrevealed unique letter
+                  const bonusForUnrevealed = 2 * unrevealedBeforeCount
+                  const awardAmount = 5 + bonusForUnrevealed
+                  hangDeltas[from] = (hangDeltas[from] || 0) + awardAmount
 
                   // If the guesser had an active Double Down, also award their stake back
                   const dd2 = guesser.doubleDown
@@ -463,8 +488,17 @@ module.exports = async (req, res) => {
         const uniqueLetters = Array.from(new Set(targetWord.split('')))
         updates[`players/${targetId}/revealed`] = uniqueLetters
 
-        // correct word: award +5 as a delta.
-        hangDeltas[from] = (hangDeltas[from] || 0) + 5
+        // correct word: award +5 plus 2 * every previously unrevealed unique letter
+        try {
+          const wordUnique = Array.from(new Set((targetWord || '').split(''))).map(x => (x || '').toString().toLowerCase())
+          const existingRevealed = Array.isArray(target.revealed) ? Array.from(new Set(target.revealed.map(x => (x || '').toString().toLowerCase()))) : []
+          const unrevealedBeforeCount = wordUnique.filter(ch => !existingRevealed.includes(ch)).length
+          const awardAmount = 5 + (2 * unrevealedBeforeCount)
+          hangDeltas[from] = (hangDeltas[from] || 0) + awardAmount
+        } catch (e) {
+          // fallback to legacy simple award
+          hangDeltas[from] = (hangDeltas[from] || 0) + 5
+        }
 
         // If the guesser had an active Double Down, also award their stake back on a correct full-word guess
         const dd = guesser.doubleDown
@@ -867,7 +901,38 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
       const { roomId, buyerId, targetId } = context.params || {}
       const val = snap.val()
       if (!val || !val.powerId) return null
-      try { if (val.powerId !== 'mind_leech') return null } catch (e) { return null }
+
+      // Derive a standardized `found` array from possible result shapes so we
+      // can handle multiple power-ups that reveal letters (not just mind_leech).
+      // Supported shapes:
+      // - result.found: [{letter, count}, ...]
+      // - result.letter (single letter)
+      // - result.last (single letter)
+      // - result.letters: ['a','b'] (array of letters)
+      // - result.full: the full word string (treat as reveal of all unique letters)
+      let derivedFound = []
+      try {
+        const r = val.result || {}
+        if (Array.isArray(r.found) && r.found.length > 0) {
+          derivedFound = r.found.map(f => ({ letter: (f.letter || f.L || '').toString().toLowerCase(), count: Number(f.count || 0) || 0 })).filter(f => f.letter && f.count > 0)
+        } else if (r.letter) {
+          derivedFound = [{ letter: (r.letter || '').toString().toLowerCase(), count: 1 }]
+        } else if (r.last) {
+          derivedFound = [{ letter: (r.last || '').toString().toLowerCase(), count: 1 }]
+        } else if (Array.isArray(r.letters) && r.letters.length > 0) {
+          derivedFound = r.letters.map(l => ({ letter: (l || '').toString().toLowerCase(), count: 1 })).filter(x => x.letter)
+        } else if (r.full) {
+          // If the power-up returned the full word in the payload, convert it to unique-letter counts
+          const w = (r.full || '').toString().toLowerCase()
+          if (w) {
+            const map = {}
+            for (const ch of w) map[ch] = (map[ch] || 0) + 1
+            derivedFound = Object.keys(map).map(k => ({ letter: k, count: map[k] }))
+          }
+        }
+      } catch (e) { derivedFound = [] }
+
+      if (!derivedFound || derivedFound.length === 0) return null
 
       const roomRef = admin.database().ref(`/rooms/${roomId}`)
       await roomRef.transaction(curr => {
@@ -879,11 +944,14 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
         if (!curr.players[buyerId]) curr.players[buyerId] = buyer
         if (!curr.players[targetId]) curr.players[targetId] = target
 
-        const found = (val && val.result && Array.isArray(val.result.found)) ? val.result.found : []
+        const found = derivedFound
+        
         if (!found || found.length === 0) return curr
 
-        const existing = Array.isArray(target.revealed) ? target.revealed.slice() : []
-        const existingSet = new Set((existing || []).map(x => (x || '').toString().toLowerCase()))
+  const existing = Array.isArray(target.revealed) ? target.revealed.slice() : []
+  // snapshot of what was revealed BEFORE applying this power-up's found letters
+  const existingBefore = Array.isArray(target.revealed) ? Array.from(new Set(target.revealed.map(x => (x || '').toString().toLowerCase()))) : []
+  const existingSet = new Set((existing || []).map(x => (x || '').toString().toLowerCase()))
 
         const prevHits = (buyer.privateHits && buyer.privateHits[targetId]) ? (buyer.privateHits[targetId].slice ? buyer.privateHits[targetId].slice() : JSON.parse(JSON.stringify(buyer.privateHits[targetId] || '[]'))) : []
         const prevHitsMap = {}
@@ -957,23 +1025,37 @@ if (functions && functions.database && typeof functions.database.ref === 'functi
           }
 
           // If the room is configured to treat the last revealed blank as a full-word
-          // guess (revealShowBlanks), detect whether this Mind Leech reveal completed
-          // the set of unique letters for the target's word. If so, treat this as a
-          // whole-word reveal: award the +5 bonus to the buyer, mark the target
-          // eliminated, normalize revealed to unique letters, and perform the same
-          // bookkeeping as a full-word guess so clients react consistently.
+          // guess (revealShowBlanks), detect whether this Mind Leech (or other PU)
+          // reveal completed the set of unique letters for the target's word. If so,
+          // treat this as a whole-word reveal: award the +5 bonus to the buyer,
+          // mark the target eliminated, normalize revealed to unique letters, and
+          // perform the same bookkeeping as a full-word guess so clients react
+          // consistently. Add debug traces to help diagnose cases where this
+          // doesn't trigger as expected.
           try {
             const revealShowBlanks = !!(curr && curr.revealShowBlanks)
-            if (revealShowBlanks) {
-              const word = (curr.players[targetId] && curr.players[targetId].word) ? (curr.players[targetId].word || '') : ''
-              const wordUnique = Array.from(new Set((word || '').split(''))).map(x => (x || '').toString().toLowerCase())
-              const revealedUnique = Array.from(new Set((existing || []).map(x => (x || '').toString().toLowerCase())))
-              const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
-              if (allRevealed) {
-                // award +5 for whole-word completion
-                const bonus = 5
+            // Debug trace for Function trigger reveal processing
+            try {
+              console.info('handleMindLeech: revealShowBlanks check', { roomId, buyerId, targetId, revealShowBlanks, found, actuallyAdded })
+            } catch (e) {}
+
+              if (revealShowBlanks) {
+                const word = (curr.players[targetId] && curr.players[targetId].word) ? (curr.players[targetId].word || '') : ''
+                const wordUnique = Array.from(new Set((word || '').split(''))).map(x => (x || '').toString().toLowerCase())
+                const revealedUnique = Array.from(new Set((existing || []).map(x => (x || '').toString().toLowerCase())))
+                const allRevealed = wordUnique.length > 0 && wordUnique.every(ch => revealedUnique.includes(ch))
+                // number of unique letters that were previously unrevealed before applying this power-up
+                const unrevealedBeforeCount = wordUnique.filter(ch => !existingBefore.includes(ch)).length
+                try {
+                  console.info('handleMindLeech: reveal sets', { roomId, buyerId, targetId, wordUnique, revealedUnique, allRevealed, unrevealedBeforeCount })
+                } catch (e) {}
+
+                if (allRevealed) {
+                // award +5 plus 2 * every previously unrevealed unique letter
+                const bonus = 5 + (2 * unrevealedBeforeCount)
                 awardTotal += bonus
 
+                // apply award to buyer (respect team mode)
                 // apply award to buyer (respect team mode)
                 try {
                   if ((curr && curr.gameMode) === 'lastTeamStanding' && curr.players[buyerId] && curr.players[buyerId].team) {
