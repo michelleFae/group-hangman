@@ -74,7 +74,7 @@ const BASE = [
   'kakadu','kabosu','kinkan','karonda','kokum','keitt'
   ,
   // additional single-word culinary / edible fruits containing 'i' (no spaces)
-  'ilama','graviola','iceapple','jicama','kaki'
+  'ilama','graviola','iceapple','jicama','kaki','redcurrant'
 ]
 
 
@@ -83,6 +83,7 @@ const IRREGULARS = {
   mango: 'mangoes',
   potato: 'potatoes',
   tomato: 'tomatoes',
+  
 }
 
 function pluralize(word) {

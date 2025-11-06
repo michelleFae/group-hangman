@@ -343,7 +343,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       dbUpdate(roomRef, { freeBubble: null }).catch(() => {})
     } catch (e) {}
   }, [phase, state && state.freeBubble, state && state.hostId, roomId])
-  const [firstWordWins, setFirstWordWins] = useState(true)
+  const [firstWordWins, setFirstWordWins] = useState(false)
   // Mode badge info popover
   const [showModeInfo, setShowModeInfo] = useState(false)
   const modeInfoRef = useRef(null)
@@ -707,7 +707,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
 
     // sync lastTeamStanding 'firstWordWins' setting (default true)
     try {
-      setFirstWordWins(typeof state?.firstWordWins === 'undefined' ? true : !!state.firstWordWins)
+      // Default to false when the authoritative room flag is not present.
+      setFirstWordWins(typeof state?.firstWordWins === 'undefined' ? false : !!state.firstWordWins)
     } catch (e) {}
 
   // sync Word Seeker settings if present
@@ -7544,7 +7545,7 @@ try {
               )}
               
               {/* Explain balanced last-team-standing behavior when teams will be unbalanced */}
-              {state?.gameMode === 'lastTeamStanding' && (() => {
+              {state?.gameMode === 'lastTeamStanding' && state?.firstWordWins && (() => {
                 try {
                   const total = (players || []).length || 0
                   if (total >= 2) {
@@ -7557,6 +7558,26 @@ try {
                       return (
                         <div style={{ marginTop: 8, fontSize: 10, color: '#666' }}>
                           <strong>Balancing:</strong> Teams will be split approximately {larger} vs {smaller}. The smaller team only needs to eliminate {smaller} player{smaller !== 1 ? 's' : ''} from the larger team to win. At game start the smaller team will be credited <strong>+${comp}</strong> to compensate.
+                        </div>
+                      )
+                    }
+                  }
+                } catch (e) {}
+                return null
+              })()}
+              {state?.gameMode === 'lastTeamStanding' && !(state?.firstWordWins) && (() => {
+                try {
+                  const total = (players || []).length || 0
+                  if (total >= 2) {
+                    const larger = Math.ceil(total / 2)
+                    const smaller = Math.floor(total / 2)
+                    if (larger !== smaller) {
+                      const compBase = (typeof state?.startingWordmoney === 'number') ? Number(state.startingWordmoney) : Number(startingWordmoney || 0)
+                      const compExtra = state?.starterBonus && state.starterBonus.enabled ? 10 : 0
+                      const comp = compBase + compExtra
+                      return (
+                        <div style={{ marginTop: 8, fontSize: 10, color: '#666' }}>
+                          <strong>Balancing:</strong> Teams will be split approximately {larger} vs {smaller}. At game start the smaller team will be credited <strong>+${comp}</strong> to compensate.
                         </div>
                       )
                     }
