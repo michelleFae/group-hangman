@@ -79,7 +79,10 @@ const BASE = [
 
 
 const IRREGULARS = {
-  cantaloupe: 'cantaloupes'
+  cantaloupe: 'cantaloupes',
+  mango: 'mangoes',
+  potato: 'potatoes',
+  tomato: 'tomatoes',
 }
 
 function pluralize(word) {
