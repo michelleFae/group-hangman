@@ -74,7 +74,20 @@ const BASE = [
   'kakadu','kabosu','kinkan','karonda','kokum','keitt'
   ,
   // additional single-word culinary / edible fruits containing 'i' (no spaces)
-  'ilama','graviola','iceapple','jicama','kaki','redcurrant'
+  'ilama','graviola','iceapple','jicama','kaki','redcurrant','voavanga','vanilla','imbu',
+  'olallieberry','pitanga','youngberry','salmonberry','mayapple','oroblanco','beachplum','maypop',
+  'yantok', 'yamamomo', 'acai',
+  'gourd', 'wani', 'toyon', 'totara', 'thimbleberry', 'tanjong', 'monkfruit',
+  'granadilla', 'soncoya', 'shipova', 'saskatoonberry', 'saguaro', 'sageretia', 'safou', 'roan', 'myrtle', 'bramble', 'rollinaia', 'rimu', 'riberry', 'quince', 'quandong',
+  // user-requested variants and culinary fruits
+  'mombin', 'pupunh', 'pulsan', 'pommerac', 'pommecythere', 'pomcite', 'pistatio', 'nutmeg', 'nungu', 'noni',
+  'nere', 'neem', 'nageia', 'naartjie', 'muskmelon', 'muscadine', 'muntries', 'mindu', 'munydjudj', 'morinda', 'monstera', 'midyim', 'melinjo', 'mdelar', 'manoao',
+  // added per user request (single-word entries)
+  'mandarin','madrono','mablo','lapsi','lakoocha','jutjera','kundong','korlan','kitembilla','keule','karkalla','kapok','kandis','kahikatea','imbe',
+  'cherimoya','chnet','chmpedak','champedak','che','cudrania','zhe','cudrang','chayote','charicheulo','ceriman','cawesh','carob','cardon','cassabanana','carambola','canistel','calamansi','calamondin','caimito','buffaloberry','bowuila','bolwarra','biriba','bilimbi','bilberry','whortleberry','bignay','bearberry','batuan','barbadine','bael','bacuri','bacupari','babaco',
+  'guavaberry','rumberry','guarana','guanabana','grumichama','greengage','goumi','gooseberry','genip','gambooge','gac',
+  'jeijoa','falberry','elderberry','duku','pitaya','doubah','dabai','date','cupuacu','crowberry','cranberry','cocona','citron','chokecherry','chokeberry','jujube',
+  'atemoya','arhat','araza','annona','acai','assai','abiu','ackee','acerola','ambarella'
 ]
 
 
