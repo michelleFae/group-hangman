@@ -705,7 +705,7 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
       } catch (e) {}
     }
 
-    // sync lastTeamStanding 'firstWordWins' setting (default true)
+    // sync lastTeamStanding 'firstWordWins' setting (default false)
     try {
       // Default to false when the authoritative room flag is not present.
       setFirstWordWins(typeof state?.firstWordWins === 'undefined' ? false : !!state.firstWordWins)
@@ -2155,11 +2155,11 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
         }
       } catch (e) {}
       // If the mode is being changed to lastTeamStanding and firstWordWins is unset,
-      // initialize it to true for sensible default behaviour.
+      // initialize it to false for sensible default behaviour.
       try {
         if (safe.gameMode === 'lastTeamStanding') {
           if (typeof (state && state.firstWordWins) === 'undefined' || state.firstWordWins === null) {
-            safe.firstWordWins = true
+            safe.firstWordWins = false
           }
         }
       } catch (e) {}
