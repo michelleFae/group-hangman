@@ -5168,7 +5168,32 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <input className="powerup-input" id={`powerup_${p.id}_stake`} name={`powerup_${p.id}_stake`} placeholder="stake" value={powerUpStakeValueRef.current} onChange={e => { try { setPowerUpStakeValueRef.current && setPowerUpStakeValueRef.current(e.target.value) } catch (e) {} }} disabled={isLobby || stateNow?.phase === 'wordseeker_playing'} />
+                              <input
+                                className="powerup-input"
+                                id={`powerup_${p.id}_stake`}
+                                name={`powerup_${p.id}_stake`}
+                                placeholder="stake"
+                                // ensure we always bind a string so the input doesn't become uncontrolled
+                                value={(powerUpStakeValueRef.current || '').toString()}
+                                // update the ref synchronously so the stable modal render sees the
+                                // new character immediately (avoids dropped characters when state
+                                // is updated asynchronously via setState + effect)
+                                onChange={e => {
+                                  try {
+                                    const v = e && e.target ? e.target.value : ''
+                                    // update ref immediately for synchronous read during render
+                                    powerUpStakeValueRef.current = v
+                                    // then update state so the rest of the app stays in sync
+                                    setPowerUpStakeValueRef.current && setPowerUpStakeValueRef.current(v)
+                                  } catch (e) {}
+                                }}
+                                // mobile numeric keypad
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                // allow a reasonable number of digits (change if you want larger)
+                                maxLength={6}
+                                disabled={isLobby || stateNow?.phase === 'wordseeker_playing'}
+                              />
                               <button className="powerup-buy" disabled={isLobby || powerUpLoadingRef.current || buyerBalance < displayPrice || stakeInvalid || stakeTooLarge || stateNow?.phase === 'wordseeker_playing' || !isMyTurn} onClick={() => { try { purchasePowerUpRef.current && purchasePowerUpRef.current(p.id, { stake: powerUpStakeValueRef.current }) } catch (e) {} }}>{powerUpLoadingRef.current ? '...' : 'Buy'}</button>
                             </div>
                             {stakeInvalid && (
