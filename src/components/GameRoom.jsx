@@ -1120,6 +1120,16 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
   // whether the viewer is the current turn player
   const isMyTurnNow = state && state.turnOrder && typeof state.currentTurnIndex === 'number' && state.turnOrder[state.currentTurnIndex] === myId
 
+  // Persist a single encouragement phrase for the duration of the current turn.
+  // We store it in a ref and only regenerate when the authoritative currentTurnId changes.
+  const turnEncouragementRef = useRef(getRandomEncouragementPhrase())
+  useEffect(() => {
+    try {
+      // when the turn player changes, pick a fresh phrase
+      turnEncouragementRef.current = getRandomEncouragementPhrase()
+    } catch (e) {}
+  }, [currentTurnId])
+
   // Host-runner: when it's a bot player's turn, the host schedules the bot to act
   useEffect(() => {
     try {
@@ -6934,7 +6944,7 @@ try {
         const currentPlayer = (players || []).find(p => p.id === currentTurnId) || {}
         const isViewerCurrent = currentTurnId && myId && currentTurnId === myId
         const displayName = currentPlayer.name || (currentTurnId || '-')
-        const randomPhrase = getRandomEncouragementPhrase()
+  const randomPhrase = (turnEncouragementRef.current && typeof turnEncouragementRef.current === 'string') ? turnEncouragementRef.current : getRandomEncouragementPhrase()
         const titleText = isViewerCurrent ? 'Your turn' : `It is ${displayName}'s turn`
         const cardBase = { display: 'flex', alignItems: 'center', gap: 18, padding: '12px 18px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.96))' }
         const glowStyle = isViewerCurrent ? { boxShadow: '0 12px 36px rgba(255,214,102,0.28), 0 6px 18px rgba(0,0,0,0.6)' } : { boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }
