@@ -21,6 +21,46 @@ import { db } from '../firebase'
 import { ref as dbRef, get as dbGet, update as dbUpdate, runTransaction } from 'firebase/database'
 import { buildRoomUrl } from '../utils/url'
 
+// Helper: return a random underworld-themed encouragement prompting the current
+// player to guess a letter of their opponent's word.
+function getRandomEncouragementPhrase() {
+  try {
+    const phrases = [
+      'Try guessing a letter!',
+      'Guess fast, the souls are watching!',
+      'I sense a letter in the shadows...',
+      'Your fate awaits a letter guess!',
+      'Dare to uncover a letter from the abyss?',
+      'What letter lurks in the darkness?',
+      'Welcome to my underworld, where it gets quite dark. The Swift Reaper says so.',
+      'Find a letter before the spirits grow restless.',
+      'Dare to guess a letter from beyond.',
+      'I invite you to guess a letter, mortal.',
+      'Peer into the void and guess a letter!',
+      'Gotta use those curses too!',
+      'Tombstone, tombstone on the wall, whose letter will I call?',
+      'Gravestone in the mist, whose guess will twist?',
+      'From the crypt, a letter drifts. Guess it if you dare!',
+      'May the fates be ever in your favor.',
+      'Speak now, or forever hold your letter.',
+      'One letter to rule your fate.',
+      'May the odds be ever in your afterlife.',
+      "The reaper's waiting for your letter.",
+      'A letter from the beyond beckons you.',
+      'The spirits whisper your next letter...',
+      'Keep calm and guess on.',
+      "Frankly, my soul, I don't give a glyph.",
+      "In the underworld, every letter counts.",
+      'A letter a day keeps the reaper away.',
+      'Guess a letter, or join the restless dead!',
+      'Abandon hope, all who misspell here.'
+    ]
+    return phrases[Math.floor(Math.random() * phrases.length)]
+  } catch (e) {
+    return 'try a letter!'
+  }
+}
+
 // Small, memoized component to isolate starting balance and min-word-size controls.
 // This keeps frequent local edits (typing) from re-rendering the entire Settings UI.
 
