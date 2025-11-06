@@ -7481,7 +7481,7 @@ try {
                   cursor: 'pointer'
                 }}
               >
-                How to Win
+                How to Play
               </button>
             </div>
 
@@ -7489,7 +7489,7 @@ try {
               <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '100%',  maxWidth: '980px', maxHeight: 'calc(100vh - 120px)', zIndex: 900 }}>
                 <div className="how-to-win card" style={{ padding: 22, borderRadius: 12, background: 'rgba(12,12,12,0.995)', border: '1px solid rgba(255,255,255,0.04)', color: '#E8E6E6', fontSize: 16, boxShadow: '0 18px 60px rgba(0,0,0,0.6)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong style={{ color: '#ffd28a' }}>How to Win</strong>
+                    <strong style={{ color: '#ffd28a' }}>How to Play</strong>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => setHowToOpen(false)} style={{ padding: '6px 8px', borderRadius: 8, border: 'none', cursor: 'pointer' }}>Close</button>
                     </div>
