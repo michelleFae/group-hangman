@@ -1019,7 +1019,15 @@ body.my-turn-body .submit-bar { box-shadow: 0 10px 30px rgba(0,0,0,0.8) !importa
 
  /* Ensure buttons inside the shop modal do not trigger card hover transforms */
 .shop-modal .card:hover, .shop-modal .card { transform: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important }
-.powerup-input { width: 46px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04) }
+.powerup-input { width: 46px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); box-sizing: border-box }
+
+/* Ensure the double-down stake input has a fixed width wide enough for 3 digits */
+#powerup_double_down_stake.powerup-input {
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+  box-sizing: border-box;
+}
 
 /* ensure the header stands out when my-turn-body is active */
 body.my-turn-body .shop-modal .shop-modal-dialog .shop-modal-header { background: linear-gradient(90deg, #6b4f3b, #5a6b7c) }
