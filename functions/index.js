@@ -432,12 +432,111 @@ exports.processGuess = functions.database
       }
     }
 
-    // advance turn. If we modified turnOrder above (e.g., removed an eliminated player) prefer that.
-    const activeTurnOrder = updates.turnOrder || room.turnOrder || []
-    if (activeTurnOrder.length > 0) {
-      const nextIndex = (currentIndex + 1) % activeTurnOrder.length
-      updates[`currentTurnIndex`] = nextIndex
-      updates[`currentTurnStartedAt`] = Date.now()
+    // advance turn only if we haven't already set currentTurnIndex above
+    // if we modified the turnOrder (e.g. eliminated a player) prefer that new order
+    if (!Object.prototype.hasOwnProperty.call(updates, 'currentTurnIndex')) {
+      const activeTurnOrder = updates.turnOrder || room.turnOrder || []
+      try {
+        if ((room && room.gameMode) === 'lastTeamStanding') {
+          // Build per-team queues from authoritative players snapshot
+          const playersMap = Object.assign({}, players)
+          const teams = {}
+          const unteamed = []
+          Object.keys(playersMap || {}).forEach(pid => {
+            try {
+              const p = playersMap[pid] || {}
+              if (p.eliminated) return
+              const t = p.team || null
+              if (t) {
+                teams[t] = teams[t] || []
+                teams[t].push(pid)
+              } else {
+                unteamed.push(pid)
+              }
+            } catch (e) {}
+          })
+          const teamNames = Object.keys(teams)
+          if (teamNames.length === 2) {
+            updates[`turnOrderTeams/${teamNames[0]}`] = teams[teamNames[0]]
+            updates[`turnOrderTeams/${teamNames[1]}`] = teams[teamNames[1]]
+            const existingTeamIndices = (room && room.teamTurnIndex) ? (room.teamTurnIndex || {}) : {}
+            let idxA = typeof existingTeamIndices[teamNames[0]] === 'number' ? existingTeamIndices[teamNames[0]] : 0
+            let idxB = typeof existingTeamIndices[teamNames[1]] === 'number' ? existingTeamIndices[teamNames[1]] : 0
+            let lastTeamPlayed = null
+            try {
+              if (room && room.lastTeamPlayed) lastTeamPlayed = room.lastTeamPlayed
+              else if (Array.isArray(room && room.turnOrder) && typeof room.currentTurnIndex === 'number') {
+                const curPid = (room.turnOrder || [])[room.currentTurnIndex]
+                if (curPid && playersMap[curPid] && playersMap[curPid].team) lastTeamPlayed = playersMap[curPid].team
+              }
+            } catch (e) {}
+            const nextTeam = lastTeamPlayed && teamNames.includes(lastTeamPlayed) ? teamNames.find(t => t !== lastTeamPlayed) : teamNames[0]
+            let nextPlayer = null
+            if (nextTeam === teamNames[0]) {
+              if ((teams[teamNames[0]] || []).length > 0) {
+                nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+              } else if ((teams[teamNames[1]] || []).length > 0) {
+                nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+              }
+            } else {
+              if ((teams[teamNames[1]] || []).length > 0) {
+                nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+              } else if ((teams[teamNames[0]] || []).length > 0) {
+                nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+              }
+            }
+
+            // build compatibility interleaved
+            const a = teams[teamNames[0]] || []
+            const b = teams[teamNames[1]] || []
+            const total = a.length + b.length
+            const inter = []
+            const seen = new Set()
+            let j = 0
+            while (inter.length < total) {
+              if (a.length > 0) {
+                const cand = a[j % a.length]
+                if (!seen.has(cand)) { inter.push(cand); seen.add(cand) }
+              }
+              if (inter.length >= total) break
+              if (b.length > 0) {
+                const cand2 = b[j % b.length]
+                if (!seen.has(cand2)) { inter.push(cand2); seen.add(cand2) }
+              }
+              j++
+            }
+            const interleaved = inter.concat(unteamed.filter(p => !seen.has(p)))
+            updates[`turnOrder`] = interleaved
+            const newTeamIdxObj = Object.assign({}, existingTeamIndices)
+            newTeamIdxObj[teamNames[0]] = idxA
+            newTeamIdxObj[teamNames[1]] = idxB
+            updates[`teamTurnIndex`] = newTeamIdxObj
+            const lastPlayed = nextTeam ? teamNames.find(t => t !== nextTeam) : null
+            if (lastPlayed) updates['lastTeamPlayed'] = lastPlayed
+            const nextIdx = interleaved.indexOf(nextPlayer)
+            updates[`currentTurnIndex`] = (nextIdx !== -1) ? nextIdx : 0
+            updates[`currentTurnStartedAt`] = Date.now()
+          } else {
+            if (activeTurnOrder.length > 0) {
+              const nextIndex = (currentIndex + 1) % activeTurnOrder.length
+              updates[`currentTurnIndex`] = nextIndex
+              updates[`currentTurnStartedAt`] = Date.now()
+            }
+          }
+        } else {
+          if (activeTurnOrder.length > 0) {
+            const nextIndex = (currentIndex + 1) % activeTurnOrder.length
+            updates[`currentTurnIndex`] = nextIndex
+            updates[`currentTurnStartedAt`] = Date.now()
+          }
+        }
+      } catch (e) {
+        // ignore errors and fallback later
+      }
     }
 
     // if we still have the baseline hangIncrement for the guesser, apply it as a delta

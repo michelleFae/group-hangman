@@ -766,7 +766,12 @@ export default function PlayerCircle({
                 {(phase !== 'lobby' && phase !== 'submit') ? (
                   <>
                     {showGhostReenter && typeof onGhostReenter === 'function' && (
-                      <button onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }} disabled={!!ghostReenterDisabled} style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}>
+                      <button
+                        className="action-button ghost-reenter"
+                        onClick={(e) => { e.stopPropagation(); if (ghostReenterDisabled) return; try { onGhostReenter() } catch (er) { console.warn('onGhostReenter failed', er) } }}
+                        disabled={!!ghostReenterDisabled}
+                        style={{ fontSize: 13, padding: '6px 8px', borderRadius: 8 }}
+                      >
                         Re-enter as Ghost
                       </button>
                     )}

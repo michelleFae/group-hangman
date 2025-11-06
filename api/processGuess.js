@@ -645,33 +645,168 @@ module.exports = async (req, res) => {
     // advance turn only if we haven't already set currentTurnIndex above
     // if we modified the turnOrder (e.g. eliminated a player) prefer that new order
     if (!Object.prototype.hasOwnProperty.call(updates, 'currentTurnIndex')) {
-      const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (room.turnOrder || [])
-      if (effectiveTurnOrder.length > 0) {
-        const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
-        updates[`currentTurnIndex`] = nextIndex
-        updates[`currentTurnStartedAt`] = Date.now()
-        // award +1 wordmoney to the player whose turn just started
-        try {
-          const nextOrder = (updates && Object.prototype.hasOwnProperty.call(updates, 'turnOrder')) ? updates['turnOrder'] : effectiveTurnOrder
-          const nextPlayer = nextOrder[nextIndex]
-          // In team mode, credit the team's wallet; otherwise credit the player
-          const nextPlayerObj = players && players[nextPlayer] ? players[nextPlayer] : null
-          if ((room && room.gameMode) === 'lastTeamStanding' && nextPlayerObj && nextPlayerObj.team) {
-            const t = nextPlayerObj.team
-            const prevTeamHang = (room.teams && room.teams[t] && typeof room.teams[t].wordmoney === 'number') ? room.teams[t].wordmoney : 0
-            updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeamHang) + 1)
-            // still write a per-player lastGain so clients show the visible delta
-            updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
-          } else {
-            const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
-            updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
-            updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+      try {
+        const effectiveTurnOrder = updates.hasOwnProperty('turnOrder') ? updates['turnOrder'] : (room.turnOrder || [])
+        // Special handling for lastTeamStanding: keep two per-team queues and separate indices
+        if ((room && room.gameMode) === 'lastTeamStanding') {
+          try {
+            // Build per-team queues from the authoritative players snapshot (respect eliminations)
+            const playersMap = Object.assign({}, players)
+            const teams = {}
+            const unteamed = []
+            Object.keys(playersMap || {}).forEach(pid => {
+              try {
+                const p = playersMap[pid] || {}
+                if (p.eliminated) return
+                const t = p.team || null
+                if (t) {
+                  teams[t] = teams[t] || []
+                  teams[t].push(pid)
+                } else {
+                  unteamed.push(pid)
+                }
+              } catch (e) {}
+            })
+
+            const teamNames = Object.keys(teams)
+            if (teamNames.length === 2) {
+              // persist the per-team turnOrder arrays so clients and other flows can read them
+              updates[`turnOrderTeams/${teamNames[0]}`] = teams[teamNames[0]]
+              updates[`turnOrderTeams/${teamNames[1]}`] = teams[teamNames[1]]
+
+              // read existing per-team indices from room if present, else default to 0
+              const existingTeamIndices = (room && room.teamTurnIndex) ? (room.teamTurnIndex || {}) : {}
+              let idxA = typeof existingTeamIndices[teamNames[0]] === 'number' ? existingTeamIndices[teamNames[0]] : 0
+              let idxB = typeof existingTeamIndices[teamNames[1]] === 'number' ? existingTeamIndices[teamNames[1]] : 0
+
+              // Determine which team played last. Prefer explicit room.lastTeamPlayed if present,
+              // otherwise infer from currentTurnIndex and room.turnOrder.
+              let lastTeamPlayed = null
+              try {
+                if (room && room.lastTeamPlayed) lastTeamPlayed = room.lastTeamPlayed
+                else if (Array.isArray(room && room.turnOrder) && typeof room.currentTurnIndex === 'number') {
+                  const curPid = (room.turnOrder || [])[room.currentTurnIndex]
+                  if (curPid && playersMap[curPid] && playersMap[curPid].team) lastTeamPlayed = playersMap[curPid].team
+                }
+              } catch (e) {}
+
+              const nextTeam = lastTeamPlayed && teamNames.includes(lastTeamPlayed) ? teamNames.find(t => t !== lastTeamPlayed) : teamNames[0]
+
+              // Choose next player from the selected team, advancing that team's index (with wrap-around).
+              let nextPlayer = null
+              if (nextTeam === teamNames[0]) {
+                if ((teams[teamNames[0]] || []).length > 0) {
+                  nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                  idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+                } else if ((teams[teamNames[1]] || []).length > 0) {
+                  nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                  idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+                }
+              } else {
+                if ((teams[teamNames[1]] || []).length > 0) {
+                  nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                  idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+                } else if ((teams[teamNames[0]] || []).length > 0) {
+                  nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                  idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+                }
+              }
+
+              // Build a compatibility interleaved turnOrder (A0,B0,A1,B1,...) so legacy code still reads a single array
+              const a = teams[teamNames[0]] || []
+              const b = teams[teamNames[1]] || []
+              const total = a.length + b.length
+              const inter = []
+              const seen = new Set()
+              let j = 0
+              while (inter.length < total) {
+                if (a.length > 0) {
+                  const cand = a[j % a.length]
+                  if (!seen.has(cand)) { inter.push(cand); seen.add(cand) }
+                }
+                if (inter.length >= total) break
+                if (b.length > 0) {
+                  const cand2 = b[j % b.length]
+                  if (!seen.has(cand2)) { inter.push(cand2); seen.add(cand2) }
+                }
+                j++
+              }
+              const interleaved = inter.concat(unteamed.filter(p => !seen.has(p)))
+              updates[`turnOrder`] = interleaved
+
+              // persist updated per-team indices as a single object for simplicity
+              const newTeamIdxObj = Object.assign({}, existingTeamIndices)
+              newTeamIdxObj[teamNames[0]] = idxA
+              newTeamIdxObj[teamNames[1]] = idxB
+              updates[`teamTurnIndex`] = newTeamIdxObj
+
+              // record which team played last (the opposite of nextTeam) so subsequent advances alternate
+              const lastPlayed = nextTeam ? teamNames.find(t => t !== nextTeam) : null
+              if (lastPlayed) updates['lastTeamPlayed'] = lastPlayed
+
+              // set currentTurnIndex to index of nextPlayer in interleaved (compatibility) and stamp
+              const nextIdx = interleaved.indexOf(nextPlayer)
+              updates[`currentTurnIndex`] = (nextIdx !== -1) ? nextIdx : 0
+              updates[`currentTurnStartedAt`] = Date.now()
+
+              // award +1 to the next acting player (team-aware)
+              try {
+                if (nextPlayer) {
+                  const nextPlayerObj = players && players[nextPlayer] ? players[nextPlayer] : null
+                  if (nextPlayerObj && nextPlayerObj.team) {
+                    const t = nextPlayerObj.team
+                    const prevTeamHang = (room.teams && room.teams[t] && typeof room.teams[t].wordmoney === 'number') ? room.teams[t].wordmoney : 0
+                    updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeamHang) + 1)
+                    updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                  } else {
+                    const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
+                    updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+                    updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                  }
+                  updates[`players/${nextPlayer}/frozen`] = null
+                  updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                  updates[`priceSurge/${nextPlayer}`] = null
+                }
+              } catch (e) {}
+
+            } else {
+              // insufficient team info: fall back to legacy single-array behavior
+              if (effectiveTurnOrder.length > 0) {
+                const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
+                updates[`currentTurnIndex`] = nextIndex
+                updates[`currentTurnStartedAt`] = Date.now()
+              }
+            }
+          } catch (e) {
+            // on any failure, fall back to legacy behavior
+            if (effectiveTurnOrder.length > 0) {
+              const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
+              updates[`currentTurnIndex`] = nextIndex
+              updates[`currentTurnStartedAt`] = Date.now()
+            }
           }
-          // Clear transient effects that should expire when this player's turn begins
-          updates[`players/${nextPlayer}/frozen`] = null
-          updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
-          updates[`priceSurge/${nextPlayer}`] = null
-        } catch (e) {}
+        } else {
+          // non-team modes: legacy advance
+          if (effectiveTurnOrder.length > 0) {
+            const nextIndex = (currentIndex + 1) % effectiveTurnOrder.length
+            updates[`currentTurnIndex`] = nextIndex
+            updates[`currentTurnStartedAt`] = Date.now()
+            // award +1 wordmoney to the player whose turn just started
+            try {
+              const nextOrder = (updates && Object.prototype.hasOwnProperty.call(updates, 'turnOrder')) ? updates['turnOrder'] : effectiveTurnOrder
+              const nextPlayer = nextOrder[nextIndex]
+              const prevNextHang = (players && players[nextPlayer] && typeof players[nextPlayer].wordmoney === 'number') ? players[nextPlayer].wordmoney : 0
+              updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+              updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+              // Clear transient effects that should expire when this player's turn begins
+              updates[`players/${nextPlayer}/frozen`] = null
+              updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              updates[`priceSurge/${nextPlayer}`] = null
+            } catch (e) {}
+          }
+        }
+      } catch (e) {
+        // swallow to avoid breaking game flow
       }
     }
 
