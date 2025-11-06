@@ -5886,67 +5886,222 @@ try {
       }
       const order = state && state.turnOrder ? state.turnOrder : []
       if (!order || order.length === 0) return
-      const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
-      const findNextIndexLocal = (order, curIdx, playersList, gm) => {
-        try {
-          const len = (order || []).length
-          if (!len) return 0
-          const currPid = order[curIdx]
-          const currNode = (playersList || []).find(p => p.id === currPid) || {}
-          const currTeam = currNode && currNode.team ? currNode.team : null
-          if (!currTeam || gm !== 'lastTeamStanding') return (curIdx + 1) % len
-          for (let offset = 1; offset < len; offset++) {
-            const idx = (curIdx + offset) % len
-            const pid = order[idx]
-            const node = (playersList || []).find(p => p.id === pid) || {}
-            if (!node.team || node.team !== currTeam) return idx
-          }
-          return (curIdx + 1) % len
-        } catch (e) { return (curIdx + 1) % (order.length || 1) }
-      }
-      const nextIndex = findNextIndexLocal(order, currentIndexLocal, state && state.players ? state.players : [], state && state.gameMode)
-      const nextPlayer = order[nextIndex]
       const roomRef = dbRef(db, `rooms/${roomId}`)
-      const updates = {
-        currentTurnIndex: nextIndex,
-        currentTurnStartedAt: Date.now()
-      }
-      // Clear any frozen flags for the player whose turn will begin
-      try {
-        if (nextPlayer) {
-          updates[`players/${nextPlayer}/frozen`] = null
-          updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
-          // clear per-player price surge for the player whose turn is starting (surge expires)
-          updates[`priceSurge/${nextPlayer}`] = null
-        }
-      } catch (e) {}
-      // Award the starter +1 to the player whose turn will begin (respect room starterBonus)
-      try {
-        if (nextPlayer) {
-          const nextNode = (state && state.players || []).find(p => p.id === nextPlayer) || {}
+      const updates = {}
+
+      // If we're in Last Team Standing, advance using per-team indices so teams strictly alternate.
+      if ((state && state.gameMode) === 'lastTeamStanding') {
+        try {
+          // Build a players map from snapshot
+          const playersMap = {}
+          ;(state && state.players || []).forEach(p => { try { if (p && p.id) playersMap[p.id] = p } catch (e) {} })
+
+          // Build per-team queues
+          const teams = {}
+          const unteamed = []
+          Object.keys(playersMap || {}).forEach(pid => {
+            try {
+              const p = playersMap[pid] || {}
+              if (p.eliminated) return
+              const t = p.team || null
+              if (t) {
+                teams[t] = teams[t] || []
+                teams[t].push(pid)
+              } else unteamed.push(pid)
+            } catch (e) {}
+          })
+
+          const teamNames = Object.keys(teams)
+          if (teamNames.length === 2) {
+            // persist per-team arrays
+            updates[`turnOrderTeams/${teamNames[0]}`] = teams[teamNames[0]]
+            updates[`turnOrderTeams/${teamNames[1]}`] = teams[teamNames[1]]
+
+            const existingTeamIndices = (state && state.teamTurnIndex) ? state.teamTurnIndex : {}
+            let idxA = (typeof existingTeamIndices[teamNames[0]] === 'number') ? existingTeamIndices[teamNames[0]] : 0
+            let idxB = (typeof existingTeamIndices[teamNames[1]] === 'number') ? existingTeamIndices[teamNames[1]] : 0
+
+            // Determine lastTeamPlayed from state or infer from currentTurnIndex
+            let lastTeamPlayed = null
+            try {
+              if (state && state.lastTeamPlayed) lastTeamPlayed = state.lastTeamPlayed
+              else if (Array.isArray(state && state.turnOrder) && typeof state.currentTurnIndex === 'number') {
+                const curPid = (state.turnOrder || [])[state.currentTurnIndex]
+                if (curPid && playersMap[curPid] && playersMap[curPid].team) lastTeamPlayed = playersMap[curPid].team
+              }
+            } catch (e) {}
+
+            const nextTeam = lastTeamPlayed && teamNames.includes(lastTeamPlayed) ? teamNames.find(t => t !== lastTeamPlayed) : teamNames[0]
+
+            // Choose next player from selected team, advancing that team's index (wrap-around)
+            let nextPlayer = null
+            if (nextTeam === teamNames[0]) {
+              if ((teams[teamNames[0]] || []).length > 0) {
+                nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+              } else if ((teams[teamNames[1]] || []).length > 0) {
+                nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+              }
+            } else {
+              if ((teams[teamNames[1]] || []).length > 0) {
+                nextPlayer = teams[teamNames[1]][idxB % teams[teamNames[1]].length]
+                idxB = (idxB + 1) % Math.max(1, teams[teamNames[1]].length)
+              } else if ((teams[teamNames[0]] || []).length > 0) {
+                nextPlayer = teams[teamNames[0]][idxA % teams[teamNames[0]].length]
+                idxA = (idxA + 1) % Math.max(1, teams[teamNames[0]].length)
+              }
+            }
+
+            // Build compatibility interleaved turnOrder (A0,B0,A1,B1...)
+            const a = teams[teamNames[0]] || []
+            const b = teams[teamNames[1]] || []
+            const total = a.length + b.length
+            const inter = []
+            const seen = new Set()
+            let j = 0
+            while (inter.length < total) {
+              if (a.length > 0) {
+                const cand = a[j % a.length]
+                if (!seen.has(cand)) { inter.push(cand); seen.add(cand) }
+              }
+              if (inter.length >= total) break
+              if (b.length > 0) {
+                const cand2 = b[j % b.length]
+                if (!seen.has(cand2)) { inter.push(cand2); seen.add(cand2) }
+              }
+              j++
+            }
+            const interleaved = inter.concat(unteamed.filter(p => !seen.has(p)))
+            updates[`turnOrder`] = interleaved
+
+            // persist updated per-team indices
+            const newTeamIdxObj = Object.assign({}, existingTeamIndices)
+            newTeamIdxObj[teamNames[0]] = idxA
+            newTeamIdxObj[teamNames[1]] = idxB
+            updates[`teamTurnIndex`] = newTeamIdxObj
+
+            if (nextTeam) updates['lastTeamPlayed'] = nextTeam
+
+            const nextIdx = interleaved.indexOf(nextPlayer)
+            updates[`currentTurnIndex`] = (nextIdx !== -1) ? nextIdx : 0
+            updates[`currentTurnStartedAt`] = Date.now()
+
+            // Clear transient flags and award +1 (team-aware)
+            try {
+              if (nextPlayer) {
+                updates[`players/${nextPlayer}/frozen`] = null
+                updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                updates[`priceSurge/${nextPlayer}`] = null
+                const nextNode = playersMap[nextPlayer] || {}
+                try {
+                  if (nextNode && nextNode.team) {
+                    const t = nextNode.team
+                    const prevTeamHang = Number((state && state.teams && state.teams[t] && typeof state.teams[t].wordmoney === 'number') ? state.teams[t].wordmoney : 0)
+                    updates[`teams/${t}/wordmoney`] = Math.max(0, Number(prevTeamHang) + 1)
+                    updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                  } else {
+                    const prevNextHang = (nextNode && typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+                    updates[`players/${nextPlayer}/wordmoney`] = prevNextHang + 1
+                    updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+                  }
+                } catch (e) {}
+              }
+            } catch (e) {}
+          } else {
+            // Fallback: not enough team info, use legacy single-array advance
+            const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
+            const nextIndex = (currentIndexLocal + 1) % order.length
+            updates[`currentTurnIndex`] = nextIndex
+            updates[`currentTurnStartedAt`] = Date.now()
+            const nextPlayer = order[nextIndex]
+            try {
+              if (nextPlayer) {
+                updates[`players/${nextPlayer}/frozen`] = null
+                updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+                updates[`priceSurge/${nextPlayer}`] = null
+                const nextNode = (state && state.players || []).find(p => p.id === nextPlayer) || {}
+                try { applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null }) } catch (e) { updates[`players/${nextPlayer}/wordmoney`] = ((nextNode && typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0) + 1 }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {
+          // On failure, fall back to legacy advance
           try {
-            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
-          } catch (e) {
-            const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
-            const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
-                      try {
-                        applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
-                      } catch (e) {
+            const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
+            const nextIndex = (currentIndexLocal + 1) % order.length
+            updates[`currentTurnIndex`] = nextIndex
+            updates[`currentTurnStartedAt`] = Date.now()
+            const nextPlayer = order[nextIndex]
+            if (nextPlayer) {
+              updates[`players/${nextPlayer}/frozen`] = null
+              updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+              updates[`priceSurge/${nextPlayer}`] = null
+              try { applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null }) } catch (e) {}
+            }
+          } catch (ee) {}
+        }
+      } else {
+        // Non-team modes: legacy advance logic
+        const currentIndexLocal = (typeof state.currentTurnIndex === 'number') ? state.currentTurnIndex : 0
+        const findNextIndexLocal = (order, curIdx, playersList, gm) => {
+          try {
+            const len = (order || []).length
+            if (!len) return 0
+            const currPid = order[curIdx]
+            const currNode = (playersList || []).find(p => p.id === currPid) || {}
+            const currTeam = currNode && currNode.team ? currNode.team : null
+            if (!currTeam || gm !== 'lastTeamStanding') return (curIdx + 1) % len
+            for (let offset = 1; offset < len; offset++) {
+              const idx = (curIdx + offset) % len
+              const pid = order[idx]
+              const node = (playersList || []).find(p => p.id === pid) || {}
+              if (!node.team || node.team !== currTeam) return idx
+            }
+            return (curIdx + 1) % len
+          } catch (e) { return (curIdx + 1) % (order.length || 1) }
+        }
+        const nextIndex = findNextIndexLocal(order, currentIndexLocal, state && state.players ? state.players : [], state && state.gameMode)
+        const nextPlayer = order[nextIndex]
+        updates[`currentTurnIndex`] = nextIndex
+        updates[`currentTurnStartedAt`] = Date.now()
+        // Clear any frozen flags for the player whose turn will begin
+        try {
+          if (nextPlayer) {
+            updates[`players/${nextPlayer}/frozen`] = null
+            updates[`players/${nextPlayer}/frozenUntilTurnIndex`] = null
+            // clear per-player price surge for the player whose turn is starting (surge expires)
+            updates[`priceSurge/${nextPlayer}`] = null
+          }
+        } catch (e) {}
+        // Award the starter +1 to the player whose turn will begin (respect room starterBonus)
+        try {
+          if (nextPlayer) {
+            const nextNode = (state && state.players || []).find(p => p.id === nextPlayer) || {}
+            try {
+              applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+            } catch (e) {
+              const prevNextHang = (typeof nextNode.wordmoney === 'number') ? nextNode.wordmoney : Number(nextNode.wordmoney) || 0
+              const stagedNextHang = (typeof updates[`players/${nextPlayer}/wordmoney`] !== 'undefined') ? Number(updates[`players/${nextPlayer}/wordmoney`]) : prevNextHang
                         try {
                           applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
                         } catch (e) {
-                          updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                          try {
+                            applyAward(updates, nextPlayer, 1, { reason: 'startTurn', by: null })
+                          } catch (e) {
+                            updates[`players/${nextPlayer}/wordmoney`] = Math.max(0, Number(stagedNextHang) + 1)
+                          }
                         }
-                      }
-          }
-          try {
-            if (state && state.starterBonus && state.starterBonus.enabled) {
-              updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
             }
-          } catch (e) {}
-        }
-      } catch (e) {}
-  await safeDbUpdate(roomRef, updates)
+            try {
+              if (state && state.starterBonus && state.starterBonus.enabled) {
+                updates[`players/${nextPlayer}/lastGain`] = { amount: 1, by: null, reason: 'startTurn', ts: Date.now() }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      await safeDbUpdate(roomRef, updates)
       const toastId = `skip_ok_${Date.now()}`
       setToasts(t => [...t, { id: toastId, text: 'Turn skipped' }])
       // auto-dismiss after a short time
@@ -6739,6 +6894,7 @@ try {
         const currentPlayer = (players || []).find(p => p.id === currentTurnId) || {}
         const isViewerCurrent = currentTurnId && myId && currentTurnId === myId
         const displayName = currentPlayer.name || (currentTurnId || '-')
+        const randomPhrase = getRandomEncouragementPhrase()
         const titleText = isViewerCurrent ? 'Your turn' : `It is ${displayName}'s turn`
         const cardBase = { display: 'flex', alignItems: 'center', gap: 18, padding: '12px 18px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(30,28,32,0.98), rgba(18,16,20,0.96))' }
         const glowStyle = isViewerCurrent ? { boxShadow: '0 12px 36px rgba(255,214,102,0.28), 0 6px 18px rgba(0,0,0,0.6)' } : { boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }
@@ -6748,7 +6904,7 @@ try {
               <div className="big-avatar big-self" style={{ background: (currentPlayer.color || '#2b8cff'), width: 64, height: 64, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{(displayName || '?')[0] || '?'}</div>
               <div style={{ marginLeft: 0 }}>
                 <h1 style={{ margin: 0, fontSize: 28, lineHeight: '1.02' }}>{titleText}</h1>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{isViewerCurrent ? displayName : displayName}</div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{displayName}, {randomPhrase}</div>
               </div>
             </div>
           </div>
