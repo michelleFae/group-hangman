@@ -6944,7 +6944,7 @@ try {
               <div className="big-avatar big-self" style={{ background: (currentPlayer.color || '#2b8cff'), width: 64, height: 64, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>{(displayName || '?')[0] || '?'}</div>
               <div style={{ marginLeft: 0 }}>
                 <h1 style={{ margin: 0, fontSize: 28, lineHeight: '1.02' }}>{titleText}</h1>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{displayName}, {randomPhrase}</div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{randomPhrase}</div>
               </div>
             </div>
           </div>

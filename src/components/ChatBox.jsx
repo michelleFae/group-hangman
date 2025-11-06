@@ -95,6 +95,16 @@ export default function ChatBox({ roomId, myId, myName, messages = {}, players =
     } catch (e) {}
   }, [phase])
 
+  // Reset recipient to public when the room is reset (players cleared).
+  // Preserve user's chosen recipient across sends until the room is reset.
+  useEffect(() => {
+    try {
+      if (!players || (Array.isArray(players) && players.length === 0)) {
+        setRecipient({ type: 'public' })
+      }
+    } catch (e) {}
+  }, [players && players.length])
+
   // compute unread messages counts by type (visible messages from others newer than lastSeenTs)
   const { unreadCount, unreadPrivateCount, unreadTeamCount, unreadPublicCount } = React.useMemo(() => {
     try {
@@ -128,8 +138,6 @@ export default function ChatBox({ roomId, myId, myName, messages = {}, players =
       try { if (recipient && recipient.type && recipient.type !== 'public') payload.recipient = recipient } catch (e) {}
       await dbPush(ref, payload)
       setText('')
-      // reset to public after sending a private/team message for safety
-      try { setRecipient({ type: 'public' }) } catch (e) {}
       setSending(false)
     } catch (e) {
       console.warn('Chat send failed', e)
