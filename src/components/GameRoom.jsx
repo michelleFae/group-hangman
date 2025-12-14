@@ -1325,7 +1325,9 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
             multiHitSeenRef.current[key] = true
             // Use a deterministic id based on player and lastGain timestamp to avoid duplicate keys
             const toastId = key
-            setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`, fade: true }])
+            const text =  lg.amount > 0 ? `${p.name} gained +${lg.amount} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})` : `${p.name} lost ${abs(lg.amount)} (${lg.reason === 'wrongGuess' ? 'from wrong guess' : 'bonus'})`
+
+            setToasts(t => [...t, { id: toastId, text: text, fade: true }])
             // If this is a positive gain and it's from a Double Down power-up, spawn falling coins
             try {
               const amountGain = Number(lg.amount) || 0
@@ -1364,7 +1366,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
               delete processedFbGainSuppressRef.current[pid]
             } else {
               const toastId = `gain_${pid}_${Date.now()}`
-              setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
+              const text = delta > 0 ? `${p.name} gained +${delta}` : `${p.name} lost +${delta}`
+              setToasts(t => [...t, { id: toastId, text: text, fade: true }])
               // start fade at ~7s, remove at 8s for fading toasts
               setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
               setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
@@ -1372,7 +1375,8 @@ export default function GameRoom({ roomId, playerName, password }) { // Added pa
           } catch (e) {
             // fallback: still show generic toast if suppression check fails
             const toastId = `gain_${pid}_${Date.now()}`
-            setToasts(t => [...t, { id: toastId, text: `${p.name} gained +${delta}`, fade: true }])
+            const text = delta > 0 ? `${p.name} gained +${delta}` : `${p.name} lost +${delta}`
+            setToasts(t => [...t, { id: toastId, text: text, fade: true }])
             setTimeout(() => setToasts(t => t.map(x => x.id === toastId ? { ...x, removing: true } : x)), 7000)
             setTimeout(() => setToasts(t => t.filter(x => x.id !== toastId)), 8000)
           }
@@ -7747,7 +7751,7 @@ try {
                         <div style={{ marginTop: 6 }}>Money mode: <span style={{ color: '#4efcfc' }}>have the most wordmoney</span> to win.</div>
                       )}
                       {(typeof state?.ghostReEntryEnabled !== 'undefined' ? state.ghostReEntryEnabled : ghostReEntryEnabled) && (
-                        <div style={{ marginTop: 6 }}>If your word is guessed, you may rejoin <span style={{ color: '#ff9d42' }}>once</span> by guessing a system word shared by ghosts. Once you rejoin the round, your new word will be the word you guessed.s</div>
+                        <div style={{ marginTop: 6 }}>If your word is guessed, you may rejoin <span style={{ color: '#ff9d42' }}>once</span> by guessing a system word shared by ghosts. Once you rejoin the round, your new word will be the word you guessed.</div>
                       )}
                       {state?.freeBubblesEnabled && (
                         <div style={{ marginTop: 6 }}>Click the randomly appearing tombstones to get free wordmoney. Only the fastest player gets the $$$!</div>
